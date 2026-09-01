@@ -82,3 +82,20 @@ Desktop.ini
 # ---------------------------------------------------------------
 .claude/settings.local.json
 .claude/*.local.*
+.env*.local
+/tmp/
+/_tmp/
+plans/PLAN-*.md
+plans/PLAN-*.html
+reports/
+.cursor/
+.claude/worktrees/
+CODEBASE_MAP.md
+.claude/.toolkit-manifest.json
+.toolkit-backup-*/
+artifacts/html/
+correction-ledger.jsonl
+correction-heartbeat.jsonl
+correction-rollup.json
+correction-axial-map.json
+correction-rows.json

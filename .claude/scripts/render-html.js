@@ -1,0 +1,869 @@
+#!/usr/bin/env node
+'use strict';
+//
+// render-html.js - inject a compact findings JSON into a prebuilt HTML shell and
+// write a self-contained artifact: uniquely-timestamped by default, or
+// identity-keyed with --stable. (issues #120, #127, #129)
+//
+// Why this exists:
+//   Toolkit commands (/review, /document, /explore, /ask-*, /audit-html) used to
+//   make Claude hand-write the entire ~13KB HTML file - all CSS, structure, and
+//   every finding card - as model output. That was slow (#120). Worse, the files
+//   were named by date only, so a same-day re-run collided; Claude's Write tool
+//   refuses to overwrite a file it has not read this session, forcing a
+//   Read-then-Write of the old file and doubling the cost (#127, and a second
+//   cause of #120).
+//
+//   This script flips the model: Claude emits ONLY the small JSON payload. The
+//   boilerplate lives once in a prebuilt shell (.claude/skills/shared/shells/
+//   <shell>-shell.html). This script reads the shell, inlines the shared design
+//   tokens (tokens.css) and the JSON data into the shell's two slots, computes a
+//   YYYY-MM-DD-HHMMSS filename (collision-proof, with a -N guard for same-second
+//   runs), and writes the file. A script overwriting a file has no
+//   "read-before-overwrite" constraint, so the Read-then-Write cycle is gone.
+//
+//   The output is a single self-contained file: inline CSS, inline JSON, inline
+//   renderer JS. No CDN, works offline on file://.
+//
+//   The page's <title> is taken from the payload ("title", or "topic" for the
+//   debate and explore shells) so each artifact carries its own name rather than
+//   the shell's generic default. That tag is the page identity in a browser tab
+//   and, when the artifact is published to a hosted page, its name there too.
+//
+// Usage:
+//   node .claude/scripts/render-html.js --shell <review|debate|document|explore|audit|plan|docview> \
+//                                       --name <basename> [--data <file>] \
+//                                       [--out-dir <dir>] [--stable] [--no-abs]
+//   echo '<json>' | node .claude/scripts/render-html.js --shell review --name review-orchestrator
+//
+//   Artifact index (issue #154; stamp and sync from the holistic pass) - three
+//   extra modes that do not render anything:
+//   node .claude/scripts/render-html.js --index-add --type <shell> --name <name> \
+//                                       [--local <path>] --url <url>
+//   node .claude/scripts/render-html.js --index-url --name <name>
+//   node .claude/scripts/render-html.js --index-sync
+//
+//   --index-add   append one JSONL row {at, type, name, local, url} to
+//                 artifacts/html/index.jsonl (the log of every artifact
+//                 published to a hosted page). Timestamps itself, so callers
+//                 never shell out to `date`. When --local names a file that
+//                 exists, it also stamps that file (see "The hosted stamp"
+//                 below); a missing file is a one-line stderr warning and the
+//                 row is still appended. --local is optional, but when given it
+//                 must name an .html (or .htm) mirror and resolve under the
+//                 repo root, through any symlink, or the command fails before
+//                 anything is written. --url must be an https:// URL with no
+//                 whitespace, quotes, backslash, or angle brackets: it is
+//                 written into an HTML comment, so nothing that could close
+//                 the comment is admitted.
+//   --index-url   print the most recently recorded URL for --name, or nothing at
+//                 all when there is no record. Exit 0 either way, so an absent
+//                 index reads as "no record" rather than an error.
+//   --index-sync  regenerate every stamp from the index: newest row per local
+//                 file wins, one stamp per file that still exists. Prints
+//                 "index-sync: <n> stamped, <m> missing" on stdout, with
+//                 ", <k> skipped" appended only when a row was refused (not an
+//                 .html mirror, or resolving outside the repository), lists
+//                 the missing and skipped paths on stderr, and exits 0 either
+//                 way.
+//
+//   The hosted stamp. After a publish, line 1 of the local mirror is
+//     <!-- hosted: <url> -->
+//   and the file's own first line (the doctype) becomes line 2. The index row
+//   is the record; the stamp is a derived copy of it, there so anyone opening
+//   the local file finds its hosted page without opening the index. Mirrors
+//   are never hand-edited: a URL changes by appending a row (--index-add), and
+//   --index-sync catches every mirror up to the index. The stamp is one short
+//   line so the <title> stays inside the first 8KB the hosted publisher scans.
+//
+//   --shell    which template under .claude/skills/shared/shells/ to use
+//   --name     filename prefix, e.g. review-orchestrator, review-code, debate-gpt,
+//              document, explore-<slug>, audit-html, PLAN-issue-<n>. The timestamp
+//              is appended unless --stable is set.
+//   --data     path to a JSON file. If omitted or "-", JSON is read from stdin.
+//   --out-dir  output directory. Default: artifacts/html. Resolved against the
+//              current working directory (relative or absolute both work) and
+//              created if missing. Lets plan views land in plans/ instead.
+//   --no-abs   strip the paths that identify this machine out of the payload
+//              before rendering (issue #155 item 2): every absPath key goes, and
+//              in ordinary text the repo root becomes a relative path and the
+//              home directory becomes "~", both as a prefix (~/...) and as a
+//              bare whole token (holistic review, R14); /tmp and /usr are left
+//              alone. Five shells turn a finding's file reference into a
+//              vscode://file/<absPath> editor link, so a rendered page carries
+//              this machine's directory layout and account name. That is
+//              harmless in a local file and is a disclosure once the page is
+//              published, so the publish path passes this flag and the local
+//              fallback does not. Each of the five shells treats a missing
+//              absPath as "render this reference as plain text" rather than
+//              building an editor link from the relative path, which would leak
+//              nothing but be dead for every viewer. A file object that carried
+//              only absPath gets a relPath derived from it first - repo-relative
+//              under the main or working copy, "external file" elsewhere - so
+//              the reference is not hidden (holistic review, R27). Images are
+//              embedded as data: URIs BEFORE the strip runs, so a screenshot
+//              under the home directory still embeds (holistic review, R1). See
+//              "Viewing the Artifact" in .claude/rules/html-outputs.md.
+//   --stable   write exactly <name>.html in the out dir - no timestamp, no -N
+//              collision guard - overwriting any existing file. This exists for
+//              identity-keyed outputs that pair with a markdown file and are
+//              REPLACED on re-run, like plans/PLAN-issue-<n>.html next to
+//              PLAN-issue-<n>.md: a re-plan must refresh the one view, not pile
+//              up timestamped copies. (issue #129)
+//
+// Output: writes <out-dir>/<name>-<timestamp>.html, or <out-dir>/<name>.html with
+//   --stable (out-dir defaults to artifacts/html under the CURRENT working
+//   directory, i.e. the project root), and prints that path to stdout. Only the
+//   path goes to stdout (callers capture it to hand to open-artifact.sh);
+//   diagnostics go to stderr. Exit 0 on success, 1 on any error.
+//
+// Zero external dependencies (Node built-ins only), so it adds nothing to the
+// quarantined .claude/scripts/package.json.
+
+const fs = require('fs');
+const path = require('path');
+
+function die(msg) {
+  console.error('render-html.js: ' + msg);
+  process.exit(1);
+}
+
+// --- parse args (no dependency on an arg-parsing library) ---
+const argv = process.argv.slice(2);
+const opts = {
+  shell: '', name: '', data: '', outDir: 'artifacts/html', stable: false,
+  noAbs: false,
+  // index modes (issue #154; --index-sync from the holistic pass)
+  indexAdd: false, indexUrl: false, indexSync: false, type: '', local: '', url: ''
+};
+for (let i = 0; i < argv.length; i++) {
+  const a = argv[i];
+  if (a === '--shell') opts.shell = argv[++i] || '';
+  else if (a === '--name') opts.name = argv[++i] || '';
+  else if (a === '--data') opts.data = argv[++i] || '';
+  else if (a === '--out-dir') opts.outDir = argv[++i] || '';
+  else if (a === '--stable') opts.stable = true; // boolean flag, takes no value
+  else if (a === '--no-abs') opts.noAbs = true; // boolean flag, takes no value
+  else if (a === '--index-add') opts.indexAdd = true; // boolean flag
+  else if (a === '--index-url') opts.indexUrl = true; // boolean flag
+  else if (a === '--index-sync') opts.indexSync = true; // boolean flag
+  else if (a === '--type') opts.type = argv[++i] || '';
+  else if (a === '--local') opts.local = argv[++i] || '';
+  else if (a === '--url') opts.url = argv[++i] || '';
+  else die('unknown argument: ' + a);
+}
+
+// ==========================================================================
+// Index modes (issue #154). These run INSTEAD of a render and return early.
+//
+// Why the index lives in this script rather than a shell one-liner or a new
+// file: an `echo ... >>` append plus a `grep`/`tail` lookup would each need
+// their own permission entry, and a brand-new script would need a permission
+// entry AND matching copy steps in both installers (setup.sh and setup.ps1),
+// which is exactly the mirror-drift trap that has bitten this repo before.
+// This script is already permitted and already propagated, so extending it
+// costs nothing downstream. It also keeps structural data in deterministic
+// code rather than in model-composed shell.
+//
+//   Append one record (after a successful publish):
+//     node .claude/scripts/render-html.js --index-add --type review \
+//          --name review-orchestrator --local <path> --url <url>
+//
+//   Look up the most recent URL recorded for a name (used by the identity-keyed
+//   types, plan and docview, to update their existing page instead of making a
+//   new one). Prints the URL, or NOTHING when there is no record yet, so a
+//   caller can branch on empty output. Exit 0 either way; a missing index file
+//   is "no record", not an error.
+//     node .claude/scripts/render-html.js --index-url --name PLAN-issue-154
+//
+//   Regenerate every mirror's line-1 stamp from the index (after a re-render
+//   dropped one, a restored backup, or a row appended by hand):
+//     node .claude/scripts/render-html.js --index-sync
+//
+// The file is append-only JSONL at artifacts/html/index.jsonl - one self-
+// contained JSON object per line. It is never read-then-rewritten, so two
+// sessions publishing at once cannot clobber each other's history, and it never
+// grows a re-read cost the way a markdown table would.
+// ==========================================================================
+// The index is keyed to the REPOSITORY, not the working directory (issue #155
+// item 5). A worktree is a second working copy of the same repo, so resolving
+// against process.cwd() gave each worktree its own empty index: the --index-url
+// lookup found no record for a plan that had already been published, and the
+// identity-keyed types created a duplicate hosted page instead of updating the
+// one that existed. `git rev-parse --git-common-dir` names the SHARED .git for
+// the whole repo (".git" in the main copy, an absolute path to it from inside a
+// worktree), so its parent is the main working copy in both cases.
+//
+// Falling back to cwd is deliberate rather than fatal: this script must stay
+// usable outside a repo, and an index in the wrong place is a far smaller
+// failure than a render that refuses to run. child_process is core Node, so
+// this keeps the zero-dependency promise above.
+function mainRepoRoot() {
+  try {
+    const common = require('child_process')
+      .execFileSync('git', ['rev-parse', '--git-common-dir'],
+                    { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] })
+      .trim();
+    if (!common) return process.cwd();
+    return path.dirname(path.resolve(process.cwd(), common));
+  } catch (e) {
+    return process.cwd(); // not a repo, or no git on PATH
+  }
+}
+const REPO_ROOT = mainRepoRoot();
+const INDEX_PATH = path.resolve(REPO_ROOT, 'artifacts/html', 'index.jsonl');
+
+// The working copy this command runs in. In the main copy it IS the repo root;
+// in a worktree it is the worktree, whose own plans/ and artifacts/html/ hold
+// the files a render there wrote. The index is shared (above), but the mirror
+// is local to the copy that rendered it, so stamping must accept both roots:
+// a worktree's artifact refused as "outside the repo" was the first thing the
+// holistic-pass review caught in this design.
+function workRoot() {
+  try {
+    const top = require('child_process')
+      .execFileSync('git', ['rev-parse', '--show-toplevel'],
+                    { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] })
+      .trim();
+    return top ? path.resolve(top) : process.cwd();
+  } catch (e) {
+    return process.cwd();
+  }
+}
+const WORK_ROOT = workRoot();
+
+// ==========================================================================
+// The hosted stamp (holistic pass, plan Step 3). The index row is the record;
+// line 1 of the local mirror carries a DERIVED copy of its URL:
+//     <!-- hosted: https://claude.ai/code/artifact/... -->
+// so anyone opening the local file, or grepping the directory, finds the page
+// it was published to without opening the index. Mirrors are never hand-
+// edited: a URL changes by appending a row (--index-add), and --index-sync
+// regenerates every stamp from the index. Markdown twins (PLAN-*.md) are not
+// stamped: Claude reads those.
+//
+// One short line, always the FIRST line. The hosted publisher scans only the
+// first 8KB of a file for its <title>, so a stamp anywhere else, or a long
+// one, could push the title out of that window and rename the page.
+// ==========================================================================
+// Admits a trailing CR: a mirror re-saved with CRLF line endings keeps its
+// stamp, and without this the next publish saw no stamp and added a second one
+// (holistic-pass review, R15).
+const STAMP_RE = /^<!-- hosted: \S+ -->\r?$/;
+
+function hostedStamp(url) { return '<!-- hosted: ' + url + ' -->'; }
+
+// The stamp is one line inside an HTML comment, so a URL carrying whitespace
+// or a comment-closing sequence could split the line or close the comment
+// early and inject markup into every mirror. The old denylist named "-->" and
+// missed "--!>", which browsers also treat as closing a comment (holistic-pass
+// review, R12), so this is an allowlist instead: https, then no whitespace, no
+// angle brackets, no quotes, no backslash. No caller in this repo publishes
+// over plain http, and the hosted pages the stamp exists for are https only,
+// so http is not admitted.
+const STAMPABLE_URL_RE = /^https:\/\/[^\s<>"'`\\]+$/;
+function stampableUrl(url) {
+  return typeof url === 'string' && STAMPABLE_URL_RE.test(url);
+}
+
+// A stamp is an HTML comment on line 1, so it only belongs in an HTML file: a
+// markdown twin, a JSON payload, or a script with a shebang would be corrupted
+// by it, and nothing stopped a --local or a hand-written row from naming one
+// (holistic-pass review, R14, R18). --index-add refuses anything else before
+// the row is written; --index-sync skips such a row with a note.
+function htmlMirror(p) {
+  const ext = path.extname(p).toLowerCase();
+  return ext === '.html' || ext === '.htm';
+}
+
+// --index-sync rewrites whichever files the index names, so a --local must
+// never be able to point it at a file elsewhere on the disk: anything that
+// resolves outside the repository is refused, at --index-add time (a die,
+// before the row is written) and at sync time (skipped with a note). "The
+// repository" means the main copy OR the working copy this command runs in.
+//
+// An absolute --local is the path the render printed, but it is normalized
+// rather than trusted as-is: an absolute row carrying ".." after the root
+// prefix passed the old string-prefix test and stamped a file outside the
+// repository (holistic-pass review, R11). Normalizing also makes two spellings
+// of one file ("/a/./b.html" and "/a/b.html") one sync key. A relative path is
+// resolved against the working copy that rendered it. At sync time a relative
+// row is tried against the main root first and then this working copy, so a
+// row written from a worktree still finds its file when synced from that
+// worktree.
+function resolveLocal(local) { return path.resolve(WORK_ROOT, local); }
+function resolveForSync(local) {
+  if (path.isAbsolute(local)) return path.resolve(local);
+  const inMain = path.resolve(REPO_ROOT, local);
+  if (REPO_ROOT === WORK_ROOT || fs.existsSync(inMain)) return inMain;
+  return path.resolve(WORK_ROOT, local);
+}
+
+// Windows compares paths case-insensitively, and the cwd and git's canonical
+// spelling of one directory can differ in case there, so a worktree publish
+// died before the append (holistic-pass review, R16). The comparison folds
+// case on win32 only; posix behavior is unchanged. The platform is a parameter
+// so the suite can exercise the win32 branch from Linux, and
+// RENDER_HTML_PLATFORM is the hook that feeds it; nothing else reads it.
+const PLATFORM = process.env.RENDER_HTML_PLATFORM || process.platform;
+function pathKey(p, platform) {
+  return (platform || PLATFORM) === 'win32' ? p.toLowerCase() : p;
+}
+
+// A candidate that exists is resolved through the filesystem, and so is the
+// root, before the prefix test: a symlink inside the repository pointing at a
+// file outside it is judged by where it lands (holistic-pass review, R17),
+// and realpath on BOTH sides keeps a root reached through a symlink (/tmp
+// against /private/tmp on macOS) from false-negating. A candidate that does
+// not exist has nothing to resolve and is checked on its normalized string
+// form alone; stampFile cannot write a file that is not there anyway.
+function realOrSelf(p) { try { return fs.realpathSync(p); } catch (e) { return p; } }
+function underRoot(abs, root, platform) {
+  let candidate = path.resolve(abs);
+  let base = path.resolve(root);
+  if (fs.existsSync(candidate)) { candidate = realOrSelf(candidate); base = realOrSelf(base); }
+  candidate = pathKey(candidate, platform);
+  base = pathKey(base, platform);
+  const prefix = base.endsWith(path.sep) ? base : base + path.sep;
+  return candidate.startsWith(prefix);
+}
+function underRepoRoot(abs) { return underRoot(abs, REPO_ROOT) || underRoot(abs, WORK_ROOT); }
+
+// Put the stamp on line 1 of one file, replacing an existing stamp rather
+// than adding a second, and leaving everything after it byte-identical.
+// Returns true when the file carries the stamp, false when it could not be
+// read (missing or unreadable) - the caller decides whether that is a warning
+// (--index-add) or a count (--index-sync). A write failure is fatal: the file
+// was there and readable a moment ago, so something is genuinely wrong.
+function stampFile(abs, url) {
+  let raw;
+  try { raw = fs.readFileSync(abs, 'utf-8'); } catch (e) { return false; }
+  // A UTF-8 BOM is dropped rather than carried along. Kept, it landed on line
+  // 2 in front of the doctype, where a browser sees it as text before the
+  // doctype (holistic-pass review, R19). Every shell declares its charset in
+  // a <meta>, so the BOM was never doing anything. `raw` stays as read so the
+  // no-change test below still writes when only the BOM went.
+  const content = raw.charCodeAt(0) === 0xFEFF ? raw.slice(1) : raw;
+  const nl = content.indexOf('\n');
+  const first = nl === -1 ? content : content.slice(0, nl);
+  // When line 1 is a stamp, the WHOLE line is replaced, a trailing CR from a
+  // CRLF re-save included: the stamp is always written in its own LF form,
+  // and everything from the first "\n" on is left byte-identical.
+  const stamped = STAMP_RE.test(first)
+    ? hostedStamp(url) + (nl === -1 ? '\n' : content.slice(nl))
+    : hostedStamp(url) + '\n' + content;
+  if (stamped === raw) return true; // already current: no write, no mtime churn
+  try { fs.writeFileSync(abs, stamped, 'utf-8'); }
+  catch (e) { die('could not write the hosted stamp to ' + abs + ': ' + e.message); }
+  return true;
+}
+
+// Every parseable row of the index, in file order; [] when there is no index.
+// A malformed line is skipped rather than fatal - a half-written line from an
+// interrupted run must not break every later lookup or sync.
+function readIndexRows() {
+  if (!fs.existsSync(INDEX_PATH)) return [];
+  const rows = [];
+  for (const line of fs.readFileSync(INDEX_PATH, 'utf-8').split('\n')) {
+    if (!line.trim()) continue;
+    let rec;
+    try { rec = JSON.parse(line); } catch (e) { continue; }
+    if (rec && typeof rec === 'object') rows.push(rec);
+  }
+  return rows;
+}
+
+const indexModes = [opts.indexAdd, opts.indexUrl, opts.indexSync].filter(Boolean).length;
+if (indexModes > 1) die('--index-add, --index-url, and --index-sync are mutually exclusive');
+
+// The index modes return early, before any render validation, so a command line
+// that mixes them with render flags would silently win: exit 0, nothing rendered,
+// and an index path printed on stdout - which callers feed straight to
+// open-artifact.sh, opening a JSONL file in the browser instead of an artifact.
+// Every caller here is a model composing a command from a prompt file, which is
+// exactly where two documented invocations get merged into one, so fail loudly
+// rather than half-succeeding. (issue #154 review, R11)
+if (indexModes) {
+  const renderFlags = [];
+  if (opts.shell) renderFlags.push('--shell');
+  if (opts.data) renderFlags.push('--data');
+  if (opts.stable) renderFlags.push('--stable');
+  if (opts.noAbs) renderFlags.push('--no-abs');
+  if (opts.outDir !== 'artifacts/html') renderFlags.push('--out-dir');
+  if (renderFlags.length) {
+    die('index modes take no render arguments (got ' + renderFlags.join(', ') +
+        '); run the render and the index step as separate commands');
+  }
+}
+
+if (opts.indexAdd) {
+  if (!opts.name) die('--index-add requires --name');
+  if (!opts.url) die('--index-add requires --url');
+  if (!stampableUrl(opts.url)) {
+    die('--url must be an https:// URL with no whitespace, quotes, backslash, or angle brackets: ' + opts.url);
+  }
+  // --local stays optional (older callers omit it). When given, it is checked
+  // BEFORE the row is written, so a bad path leaves the index untouched.
+  let localAbs = '';
+  if (opts.local) {
+    if (!htmlMirror(opts.local)) die('--local must name an .html mirror, not ' + opts.local);
+    localAbs = resolveLocal(opts.local);
+    if (!underRepoRoot(localAbs)) {
+      die('--local must resolve inside the repository (main copy ' + REPO_ROOT +
+          (WORK_ROOT !== REPO_ROOT ? ' or this working copy ' + WORK_ROOT : '') + '); got ' + localAbs);
+    }
+  }
+  // Timestamp is produced here so callers never have to shell out to `date`.
+  const record = {
+    at: new Date().toISOString(),
+    type: opts.type || '',
+    name: opts.name,
+    local: opts.local || '',
+    url: opts.url
+  };
+  // JSON.stringify handles quoting/escaping, so a name or path containing a
+  // quote or backslash cannot corrupt the line.
+  fs.mkdirSync(path.dirname(INDEX_PATH), { recursive: true });
+  fs.appendFileSync(INDEX_PATH, JSON.stringify(record) + '\n', 'utf-8');
+  // The row is the record and the stamp is derived from it, so the row goes in
+  // first and a file that cannot be stamped costs the stamp, never the record.
+  // Missing is ordinary, not an error: a worktree caller passing a relative
+  // path names a file the main copy does not have, and a timestamped artifact
+  // may already have been cleaned up. Warn on stderr; stdout stays the index
+  // path so callers that capture it are unaffected.
+  if (localAbs && !stampFile(localAbs, opts.url)) {
+    process.stderr.write('index-add: local file not found, row recorded without a stamp: ' +
+                         localAbs + '\n');
+  }
+  process.stdout.write(INDEX_PATH + '\n');
+  process.exit(0);
+}
+
+if (opts.indexUrl) {
+  if (!opts.name) die('--index-url requires --name');
+  // Scan forward and keep the last match: the newest record for a name wins,
+  // which is what makes a re-published stable artifact resolve to its current
+  // page.
+  let found = '';
+  for (const rec of readIndexRows()) {
+    if (rec.name === opts.name && typeof rec.url === 'string' && rec.url) found = rec.url;
+  }
+  if (found) process.stdout.write(found + '\n');
+  process.exit(0);
+}
+
+if (opts.indexSync) {
+  // One stamp per FILE, newest row for that file wins. For the identity-keyed
+  // types (plan, docview) every row names the same mirror, so this is "newest
+  // URL per name" - the rule --index-url applies - and a stamp can never
+  // disagree with a lookup. For the timestamped types every run has its own
+  // mirror AND its own page under a shared name ("document",
+  // "review-orchestrator"), so keying by name would stamp each older mirror
+  // with the newest run's URL. Keying by file is right for both, and it is
+  // what --index-add already does one row at a time. Null-prototype map, so a
+  // path can never read a value off Object.prototype. The key is the
+  // normalized path, case-folded on win32 (holistic-pass review, R16); the
+  // value keeps the row's own spelling for the stamp and the messages.
+  const byFile = Object.create(null);
+  for (const rec of readIndexRows()) {
+    if (typeof rec.local === 'string' && rec.local && stampableUrl(rec.url)) {
+      const abs = resolveForSync(rec.local);
+      byFile[pathKey(abs)] = { abs: abs, url: rec.url };
+    }
+  }
+  let stamped = 0, missing = 0, skipped = 0;
+  for (const key of Object.keys(byFile)) {
+    const abs = byFile[key].abs;
+    if (!htmlMirror(abs)) {
+      skipped++;
+      process.stderr.write('index-sync: skipped, not an .html mirror: ' + abs + '\n');
+    } else if (!underRepoRoot(abs)) {
+      skipped++;
+      process.stderr.write('index-sync: skipped, resolves outside the repository: ' + abs + '\n');
+    } else if (stampFile(abs, byFile[key].url)) {
+      stamped++;
+    } else {
+      missing++;
+      process.stderr.write('index-sync: local file not found: ' + abs + '\n');
+    }
+  }
+  // "<n> stamped, <m> missing" is the line the docs quote; the skip count is
+  // appended only when there is one, so that line stays exact whenever
+  // nothing was refused.
+  process.stdout.write('index-sync: ' + stamped + ' stamped, ' + missing + ' missing' +
+                       (skipped ? ', ' + skipped + ' skipped' : '') + '\n');
+  process.exit(0);
+}
+
+if (!opts.shell) die('missing --shell <review|debate|document|explore|audit|plan|docview>');
+if (!opts.name) die('missing --name <basename>');
+if (!opts.outDir) die('--out-dir given without a directory');
+
+// Sanitize the name into a safe filename fragment - no slashes, no path traversal.
+// Distinct names can collapse to the same prefix (e.g. "a/b" and "a-b" both
+// become "a-b"); the -N timestamp guard below is the backstop against collisions
+// (in --stable mode there is no guard: overwriting is the intended behavior).
+const safeName = opts.name.replace(/[^A-Za-z0-9._-]/g, '-').replace(/^[-_.]+/, '_');
+if (!safeName) die('--name produced an empty filename');
+
+// Validate the shell against the allowlist before it is used to build a path.
+const SHELLS = ['review', 'debate', 'document', 'explore', 'audit', 'plan', 'docview'];
+if (!SHELLS.includes(opts.shell)) {
+  die('invalid --shell "' + opts.shell + '"; valid shells: ' + SHELLS.join(', '));
+}
+
+// --- resolve the shell template and shared tokens (they live next to this script) ---
+const shellsDir = path.join(__dirname, '..', 'skills', 'shared', 'shells');
+const shellPath = path.join(shellsDir, opts.shell + '-shell.html');
+const tokensPath = path.join(shellsDir, 'tokens.css');
+if (!fs.existsSync(shellPath)) die('shell template not found: ' + shellPath);
+if (!fs.existsSync(tokensPath)) die('tokens.css not found: ' + tokensPath);
+
+// --- read the JSON data (from --data file, or stdin) ---
+let rawData;
+try {
+  if (!opts.data || opts.data === '-') rawData = fs.readFileSync(0, 'utf-8'); // fd 0 = stdin
+  else rawData = fs.readFileSync(opts.data, 'utf-8');
+} catch (e) {
+  die('could not read data: ' + e.message);
+}
+
+let parsed;
+try {
+  parsed = JSON.parse(rawData);
+} catch (e) {
+  die('data is not valid JSON: ' + e.message);
+}
+
+// ==========================================================================
+// Payload transforms (issue #155 items 2 and 3). Both rewrite the parsed data
+// in place, before it is serialized into the page, so every shell gets the same
+// treatment without any shell knowing these exist. Item 3 (images) runs before
+// item 2 (the strip); the call site at the end of this section says why.
+// ==========================================================================
+
+// --- item 2: strip absolute local paths when the page is destined to be published ---
+//
+// Five shells (review, document, explore, debate, audit) render a finding's file
+// reference as <a href="vscode://file/<absPath>"><relPath></a>, and each one
+// documents that the href falls back to relPath when absPath is absent. So the
+// whole fix is to delete the field: the link degrades to plain relative text and
+// nothing else in the page changes. Deleting the KEY (rather than blanking it)
+// is what triggers each shell's `file.absPath || file.relPath` fallback.
+//
+// Recursive because the field is nested at different depths per shell - inside
+// findings, inside change rows, inside audit candidates - and a top-level-only
+// walk would silently miss most of them.
+// The repo root and the home directory, computed once. Anything under them that
+// appears as literal text in a payload string is rewritten; the repo prefix
+// becomes a relative path and the home prefix becomes "~".
+//
+// These two prefixes are the scope on purpose: together they are what identifies
+// the machine and its owner. A path elsewhere on the filesystem (/tmp, /usr) is
+// left alone because it discloses nothing about this user - browse.js screenshot
+// paths under /tmp are the common case, and their images are inlined as data
+// URIs anyway. Say "removes the paths that identify this machine", never "removes
+// every absolute path", wherever this flag is described.
+const HOME_DIR = (function () {
+  try { const h = require('os').homedir(); return h && h !== '/' ? h : ''; } catch (e) { return ''; }
+})();
+
+const ABS_PREFIXES = (function () {
+  const out = [];
+  try { const r = mainRepoRoot(); if (r && r !== '/') out.push([r + path.sep, '']); } catch (e) {}
+  if (HOME_DIR) out.push([HOME_DIR + path.sep, '~' + path.sep]);
+  // Longest first, so the repo root (usually inside home) wins over the home prefix.
+  return out.sort(function (a, b) { return b[0].length - a[0].length; });
+})();
+
+// Both prefix pairs end in a separator, so a BARE home path with nothing after
+// it - a shell prompt, "HOME=/home/user", "$HOME is /home/user" - slid through
+// and leaked the account name (holistic review, R14). This second pass turns
+// the bare form into "~", and only as a whole token: when the next character
+// continues the same path segment (/home/user2, /home/user-old, /home/user.bak
+// are other directories) the match is refused, while a sentence-ending period
+// is part of no path and does not block it. It runs AFTER the prefix pairs,
+// longest-first order intact, so anything under home is already ~/... by the
+// time it looks; and it names only the home directory, so /tmp and /usr stay
+// untouched as promised above.
+function escapeRegExp(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+const BARE_HOME_RE = HOME_DIR
+  ? new RegExp(escapeRegExp(HOME_DIR) + '(?![A-Za-z0-9_-]|\\.[A-Za-z0-9_-])', 'g')
+  : null;
+
+function scrubAbsInString(str) {
+  let out = str;
+  for (const [prefix, replacement] of ABS_PREFIXES) {
+    if (out.indexOf(prefix) !== -1) out = out.split(prefix).join(replacement);
+  }
+  if (BARE_HOME_RE && out.indexOf(HOME_DIR) !== -1) out = out.replace(BARE_HOME_RE, '~');
+  return out;
+}
+
+// A file object that carried only absPath (no relPath) lost its whole reference
+// here: the key was deleted, the object shrank to {line}, and every shell's
+// `relPath || absPath` guard then hid it entirely (holistic review, R27). So
+// before the key goes, a missing relPath is derived from it: the path made
+// relative to whichever repository root contains it - the main copy or this
+// working copy, longest first so a worktree nested inside the main copy strips
+// its own root - or the literal "external file" when it is under neither. That
+// text carries no path at all on purpose: a bare basename would read like a
+// repo-relative reference and point at nothing. path.resolve first, so a ".."
+// after the root prefix cannot pass as inside it; pathKey folds case on win32
+// the way the containment checks above do.
+const REL_ROOTS = [REPO_ROOT, WORK_ROOT]
+  .filter(function (r, i, all) { return r && r !== '/' && all.indexOf(r) === i; })
+  .sort(function (a, b) { return b.length - a.length; });
+
+function relPathFromAbs(abs) {
+  const candidate = path.resolve(abs);
+  for (const root of REL_ROOTS) {
+    const prefix = root.endsWith(path.sep) ? root : root + path.sep;
+    if (pathKey(candidate).startsWith(pathKey(prefix))) return candidate.slice(prefix.length);
+  }
+  return 'external file';
+}
+
+// Deleting the absPath KEY is what triggers each shell's plain-text branch, so
+// that stays - provided relPath is there for the shell to fall back to, which
+// relPathFromAbs above guarantees. But a key-name denylist alone cannot support
+// what the --no-abs description in html-outputs.md promises: absolute paths
+// also appear as ordinary TEXT inside prose fields, receipt commands, and <pre>
+// evidence blocks, and those shipped untouched (issue #155 review, R6). The
+// page is published to a private hosted page without an ask, so this function
+// is the only thing standing between the page and this machine's paths - it
+// has to be true.
+function stripAbsPaths(node) {
+  if (Array.isArray(node)) {
+    for (let i = 0; i < node.length; i++) {
+      if (typeof node[i] === 'string') node[i] = scrubAbsInString(node[i]);
+      else stripAbsPaths(node[i]);
+    }
+    return;
+  }
+  if (node === null || typeof node !== 'object') return;
+  for (const key of Object.keys(node)) {
+    if (key === 'absPath') {
+      // A relPath the payload already carries wins; only a missing or blank
+      // one is derived (holistic review, R27). Object.keys was snapshotted
+      // above, so the derived value is not re-visited by the scrub - and it
+      // needs no scrub, being repo-relative or a fixed label.
+      if (typeof node.absPath === 'string' && node.absPath &&
+          !(typeof node.relPath === 'string' && node.relPath.trim())) {
+        node.relPath = relPathFromAbs(node.absPath);
+      }
+      delete node[key];
+    } else if (typeof node[key] === 'string') {
+      node[key] = scrubAbsInString(node[key]);
+    } else {
+      stripAbsPaths(node[key]);
+    }
+  }
+}
+
+// --- item 3: embed local images as data: URIs ---
+//
+// browse.js writes screenshots to /tmp and returns the filesystem path, which a
+// review payload carries inside a trusted-HTML field as <img src="/tmp/...">.
+// That renders locally (a file:// page can reach /tmp) and is always broken once
+// the page is published, because a hosted page cannot read this machine's disk
+// and the artifact CSP blocks off-origin images regardless. A data: URI is the
+// only form that works in BOTH viewports, and it also makes the local file
+// genuinely self-contained, which is what the shells claim to be.
+//
+// Budget: published artifacts cap at 16MB and base64 inflates by ~4/3. A single
+// `responsive` action produces three full-page PNGs, so a naive embed can blow
+// the cap on its own. Everything over budget is dropped with a VISIBLE note -
+// the failure this replaces was a silently broken image, and swapping it for a
+// silently missing one would be no improvement.
+const EMBED_BUDGET_BYTES = 12 * 1024 * 1024; // encoded; leaves headroom for the page itself
+let embedBudgetLeft = EMBED_BUDGET_BYTES;
+
+const MIME_BY_EXT = {
+  '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml'
+};
+
+function humanSize(bytes) { return (bytes / (1024 * 1024)).toFixed(1) + 'MB'; }
+
+// Replace one <img src="..."> whose src is a local file. Returns the tag to use.
+function embedOneImage(tag, quote, src) {
+  // Anything already inline or remote is left exactly as it is.
+  if (/^(data:|https?:|file:)/i.test(src)) return tag;
+  const ext = path.extname(src).toLowerCase();
+  const mime = MIME_BY_EXT[ext];
+  if (!mime) return tag; // not an image type we can inline; leave it alone
+  let buf;
+  try {
+    buf = fs.readFileSync(src);
+  } catch (e) {
+    // Missing or unreadable: never abort the render over one screenshot.
+    process.stderr.write('note: image not readable, omitted: ' + src + '\n');
+    return '<em class="img-omitted">image unavailable (' + path.basename(src) + ')</em>';
+  }
+  const encodedSize = Math.ceil(buf.length / 3) * 4;
+  if (encodedSize > embedBudgetLeft) {
+    process.stderr.write('note: image over embed budget, omitted: ' + src +
+                         ' (' + humanSize(buf.length) + ')\n');
+    return '<em class="img-omitted">image omitted (' + path.basename(src) +
+           ', ' + humanSize(buf.length) + ' - over the embed budget)</em>';
+  }
+  embedBudgetLeft -= encodedSize;
+  // Anchor the swap to the src attribute. A plain string replace hits the FIRST
+  // occurrence anywhere in the tag, so a duplicate path in an earlier attribute
+  // would take the data URI and leave src pointing at the local file.
+  const uri = 'data:' + mime + ';base64,' + buf.toString('base64');
+  const q = quote || '"';
+  return tag.replace(/(\ssrc=)(?:(["']).*?\2|[^\s>]+)/i, function (m, lead) {
+    return lead + q + uri + q;
+  });
+}
+
+// Walk every string in the payload looking for <img> tags. Strings are where
+// these live: the shells take "trusted inline HTML" in field values, so an
+// image arrives as markup inside a value, not as a structured path field.
+function embedImages(node) {
+  if (Array.isArray(node)) {
+    for (let i = 0; i < node.length; i++) {
+      if (typeof node[i] === 'string') node[i] = embedInString(node[i]);
+      else embedImages(node[i]);
+    }
+    return;
+  }
+  if (node === null || typeof node !== 'object') return;
+  for (const key of Object.keys(node)) {
+    if (typeof node[key] === 'string') node[key] = embedInString(node[key]);
+    else embedImages(node[key]);
+  }
+}
+
+// Attributes are consumed as (quoted-value | non-'>') so a ">" INSIDE a quoted
+// value (alt="cart > checkout") no longer ends the tag early, and src accepts an
+// unquoted value. Both shapes previously fell through with no data URI, no note,
+// and no stderr line - the silent breakage this feature exists to remove
+// (issue #155 review, R20).
+const IMG_RE = /<img\b(?:"[^"]*"|'[^']*'|[^>])*?\ssrc=(?:(["'])(.*?)\1|([^\s>]+))(?:"[^"]*"|'[^']*'|[^>])*>/gi;
+
+function embedInString(str) {
+  if (str.indexOf('<img') === -1) return str;
+  const out = str.replace(IMG_RE, function (tag, quote, quoted, bare) {
+    return embedOneImage(tag, quote || '', quoted !== undefined ? quoted : bare);
+  });
+  // A tag the regex still cannot parse must not fail silently: say so once.
+  if (out.indexOf('<img') !== -1 && !/<img\b[^>]*src=(?:["']?)data:/i.test(out)) {
+    IMG_RE.lastIndex = 0;
+    if (!IMG_RE.test(out)) process.stderr.write('note: an <img> tag could not be parsed for embedding\n');
+    IMG_RE.lastIndex = 0;
+  }
+  return out;
+}
+
+// Embed FIRST, then strip. The scrub rewrites the home-directory prefix to ~/,
+// and a screenshot left under the home directory but outside the repo was
+// rewritten before the embedder read it, so the publish-bound render alone
+// showed "image unavailable" while the local render embedded it fine
+// (holistic review, R1). A data: URI carries no path, so once the image is
+// inline there is nothing left for the scrub to touch.
+embedImages(parsed);
+if (opts.noAbs) stripAbsPaths(parsed);
+
+// Re-stringify with every "<" escaped to < so the JSON can live inside a
+// <script> block without "</script>" ever terminating it early. JSON.parse in
+// the shell decodes < back to "<" transparently.
+const safeJson = JSON.stringify(parsed)
+  .replace(/</g, '\\u003c')
+  .replace(/\u2028/g, '\\u2028')
+  .replace(/\u2029/g, '\\u2029');
+
+const shellHtml = fs.readFileSync(shellPath, 'utf-8');
+const tokensCss = fs.readFileSync(tokensPath, 'utf-8');
+
+// --- inject into the shell's two slots ---
+// Function-form replacements so "$" sequences in the CSS/JSON are inserted
+// literally (string-form replacement would treat $& / $1 / $$ specially).
+// Each placeholder must appear EXACTLY ONCE. The first-occurrence replace means
+// a duplicate leaves a raw literal in the rendered output with no error signal.
+function countOccurrences(str, sub) { return str.split(sub).length - 1; }
+if (countOccurrences(shellHtml, '/*__TOKENS__*/') !== 1)
+  die('shell must contain /*__TOKENS__*/ exactly once: ' + shellPath);
+if (countOccurrences(shellHtml, '__RENDER_DATA__') !== 1)
+  die('shell must contain __RENDER_DATA__ exactly once: ' + shellPath);
+const out = shellHtml
+  .replace('/*__TOKENS__*/', function () { return tokensCss; })
+  .replace('__RENDER_DATA__', function () { return safeJson; });
+
+// --- name the page from the payload (issue #154) ---
+// The <title> tag is the page's identity wherever it is viewed: the browser tab
+// locally, and the hosted page's name when the artifact is published. A publish
+// cannot override it - a title supplied alongside the file is only a fallback
+// for a file that has none, and the tag always wins - so the tag is the ONLY
+// place a per-artifact name can come from. Without this, every published review
+// is called "Review" and every plan "Plan", which makes a list of them useless.
+//
+// Each shell ships a sensible static default in its <head>; this swaps in the
+// payload's own name when it has one. Two field names cover all seven shells:
+//   review, document, audit, docview, plan -> "title"
+//   debate, explore                        -> "topic"
+// When the payload carries neither, the shell's default stands and the output is
+// byte-identical to what it was before this step.
+function escapeHtmlText(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+const rawTitle = [parsed.title, parsed.topic].find(function (t) {
+  return typeof t === 'string' && t.trim() !== '';
+});
+
+let finalHtml = out;
+if (rawTitle) {
+  // Every shell carries exactly one <title> in its <head>, so a first-occurrence
+  // replace is unambiguous. Non-greedy so a malformed shell cannot swallow the
+  // rest of the document. Function-form replacement so "$" sequences in the
+  // title are inserted literally, matching the two slot injections above.
+  let replaced = false;
+  finalHtml = out.replace(/<title>[\s\S]*?<\/title>/, function () {
+    replaced = true;
+    return '<title>' + escapeHtmlText(rawTitle.trim()) + '</title>';
+  });
+  // Not fatal: a missing <title> costs the page its name, not its content. Warn
+  // on stderr so stdout stays the output path and nothing downstream breaks.
+  if (!replaced) {
+    console.error('render-html.js: warning: no <title> found in ' + opts.shell +
+                  '-shell.html; page keeps the shell default');
+  }
+}
+
+// --- compute the output path ---
+function pad(n) { return String(n).padStart(2, '0'); }
+const d = new Date();
+const ts = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + '-' +
+           pad(d.getHours()) + pad(d.getMinutes()) + pad(d.getSeconds());
+
+// path.resolve handles both relative (against the cwd, i.e. the project root)
+// and absolute --out-dir values. --out-dir is a trusted local argument; only
+// --name needed sanitizing above.
+const outDir = path.resolve(process.cwd(), opts.outDir);
+fs.mkdirSync(outDir, { recursive: true });
+
+let outPath;
+if (opts.stable) {
+  // Stable mode: identity-keyed filename, overwritten freely on every run.
+  // The point is replacement (a re-plan refreshes plans/PLAN-issue-<n>.html in
+  // place), so no timestamp and no -N guard. (issue #129)
+  outPath = path.join(outDir, safeName + '.html');
+} else {
+  // Collision-proof: the common case is <name>-<ts>.html. A same-second re-run
+  // gets -2, -3, ... so a fast double run never overwrites a prior artifact.
+  outPath = path.join(outDir, safeName + '-' + ts + '.html');
+  let n = 2;
+  while (fs.existsSync(outPath)) {
+    outPath = path.join(outDir, safeName + '-' + ts + '-' + n + '.html');
+    n++;
+  }
+}
+
+fs.writeFileSync(outPath, finalHtml, 'utf-8');
+process.stdout.write(outPath + '\n'); // stdout = the path only; callers capture it
