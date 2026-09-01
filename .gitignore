@@ -1,0 +1,84 @@
+# ---------------------------------------------------------------
+# PRIVATE — never publish. Personal notes, strategy, drafts.
+# ---------------------------------------------------------------
+PRIVATE-NOTES.md
+_private/
+notes/private/
+*.private.md
+
+# ---------------------------------------------------------------
+# Secrets & environment
+# ---------------------------------------------------------------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+secrets/
+credentials.json
+token.json
+
+# ---------------------------------------------------------------
+# Dependencies
+# ---------------------------------------------------------------
+node_modules/
+.pnpm-store/
+.yarn/
+vendor/
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# ---------------------------------------------------------------
+# Build output & deploy artifacts
+# ---------------------------------------------------------------
+dist/
+build/
+out/
+.output/
+.next/
+.nuxt/
+.vercel/
+.netlify/
+.cache/
+public/build/
+
+# ---------------------------------------------------------------
+# Test & coverage
+# ---------------------------------------------------------------
+coverage/
+.nyc_output/
+playwright-report/
+test-results/
+
+# ---------------------------------------------------------------
+# Logs & temp
+# ---------------------------------------------------------------
+*.log
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+tmp/
+temp/
+*.tmp
+
+# ---------------------------------------------------------------
+# Editors & OS
+# ---------------------------------------------------------------
+.DS_Store
+Thumbs.db
+Desktop.ini
+.idea/
+.vscode/
+!.vscode/extensions.json
+*.swp
+*.swo
+*~
+
+# ---------------------------------------------------------------
+# AI tooling — local-only settings
+# ---------------------------------------------------------------
+.claude/settings.local.json
+.claude/*.local.*
