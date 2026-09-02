@@ -37,7 +37,7 @@ professionally. Explain things simply, in plain English, and tell me why, not ju
   Before any commit, confirm `git status` does not list it.
 - Keep `PRIVATE-NOTES.md` updated with decisions; keep the public-facing files (README, research)
   free of anything marked private in it.
-- Don't re-derive the landscape research — reuse `research/prior-art-landscape.md` and the
+- Don't re-derive the landscape research - reuse `research/prior-art-landscape.md` and the
   research log in `PRIVATE-NOTES.md`.
 - Working on `main` is fine for docs and small changes; branch for anything experimental.
 
