@@ -13,8 +13,11 @@ system. See `README.md` for the problem statement and design direction, and
 `research/prior-art-landscape.md` for the landscape research (what others tried, hosting options
 inside big companies, likely users).
 
-Status: design/exploration. No application code yet. Planned v0: a script-tag overlay for
-GitLab Pages, GitLab OAuth (PKCE, no backend), comments stored as issue/MR notes.
+Status: v0 decided (2026-09-02), code not started. v0 = a comment overlay (one script tag on the
+author's own HTML, gitmargin never hosts) + a small gitmargin server on Vercel Functions + Neon Postgres
+(OpenID Connect sign-in, GitLab first; the comment record; one-way mirrors to the Slack thread and GitLab
+issue; a batch API for agents) + `npx gitmargin publish`. Dogfood 1 is gitlab.com Pages. The full decision,
+reasoning, and out-of-scope list: `docs/v0-decision.md`.
 
 ## Who I Am
 <!-- Describe yourself or your team: experience level, how you like to work -->
