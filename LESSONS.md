@@ -45,6 +45,10 @@
 - **A version block describes what that version shipped; point at what changed since, never rewrite it.**
 - **Numbers quoted in release notes mid-cycle go stale; fill counts in the last verify step.**
 
+### gitmargin: v0 decision cycle (issue #1, 2026-09-02)
+- **In vision mode, settle the workflow before the mechanism.** The owner redirected the exploration twice, from sign-in and hosting constraints back to what the tool does end to end for each person.
+- **A workflow whose last agent is the expensive synthesis needs a fallback.** The design panel's judge died on a spend limit; cached agents made the re-run cheap, and the ranking was done by hand from the saved data.
+
 ## Mistakes to Avoid
 
 - **Fill a plan's Outcomes by replacing the template placeholder, not inserting above it.**
@@ -81,6 +85,11 @@
 - **A containment check that compares path strings is not containment.**
 - **A test must plant the state a failure actually leaves, not a convenient stand-in.**
 - **A file that is both the maintainer's live config and the downstream seed leaks in both directions.**
+
+### gitmargin: v0 decision cycle (issue #1, 2026-09-02)
+- **Retiring a promise means grepping the whole file, not just the section the plan named.** README kept "no new accounts" at line 53 after the principle at line 39 was softened (review R4, commit eccbed7).
+- **A list that lives in three places drifts within the hour.** Four spikes in the decision doc, three in the README, two in issue #2, all written by the same session (review R5).
+- **A glossary pointer is a promise; check it covers the terms the pointing doc uses.** The decision doc pointed at a glossary written for the previous design (review R1).
 
 ## Patterns That Work
 
