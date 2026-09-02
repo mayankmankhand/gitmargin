@@ -2,6 +2,12 @@
 
 Decided 2026-09-02. Closes [issue #1](https://github.com/mayankmankhand/gitmargin/issues/1).
 
+**Amended 2026-09-02.** v0 was split into two parts the same day, because the spikes in section 9 need company
+infrastructure that cannot be tested yet. Part 1 is a comment overlay on a single HTML file with no server; part 2
+is everything below that needs sign-in, hosting, or Slack. Sections 1, 3, 5, 8, and 9 describe that full shape,
+which is now part 2; [v0-split.md](v0-split.md) says which pieces part 1 keeps. The rest of this document is
+unchanged and remains the record of the decision.
+
 How we got here: [the landscape research](../research/prior-art-landscape.md) mapped what others have tried, then a
 two-day exploration designed seven candidate shapes for v0, had each one attacked from three angles (enterprise
 security, a non-technical reviewer, and "can a PM with Claude Code build it"), and verified the chosen shape against
