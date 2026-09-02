@@ -52,7 +52,7 @@ app without an admin ticket; GitLab is a textbook OpenID Connect provider, so th
 as-is; and because reviewers must already be project members to see the page at all, they already have the identity
 gitmargin needs.
 
-**The VP's first visit on a phone, as verified** (three prompts, then none):
+**The VP's first visit on a phone, as walked through against GitLab's documentation and source code** (three prompts, then none; not yet tested on a real device, which is spike 1 in section 9):
 
 1. They tap the link in Slack. It opens in Slack's in-app browser, which starts with no sessions at all.
 2. GitLab Pages sends them to sign in. With SAML on the group that means the company's own identity provider:
@@ -104,7 +104,7 @@ re-sign-in, hands the page a one-time code in the URL fragment, and the overlay 
 kept in memory or session storage.
 
 **Identity and audience.** A reviewer is stored as `{provider, id, name, email}` so a later switch of provider does
-not orphan old comments. Every prototype carries an audience; on GitLab it is checked against project membership
+not orphan old comments. Every prototype carries an audience, gitmargin's word for who is allowed to see it; on GitLab it is checked against project membership
 through the Members API with a bot token.
 
 **Security posture.** The overlay is bundled into the published site (same origin, integrity-pinned), never loaded

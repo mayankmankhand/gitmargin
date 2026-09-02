@@ -50,11 +50,11 @@ gitmargin is a comment layer for HTML pages that:
 | Platform-native comments | Vercel Preview Comments, Netlify Drawer | Genuinely solve this, *if* your whole team lives on that vendor. Locked to one platform |
 | No-code CMS | Builder.io, Webstudio, Storyblok (and Coinbase's internal system) | Solve *editing* for marketers, not *reviewing* for teams |
 
-The unclaimed square: **platform-agnostic, identity-aware commenting on private prototypes, with no new accounts and the record under your own control.** That's what this project is aiming at. The [research report](research/prior-art-landscape.md) has the full landscape, 166 sources.
+The unclaimed square: **platform-agnostic, identity-aware commenting on private prototypes, with no account beyond the one your host already requires, and the record under your own control.** That's what this project is aiming at. The [research report](research/prior-art-landscape.md) has the full landscape, 166 sources.
 
 ## Planned roadmap
 
-- [ ] **v0: GitLab Pages dogfood.** The overlay, the server on Vercel plus Neon, `publish` to GitLab Pages, `pull` and an MCP server for agents, one real review round with an engineer, a designer, and a VP on a phone. Spikes first (sign-in inside Slack's in-app browser, GitLab consent behaviour, publish timing).
+- [ ] **v0: GitLab Pages dogfood.** The overlay, the server on Vercel plus Neon, `publish` to GitLab Pages, `pull` and an MCP server for agents, one real review round with an engineer, a designer, and a VP on a phone. Four one-day spikes first: sign-in inside Slack's in-app browser, GitLab consent behaviour, publish timing on GitLab Pages, and corporate MFA policies inside that browser (section 9 of the decision doc).
 - [ ] **v0.1: Vercel with Sign in with Slack.** The cheapest second adapter and the first non-Git host.
 - [ ] **v0.2: Ungated hosts (S3, Firebase) with corporate SSO** as the provider.
 - [ ] **Later:** a Cloudflare Access gate adapter, GitHub Pages (Enterprise Cloud), a self-hosting package, two-way Slack sync.

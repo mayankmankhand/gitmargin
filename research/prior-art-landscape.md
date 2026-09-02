@@ -13,20 +13,20 @@ Three things to know:
 2. GitHub still cannot complete OAuth from a static page (client secret [required](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps), no CORS; the fix is a roadmap item [labelled "Paused" on 2026-08-13](https://github.com/github/roadmap/issues/1153)). GitLab [can](https://docs.gitlab.com/api/oauth2/). Build GitLab first.
 3. On GitLab, "read-only reviewers can comment" and "comments live as files in the repo" cannot both be true: [Guests cannot push and cannot read repo files in private projects](https://docs.gitlab.com/user/permissions/). The Issues/Notes API is the only store where both promises hold, and it is also the inbox every coding agent already reads.
 
-### In plain English — what this means for gitmargin
+### In plain English - what this means for gitmargin
 
 The sections below are dense and full of vendor names and technical terms (there is a glossary at the end). Here is the short version:
 
-1. **Nobody has built the portable version.** Every piece exists somewhere — Vercel and Netlify have on-page comments for pages *they* host; Lovable, Figma Make and Claude artifacts have them inside *their* viewers; giscus and Staticman store comments in GitHub; Cloudflare Access and Azure know who is looking at a page. No tool combines "any private page + the viewer's real identity + stored in your own repo".
-2. **GitLab tried this and gave up.** "Visual Reviews" (2019–2024) was one script tag that posted comments into the merge request. To use it on a private project, reviewers had to paste an API token — a terrible experience for a non-engineer — and GitLab removed it for low usage. The idea was not disproven; the login experience was. Sign-in has to be one click or the tool will not get used.
+1. **Nobody has built the portable version.** Every piece exists somewhere - Vercel and Netlify have on-page comments for pages *they* host; Lovable, Figma Make and Claude artifacts have them inside *their* viewers; giscus and Staticman store comments in GitHub; Cloudflare Access and Azure know who is looking at a page. No tool combines "any private page + the viewer's real identity + stored in your own repo".
+2. **GitLab tried this and gave up.** "Visual Reviews" (2019–2024) was one script tag that posted comments into the merge request. To use it on a private project, reviewers had to paste an API token - a terrible experience for a non-engineer - and GitLab removed it for low usage. The idea was not disproven; the login experience was. Sign-in has to be one click or the tool will not get used.
 3. **Build for GitLab first, not GitHub.** GitLab lets a plain web page sign a user in with no server at all. GitHub still requires a secret that cannot live inside a web page, so GitHub support needs a small server function (every GitHub-based comment widget has one).
-4. **Do not store comments as files in the repo.** On GitLab, the people you most want feedback from — read-only "Guest" and "Reporter" roles — cannot write files, and Guests cannot even *read* them in private projects. Store each comment as an issue or merge-request note instead: read-only roles can write those, they inherit the project's permissions automatically, and coding agents already read them (GitHub's and GitLab's MCP servers, Claude Code's GitHub Action, GitLab Duo). Keep the JSON idea as the *format of the note body*, not as a separate file.
-5. **"An agent applies the comments" is no longer unique.** Vercel shipped a CLI that dumps comments as JSON for agents (20 Aug 2026) and GitLab's MCP server reads MR notes. gitmargin's real differentiator is *host independence* plus *storage inside the team's own permission boundary* — lead with that.
+4. **Do not store comments as files in the repo.** On GitLab, the people you most want feedback from - read-only "Guest" and "Reporter" roles - cannot write files, and Guests cannot even *read* them in private projects. Store each comment as an issue or merge-request note instead: read-only roles can write those, they inherit the project's permissions automatically, and coding agents already read them (GitHub's and GitLab's MCP servers, Claude Code's GitHub Action, GitLab Duo). Keep the JSON idea as the *format of the note body*, not as a separate file.
+5. **"An agent applies the comments" is no longer unique.** Vercel shipped a CLI that dumps comments as JSON for agents (20 Aug 2026) and GitLab's MCP server reads MR notes. gitmargin's real differentiator is *host independence* plus *storage inside the team's own permission boundary* - lead with that.
 6. **Big-company hosting is a zoo, but it collapses to three identity types:** (a) Git-host login, (b) a gate in front of the page that already knows the user (Cloudflare Access, Azure Static Web Apps, oauth2-proxy, Pomerium…), and (c) corporate SSO. Design a small core plus an adapter for each. Only type (a) can *also* authorise writing the comment; the other two need a mapping to a Git-host user or a tiny backend.
-7. **The first users are probably people like you:** technical PMs or developers already running Claude Code, hosting on GitLab or GitHub Pages, who need one or two colleagues to comment. Agencies (BugHerd's market) are a poor fit — their clients have no Git identity, and incumbents already give unlimited free guest reviewers.
+7. **The first users are probably people like you:** technical PMs or developers already running Claude Code, hosting on GitLab or GitHub Pages, who need one or two colleagues to comment. Agencies (BugHerd's market) are a poor fit - their clients have no Git identity, and incumbents already give unlimited free guest reviewers.
 8. **Expect security questions early.** A self-hosted, integrity-pinned script; tokens kept in memory only; comment text sanitised before it is rendered. The 2024 Polyfill.io supply-chain attack is why security teams now ask about any injected script.
 
-## 2. How others have tried to solve it — by sub-problem
+## 2. How others have tried to solve it - by sub-problem
 
 ### 2.1 Accessing and commenting on the HTML
 
@@ -92,7 +92,7 @@ This report reads "undocumented" as *feedback that is not written down or tied t
 
 **Lesson for gitmargin:** a self-hostable, SRI-pinned on-origin script that talks only to the org's Git host, keeps tokens in memory, stores comments inside the project's permission boundary, and renders comment bodies as sanitised text.
 
-## 3. Hosting a prototype inside a big company — the happy paths
+## 3. Hosting a prototype inside a big company - the happy paths
 
 | Option | Who controls it | What identity gates it | Can a page script learn who the viewer is? | Native comments? | Typical friction |
 |---|---|---|---|---|---|
@@ -161,7 +161,7 @@ This report reads "undocumented" as *feedback that is not written down or tied t
 
 ## 7. Sources
 
-**Sub-problem 1 — commenting on the HTML**
+**Sub-problem 1 - commenting on the HTML**
 - https://support.bugherd.com/en/articles/11424426-installing-bugherd-using-javascript
 - https://help.feedbucket.app/en/article/getting-started-with-feedbucket-18cmcyr/
 - https://usesuperflow.ai/comments
@@ -188,7 +188,7 @@ This report reads "undocumented" as *feedback that is not written down or tied t
 - https://github.com/openannotation/annotator/blob/master/REBOOT.md
 - https://github.com/recogito/text-annotator-js
 
-**Sub-problem 2 — the feedback trail**
+**Sub-problem 2 - the feedback trail**
 - https://vercel.com/docs/comments/managing-comments
 - https://vercel.com/changelog/manage-vercel-toolbar-comments-from-the-cli
 - https://vercel.com/docs/agent-resources/vercel-mcp/tools
@@ -218,7 +218,7 @@ This report reads "undocumented" as *feedback that is not written down or tied t
 - https://developers.cloudflare.com/pages/configuration/preview-deployments/
 - https://www.ziflow.com/blog/the-2023-state-of-creative-workflow-report-key-findings-bonus-insights
 
-**Sub-problem 3 — identity**
+**Sub-problem 3 - identity**
 - https://github.com/giscus/giscus
 - https://utteranc.es/
 - https://github.com/meteorlxy/vssue
@@ -263,7 +263,7 @@ This report reads "undocumented" as *feedback that is not written down or tied t
 - https://docs.comentario.app/en/configuration/idps/
 - https://artalk.js.org/guide/frontend/auth.html
 
-**Sub-problem 4 — security**
+**Sub-problem 4 - security**
 - https://help.usersnap.com/docs/development-faq
 - https://help.marker.io/en/articles/6840044-configuring-marker-io-for-firewalls-and-secure-networks
 - https://help.marker.io/en/articles/9615303-native-browser-screenshot-rendering
@@ -343,20 +343,30 @@ This report reads "undocumented" as *feedback that is not written down or tied t
 
 ## 8. Glossary
 
-- **OAuth / PKCE** — the standard "Sign in with GitLab/GitHub" flow. PKCE is the variant that is safe to run from a web page with no server, because it needs no secret.
-- **Client secret** — a password that identifies your app to GitHub. It cannot be hidden inside a web page, which is why GitHub sign-in needs a small server.
-- **CORS** — a browser rule about which websites a page's script may call. If a provider's login endpoint does not allow it, a page cannot call it directly.
-- **Token scope** — how much a login token is allowed to do. GitLab's only write-capable OAuth scope is `api` (everything), which is broad.
-- **Guest / Reporter / Developer / Maintainer** — GitLab's project roles, least to most access. GitHub's equivalents are Read / Triage / Write / Maintain / Admin.
-- **Issue note / MR note** — a comment on a GitLab issue or merge request. GitHub calls them issue comments and pull-request review comments.
-- **MCP server** — a standard way for AI agents (Claude Code, Cursor, Copilot…) to read and write a service. GitHub and GitLab both run one.
-- **Anchoring / orphan** — how a comment remembers which element or text it was attached to. An "orphan" is a comment whose anchor can no longer be found because the page changed.
-- **W3C Web Annotation model** — a standard JSON format for comments on web pages, including several ways to describe the anchor.
-- **CSP / SRI** — security settings a page uses to control which scripts may run (Content Security Policy) and to verify a script file was not tampered with (Subresource Integrity).
-- **HttpOnly cookie** — a login cookie that a page's script is not allowed to read. This is why GitLab Pages cannot tell an overlay who the viewer is.
-- **Reverse proxy / gate** — a layer in front of a page that checks login before serving it (Cloudflare Access, oauth2-proxy, Pomerium, Google IAP…). Some of these tell the page who the viewer is; some do not.
-- **Deploy preview / review app** — a temporary hosted copy of a branch so people can look at it before merge (Vercel, Netlify, GitLab Review Apps).
-- **PAT** — personal access token; a long-lived password-like key a user generates by hand. Pasting one is the login experience that sank GitLab Visual Reviews.
+- **OAuth / PKCE** - the standard "Sign in with GitLab/GitHub" flow. PKCE is the variant that is safe to run from a web page with no server, because it needs no secret.
+- **Client secret** - a password that identifies your app to GitHub. It cannot be hidden inside a web page, which is why GitHub sign-in needs a small server.
+- **CORS** - a browser rule about which websites a page's script may call. If a provider's login endpoint does not allow it, a page cannot call it directly.
+- **Token scope** - how much a login token is allowed to do. GitLab's only write-capable OAuth scope is `api` (everything), which is broad.
+- **Guest / Reporter / Developer / Maintainer** - GitLab's project roles, least to most access. GitHub's equivalents are Read / Triage / Write / Maintain / Admin.
+- **Issue note / MR note** - a comment on a GitLab issue or merge request. GitHub calls them issue comments and pull-request review comments.
+- **MCP server** - a standard way for AI agents (Claude Code, Cursor, Copilot…) to read and write a service. GitHub and GitLab both run one.
+- **Anchoring / orphan** - how a comment remembers which element or text it was attached to. An "orphan" is a comment whose anchor can no longer be found because the page changed.
+- **W3C Web Annotation model** - a standard JSON format for comments on web pages, including several ways to describe the anchor.
+- **CSP / SRI** - security settings a page uses to control which scripts may run (Content Security Policy) and to verify a script file was not tampered with (Subresource Integrity).
+- **HttpOnly cookie** - a login cookie that a page's script is not allowed to read. This is why GitLab Pages cannot tell an overlay who the viewer is.
+- **Reverse proxy / gate** - a layer in front of a page that checks login before serving it (Cloudflare Access, oauth2-proxy, Pomerium, Google IAP…). Some of these tell the page who the viewer is; some do not.
+- **Deploy preview / review app** - a temporary hosted copy of a branch so people can look at it before merge (Vercel, Netlify, GitLab Review Apps).
+- **PAT** - personal access token; a long-lived password-like key a user generates by hand. Pasting one is the login experience that sank GitLab Visual Reviews.
+- **OpenID Connect** - the standard "sign in with X" handshake built on OAuth. GitLab, Slack, Google, Okta and Entra all speak it, which is why one sign-in adapter can serve them all as configuration.
+- **SAML** - the older corporate single-sign-on standard. When a GitLab group has SAML on, GitLab sends sign-ins to the company's identity provider instead of showing its own login page.
+- **MFA / passkey / WebAuthn** - second-step sign-in checks: a push or code (MFA), or a device-bound credential (passkey, built on WebAuthn). Some embedded browsers, such as Slack's in-app browser, cannot complete WebAuthn.
+- **Confidential vs public app** - a registered sign-in app that holds a secret on a server (confidential) versus one that runs only in a web page with no secret (public). GitLab asks a public app's users for consent on every visit; a confidential app asks once.
+- **Bot token** - a long-lived key that lets a server act as a service account, for example to check who is a project member or to post a note as "the gitmargin bot".
+- **First-party vs third-party cookie** - a cookie set by the site you are on (first-party) versus one set by a different site (third-party). Safari and Slack's in-app browser drop third-party cookies, which is why a server on its own domain cannot rely on one reaching the prototype page.
+- **URL fragment** - the part of a web address after `#`. Browsers never send it to the server, so it is a safe place to hand a one-time code back to a page.
+- **Audience** - gitmargin's word for who is allowed to see a given prototype and its comments: the whole workspace, a channel, a project's members, or a list.
+- **Sealed mode** - a deferred idea: encrypting the prototype itself so that a host with no login of its own still cannot show the page to strangers. Not in v0.
+- **Hono** - a small web framework that runs the same code on Vercel, Cloudflare, Node and other hosts; chosen so the gitmargin server can move between them.
 
 ## 9. How this report was produced
 
