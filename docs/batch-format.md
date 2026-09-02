@@ -15,7 +15,7 @@ The same data travels in three carriers:
 |---|---|---|---|
 | Embedded in the reviewed HTML, as a JSON script block just before the closing body tag: `<script type="application/json" id="gitmargin-comments">` | the overlay's "Send to author" button, which downloads the file as `<name>.reviewed.html` | JSON, section 2 | yes: screenshots and the full trail included |
 | A text block on the clipboard | the overlay's "Copy for author" button | markdown, section 5, with a first line the pull command recognises: `gitmargin batch v0.1 \| <file> \| <version id>` | no: no screenshots, the trail summarised |
-| The pull output | `npx gitmargin pull <reviewed file or pasted block>` | JSON, plus the markdown rendering for pasting into a chat | as lossless as its input |
+| The pull output | `npx gitmargin pull <reviewed file or pasted block>` | JSON, plus the markdown rendering for pasting into a chat, with the section 6 rules as a preamble | as lossless as its input |
 
 An agent can read the markdown directly; the JSON is for tools.
 
@@ -45,7 +45,7 @@ The envelope shape is borrowed from human-review (a per-file list, free text, an
 
 ```json
 {
-  "id": "c_01",
+  "id": "c_7f3a9b",
   "time": "2026-09-14T16:40:12Z",
   "intent": {
     "text": "I expected this to stay disabled until the address is valid.",
@@ -70,6 +70,9 @@ The envelope shape is borrowed from human-review (a per-file list, free text, an
   "status": "open"
 }
 ```
+
+**id** is random (six hex characters after `c_`), so files from two reviewers never collide and `pull` can merge
+them by id.
 
 **intent**, the why: `text` is what the reviewer typed into the one box, whose placeholder is "What did you expect
 here?". `tag` is optional: `change`, `bug`, `question`, or `like`.
@@ -121,6 +124,10 @@ One line per comment: the tag, the screen, the trail as the texts clicked, the e
 then the reviewer's words verbatim.
 
 ## 6. Rules for the agent
+
+These rules travel with the batch: `pull` prints them as a short preamble above the markdown rendering, so whatever
+the author pastes into the agent carries them. The JSON carrier does not repeat them; a tool that reads the JSON is
+expected to implement them.
 
 - **Find the spot by state first, then by anchor.** Go to the screen (the hash, or replay the trail), then the
   selector, then the quote. If nothing matches, report the comment as orphaned; do not guess.

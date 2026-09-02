@@ -28,8 +28,8 @@ and stays the destination. Part 1 does not claim it.
 
 ```
 You generate prototype.html with an AI
-  -> npx gitmargin attach prototype.html   (puts the overlay in and stamps a version id)
-  -> you send the file to a reviewer, any way you like
+  -> npx gitmargin attach prototype.html   (writes a copy with the overlay in and a version id)
+  -> you send that copy to a reviewer, any way you like
 The reviewer opens it in a browser, from disk or anywhere
   -> clicks through the wizard             (the overlay logs each click: "Next", "Next")
   -> clicks an element or highlights text, and types what they expected
@@ -41,14 +41,19 @@ You receive the file or the text
   -> Claude Code applies the edits          (what if an anchor is orphaned? the wrong version?)
 ```
 
+The questions in the diagram are tracked, not open-ended: the screen name is answered in section 3 below and in
+section 4 of [batch-format.md](batch-format.md); orphaned anchors and version mismatches in its section 6; whether the
+download works from disk is the first open point in its section 8.
+
 Three pieces:
 
 1. **The overlay.** One script inside the HTML. On a laptop you click an element or highlight text and a comment
    box opens: one text field with the placeholder "What did you expect here?" and an optional tag (change, bug,
    question, like). A small numbered pin marks the element; a slim panel on the right lists every thread.
-2. **Attach and pull.** `npx gitmargin attach prototype.html` puts the overlay into the file and stamps a version
-   id. `npx gitmargin pull reviewed.html` reads the comments back out, from the returned file or from a pasted
-   text block, and prints the batch for an agent.
+2. **Attach and pull.** `npx gitmargin attach prototype.html` writes a copy of the file next to the original with
+   the overlay inside, and stamps a version id into that copy. The original is untouched; the copy is what you
+   send. `npx gitmargin pull reviewed.html` reads the comments back out, from the returned file or from a pasted
+   text block, and prints the batch for an agent. Both commands need Node and nothing else.
 3. **The batch.** What the agent reads: for each comment, what the reviewer wanted and where they were. The format
    is drafted in [batch-format.md](batch-format.md).
 
@@ -83,7 +88,8 @@ Two routes, both built, both needing nothing but the file:
   message. This route is lighter and lossy: no screenshots, and the trail is summarised.
 
 A version id is stamped into the file at attach time, so a returned batch always says which version it belongs to,
-and comments from two reviewers on the same version merge by comment id.
+and comments from two reviewers on the same version merge by comment id (ids are random, so two files never
+collide).
 
 ## 5. What part 1 deliberately leaves out
 
@@ -109,7 +115,8 @@ Parked, in the order it was decided in [the v0 decision](v0-decision.md):
 - `npx gitmargin publish` to GitLab Pages and the Slack link, one link per version plus latest (sections 1 and 5).
 - An MCP server for agents, on top of the batch (section 1).
 - The VP on a phone from the Slack app, and the tap-to-comment sheet built for them (section 2).
-- The four spikes, kept as written in section 9:
+- The four spikes, summarised here; the full wording is in section 9 of the decision and in
+  [issue #2](https://github.com/mayankmankhand/gitmargin/issues/2):
   1. The sign-in hand-off inside Slack's in-app browser, on iOS and Android.
   2. GitLab consent behaviour: a confidential app asks once, a public app asks every visit, token refresh, the
      Members API check with a bot token.
