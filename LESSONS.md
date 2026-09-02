@@ -49,6 +49,10 @@
 - **In vision mode, settle the workflow before the mechanism.** The owner redirected the exploration twice, from sign-in and hosting constraints back to what the tool does end to end for each person.
 - **A workflow whose last agent is the expensive synthesis needs a fallback.** The design panel's judge died on a spend limit; cached agents made the re-run cheap, and the ranking was done by hand from the saved data.
 
+### gitmargin: v0 split cycle (issue #2, 2026-09-02)
+- **A design the builder cannot test alone cannot be built alone.** The first scoping question on the spikes ("what do you have to test with?") had no answer, and v0 split into a part that needs nothing but a file.
+- **When the owner answers "?", collapse to one line per item with a one-word accept.** A four-question round with embedded proposals drew "?" and "Which question?"; five one-liners plus "say defaults" got "yes".
+
 ## Mistakes to Avoid
 
 - **Fill a plan's Outcomes by replacing the template placeholder, not inserting above it.**
@@ -90,6 +94,11 @@
 - **Retiring a promise means grepping the whole file, not just the section the plan named.** README kept "no new accounts" at line 53 after the principle at line 39 was softened (review R4, commit eccbed7).
 - **A list that lives in three places drifts within the hour.** Four spikes in the decision doc, three in the README, two in issue #2, all written by the same session (review R5).
 - **A glossary pointer is a promise; check it covers the terms the pointing doc uses.** The decision doc pointed at a glossary written for the previous design (review R1).
+
+### gitmargin: v0 split cycle (issue #2, 2026-09-02)
+- **An execution-time decision must land in the committed doc, not only where it was made.** Two choices made while rewriting issue #5 (attach writes a copy; Node only) never reached the split doc or the plan's Outcomes (review R1, commit 0dd96da).
+- **Say "summarised" when you summarise; "kept as written" is a claim a reviewer will check.** The split doc condensed the four spikes under a lead-in that promised the section 9 text (review R3).
+- **A receipt should be a presence check, not a line count.** Two plan receipts expected `grep -c` counts that failed on line semantics while the claims held; `grep -o` or `-n` would have matched cleanly.
 
 ## Patterns That Work
 
