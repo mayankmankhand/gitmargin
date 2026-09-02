@@ -7,17 +7,21 @@
 ## About This Project
 <!-- Describe your project: what it is, what it does, what tech stack it uses -->
 
-**gitmargin** — Google-Docs-style comments on private HTML prototypes, reusing the access control
-the team already has (GitLab/GitHub login or corporate SSO) instead of inventing a new account
-system. See `README.md` for the problem statement and design direction, and
-`research/prior-art-landscape.md` for the landscape research (what others tried, hosting options
-inside big companies, likely users).
+**gitmargin**: Google-Docs-style comments on HTML prototypes that a coding agent can act on. The
+destination is comments on *private* prototypes reusing the access control the team already has
+(GitLab/GitHub login or corporate SSO); the first step is much smaller. See `README.md` for the
+problem statement, `research/prior-art-landscape.md` for the landscape research (what others tried,
+hosting options inside big companies, likely users), and `research/agent-feedback-formats.md` for
+what existing tools hand to agents.
 
-Status: v0 decided (2026-09-02), code not started. v0 = a comment overlay (one script tag on the
-author's own HTML, gitmargin never hosts) + a small gitmargin server on Vercel Functions + Neon Postgres
-(OpenID Connect sign-in, GitLab first; the comment record; one-way mirrors to the Slack thread and GitLab
-issue; a batch API for agents) + `npx gitmargin publish`. Dogfood 1 is gitlab.com Pages. The full decision,
-reasoning, and out-of-scope list: `docs/v0-decision.md`.
+Status: v0 decided 2026-09-02 and split into two parts the same day; code not started. **Part 1**
+(next) = a comment overlay on a single HTML file, no server: the reviewer opens the file anywhere,
+each comment records where they were (anchor, click trail, screen name) and what they expected, and
+the comments come back as the file with comments embedded or as a clipboard text block. `npx gitmargin
+attach` and `pull` bracket it; the batch an agent reads is drafted in `docs/batch-format.md`.
+**Part 2** (parked) = sign-in via OpenID Connect, the server on Vercel + Neon, the Slack and GitLab
+mirrors, publish to GitLab Pages, the phone mode, and the four spikes. The split and the reasons:
+`docs/v0-split.md`; the original decision and the out-of-scope list: `docs/v0-decision.md`.
 
 ## Who I Am
 <!-- Describe yourself or your team: experience level, how you like to work -->
