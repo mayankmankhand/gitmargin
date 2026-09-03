@@ -53,6 +53,15 @@
 - **A design the builder cannot test alone cannot be built alone.** The first scoping question on the spikes ("what do you have to test with?") had no answer, and v0 split into a part that needs nothing but a file.
 - **When the owner answers "?", collapse to one line per item with a one-word accept.** A four-question round with embedded proposals drew "?" and "Which question?"; five one-liners plus "say defaults" got "yes".
 
+### gitmargin: part-1 overlay build and review (issue #3, 2026-09-02)
+- **Say what the check showed, not what the file is called.**
+- **A string replace that silently matches nothing ships a half-applied fix.**
+- **A claim about browser behaviour is a guess until you measure it in the browser.**
+- **A screenshot-only critic scores the whole frame, so an overlay on someone else's page plateaus on gaps that are not yours to fix.**
+- **The tool you write to inspect your work is code too, and it gets the least review.**
+- **"Is it installed" must be a launch probe, not a file check.**
+- **A guard that blocks a rebuild must not also block the render that opens the thing being guarded.**
+
 ## Mistakes to Avoid
 
 - **Fill a plan's Outcomes by replacing the template placeholder, not inserting above it.**

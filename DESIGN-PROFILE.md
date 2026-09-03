@@ -22,9 +22,9 @@ and never overwrites a design system you already have. Edit it freely.
 <!-- One of: unknown | none | exists. When it exists, say where it lives (a tokens
      file, a theme config, a component library, a style guide, a Figma link) and what
      it covers (colors, type, spacing, components, motion). -->
-- **Status:** none
-- **Where it lives:** nothing yet. Confirmed 2026-09-02 during /explore on issue #3: no token or theme files, no package manifest, no style guide. The overlay's look, once picked, is written into the issue #3 plan's UI/UX Design section and becomes the system for later surfaces.
-- **What it covers:** (nothing yet)
+- **Status:** exists
+- **Where it lives:** the token block at the top of `src/overlay/ui.css` (the `:host` rule). Established 2026-09-02 by the issue #3 overlay; before that the repo had no design system at all.
+- **What it covers:** one accent (`--gm-accent` deep ink indigo `#363a9c`), three border tokens split by role (`--gm-line` for decorative dividers, `--gm-line-strong` for surface edges, `--gm-field-line` for the boundary of anything a person operates, which is the one that has to clear 3:1), a panel ground (`--gm-panel`), text and muted text, 13px system UI type, and a 150ms panel widen with a short spring on a new pin. No shadows and no gradients: the look is drawn in one-pixel strokes.
 
 ## Allowed variance
 
@@ -44,11 +44,15 @@ and never overwrites a design system you already have. Edit it freely.
 
 <!-- One line per direction: name, seed, best critic score, kept or dropped. Written
      by /document at the end of a cycle. -->
+- **Hairline** - seed `8EJlC5cKVf9RE/8H/9oDT8iVvVw/IqTL` - best critic score 5/10 over the full 5 rounds (4, 5, 5, 5, 5) - **kept**, and it is now the design system above. The score never reached the 9/10 bar; see the retry list below for why that is not the whole story. Receipt: the Design run section of `plans/PLAN-issue-3.md`.
+- **Red pen** - no seed drawn - dropped at pick.
+- **Wayfinding** - no seed drawn - dropped at pick. Both were dropped because the owner answered "you decide" to the idea list, so one direction was proposed and confirmed rather than three built.
 
 ## Prompts to retry on newer models
 
 <!-- Briefs that did not work this time. Try them again when a newer model ships;
      that is how you learn what the latest models can do. -->
+- **Hairline**, the brief that shipped: "an overlay drawn in one-pixel strokes and almost nothing else, one accent on white, system UI at 13px, no shadows or gradients, so it reads over any prototype without competing with it." Seed `8EJlC5cKVf9RE/8H/9oDT8iVvVw/IqTL`. It stalled at 5/10 across five critic rounds and is worth retrying, but read the caveat before assuming the brief is the problem: the critic sees one screenshot of the whole frame, and this surface is an overlay sitting on top of someone else's prototype. Three of its repeated complaints were about the prototype underneath, which is not ours to redesign, and one (that no leader ties a pin to its element) was factually wrong by the last round. A fair retry needs either a screenshot that isolates the overlay or a critic told what it is looking at.
 
 ## Baseline images
 

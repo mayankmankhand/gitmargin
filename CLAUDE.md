@@ -14,14 +14,23 @@ problem statement, `research/prior-art-landscape.md` for the landscape research 
 hosting options inside big companies, likely users), and `research/agent-feedback-formats.md` for
 what existing tools hand to agents.
 
-Status: v0 decided 2026-09-02 and split into two parts the same day; code not started. **Part 1**
-(next) = a comment overlay on a single HTML file, no server: the reviewer opens the file anywhere,
-each comment records where they were (anchor, click trail, screen name) and what they expected, and
-the comments come back as the file with comments embedded or as a clipboard text block. `npx gitmargin
-attach` and `pull` bracket it; the batch an agent reads is drafted in `docs/batch-format.md`.
-**Part 2** (parked) = sign-in via OpenID Connect, the server on Vercel + Neon, the Slack and GitLab
-mirrors, publish to GitLab Pages, the phone mode, and the four spikes. The split and the reasons:
-`docs/v0-split.md`; the original decision and the out-of-scope list: `docs/v0-decision.md`.
+Status: v0 decided 2026-09-02 and split into two parts the same day. **Part 1's overlay is built and
+tested** (issue #3): a reviewer opens the prototype from disk, clicks an element or highlights text,
+says what they expected, and the comments come back as the file with them embedded or as a clipboard
+text block. Each comment records where they were (anchor, click trail, screen name, viewport) and
+why they stopped. What remains in part 1: `npx gitmargin attach` and `pull` (issue #5), then a
+dogfood round with two reviewers (issue #6). **Part 2** (parked) = sign-in via OpenID Connect, the
+server on Vercel + Neon, the Slack and GitLab mirrors, publish to GitLab Pages, the phone mode, and
+the four spikes. The split and the reasons: `docs/v0-split.md`; the original decision and the
+out-of-scope list: `docs/v0-decision.md`; the batch an agent reads: `docs/batch-format.md` (v0.2).
+
+## Working on the overlay
+
+`npm run build` bundles `src/overlay/` into one self-contained `dist/gitmargin.js`. `npm test` builds
+and then runs the Playwright suite, which opens the fixtures from `file://` because that is how a
+reviewer receives a prototype. Chromium is required; Firefox and WebKit run when they can start on
+this machine (`tests/README.md` has the detail, including why WebKit is untested here). `npm run
+serve` is only for design screenshots, since the toolkit's browser script cannot open a local file.
 
 ## Who I Am
 <!-- Describe yourself or your team: experience level, how you like to work -->
