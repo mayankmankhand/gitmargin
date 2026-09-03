@@ -381,3 +381,55 @@ test('a highlighted quote finds the spot again when the selector stops matching'
   await expect(page.locator('.gm-flag')).toHaveCount(0);
   expect(await page.evaluate(() => window.__gitmargin.markdown())).not.toContain('[orphaned:');
 });
+
+test('two unstamped prototypes do not share a comment store', async ({ page }) => {
+  const a = pathToFileURL(resolve('fixtures/unstamped-a.html')).href;
+  const b = pathToFileURL(resolve('fixtures/unstamped-b.html')).href;
+
+  await page.goto(a);
+  await page.waitForFunction(() => !!window.__gitmargin);
+  await page.click('.gm-switch');
+  await page.click('main .go');
+  await page.fill('.gm-box textarea', 'This belongs to prototype a.');
+  await page.click('.gm-box-actions .gm-btn.primary');
+  await page.fill('.gm-who input', 'Priya');
+  await expect(page.locator('.gm-card')).toHaveCount(1);
+
+  // A different file, same browser, same file:// origin, neither stamped.
+  await page.goto(b);
+  await page.waitForFunction(() => !!window.__gitmargin);
+  const env = await page.evaluate(() => window.__gitmargin.export());
+  expect(env.version_id).toBeNull();
+  expect(env.comments).toHaveLength(0);
+  expect(env.reviewer.name).toBeNull();
+  await expect(page.locator('.gm-card')).toHaveCount(0);
+
+  // And the first file still has its own.
+  await page.goto(a);
+  await page.waitForFunction(() => !!window.__gitmargin);
+  await expect(page.locator('.gm-card')).toHaveCount(1);
+});
+
+test('the reviewer is told whether their comments are being kept', async ({ page }) => {
+  await openFixture(page);
+  await walkTo(page, 3);
+  await comment(page, '#step-3 .continue', 'Checking the saved notice.', 'change');
+  await expect(page.locator('.gm-keep')).toHaveText('Kept in this browser until you send it.');
+
+  // Now a browser that refuses storage to a local file.
+  await page.addInitScript(() => {
+    Object.defineProperty(window, 'localStorage', {
+      configurable: true,
+      get() {
+        throw new Error('storage is not available');
+      },
+    });
+  });
+  await page.goto(FIXTURE);
+  await page.waitForFunction(() => !!window.__gitmargin);
+  await walkTo(page, 3);
+  await comment(page, '#step-3 .continue', 'Checking the unsaved warning.', 'change');
+  await expect(page.locator('.gm-keep')).toHaveText(
+    'Not saved in this browser. Send or copy before you close this tab.'
+  );
+});

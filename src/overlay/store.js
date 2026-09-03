@@ -7,6 +7,22 @@
 
 const PREFIX = 'gitmargin:';
 
+/**
+ * A short stable hash of the document's path.
+ *
+ * Every file:// page shares one storage origin, so a key built from the version
+ * id alone puts two prototypes in the same bucket - and with no `attach` command
+ * yet, "no version id" is the normal case, which made the collision the default
+ * rather than an edge case. Comments from one prototype would load into another
+ * and be exported back to the wrong author (review R4).
+ */
+function pathTag() {
+  const path = String(location.pathname || '');
+  let h = 0;
+  for (let i = 0; i < path.length; i += 1) h = (Math.imul(h, 31) + path.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(36);
+}
+
 /** `c_` plus six hex characters. Random, so two reviewers' files never collide. */
 export function newId() {
   const bytes = new Uint8Array(3);
@@ -19,16 +35,36 @@ const state = {
   comments: [],
   reviewer: '',
   overallNote: '',
+  path: '',
 };
 
+/**
+ * Whether the last write to storage actually landed. Null until one is tried.
+ * The interface reads this: swallowing the error is right, hiding it is not,
+ * because the reviewer cannot otherwise know whether closing the tab is safe
+ * (review R25).
+ */
+let storageWorks = null;
+export const storageOk = () => storageWorks;
+
 let storageKey = `${PREFIX}unversioned`;
+/** True once the reviewer has downloaded or copied the batch this session. */
+let exported = false;
+export const hasExported = () => exported;
+export const markExported = () => {
+  exported = true;
+};
+export const hasUnexportedWork = () => state.comments.length > 0 && !exported;
 const listeners = new Set();
 
 function persist() {
   try {
+    state.path = location.pathname || '';
     localStorage.setItem(storageKey, JSON.stringify(state));
+    storageWorks = true;
   } catch {
     /* private mode, a file:// page without storage, or a full quota */
+    storageWorks = false;
   }
 }
 
@@ -37,12 +73,21 @@ function announce() {
   listeners.forEach((fn) => fn());
 }
 
+/** A change after an export means there is something new to send again. */
+function touched() {
+  exported = false;
+  announce();
+}
+
 /** Load anything saved for this version id. Call once, before the UI mounts. */
 export function load(versionId) {
-  storageKey = `${PREFIX}${versionId || 'unversioned'}`;
+  storageKey = `${PREFIX}${versionId || 'unversioned'}:${pathTag()}`;
   try {
     const saved = JSON.parse(localStorage.getItem(storageKey) || 'null');
-    if (saved && Array.isArray(saved.comments)) {
+    // The key already separates documents; the path check is the belt to that
+    // braces, so a hash collision cannot pull in another file's comments.
+    const samePlace = !saved || !saved.path || saved.path === (location.pathname || '');
+    if (saved && samePlace && Array.isArray(saved.comments)) {
       state.comments = saved.comments;
       state.reviewer = typeof saved.reviewer === 'string' ? saved.reviewer : '';
       state.overallNote = typeof saved.overallNote === 'string' ? saved.overallNote : '';
@@ -88,7 +133,7 @@ export function setOverallNote(note) {
 
 export function add(comment) {
   state.comments.push(comment);
-  announce();
+  touched();
   return comment;
 }
 
@@ -96,7 +141,7 @@ export function update(id, fields) {
   const comment = state.comments.find((c) => c.id === id);
   if (!comment) return null;
   Object.assign(comment, fields);
-  announce();
+  touched();
   return comment;
 }
 
@@ -104,6 +149,6 @@ export function remove(id) {
   const at = state.comments.findIndex((c) => c.id === id);
   if (at < 0) return false;
   state.comments.splice(at, 1);
-  announce();
+  touched();
   return true;
 }

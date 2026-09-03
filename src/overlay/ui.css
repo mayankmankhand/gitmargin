@@ -263,6 +263,8 @@ input, textarea { font: inherit; color: inherit; }
 .gm-btn.ghost:hover { border-color: transparent; color: var(--gm-accent); }
 .gm-btn.primary:hover { background: #2c3086; color: #fff; }
 .gm-said { color: var(--gm-muted); font-size: 11px; margin-top: 7px; min-height: 14px; }
+.gm-keep { color: var(--gm-muted); font-size: 10px; margin-top: 5px; }
+.gm-keep:empty { display: none; }
 
 /* ---------- comment box ---------- */
 

@@ -91,6 +91,7 @@ export function mountUi(deps) {
   const sendBtn = el('button', { class: 'gm-btn primary', type: 'button', text: 'Send to author' });
   const copyBtn = el('button', { class: 'gm-btn ghost', type: 'button', text: 'Copy for author' });
   const said = el('div', { class: 'gm-said' });
+  const keepNote = el('div', { class: 'gm-keep' });
 
   const panel = el('div', { class: 'gm-panel is-open' }, [
     rail,
@@ -104,7 +105,7 @@ export function mountUi(deps) {
       el('div', { class: 'gm-who' }, [el('label', { text: 'Your name, for the author' }), nameInput]),
       listLabel,
       list,
-      el('div', { class: 'gm-foot' }, [noteToggle, overall, el('div', { class: 'gm-send' }, [sendBtn, copyBtn]), said]),
+      el('div', { class: 'gm-foot' }, [noteToggle, overall, el('div', { class: 'gm-send' }, [sendBtn, copyBtn]), said, keepNote]),
       el('div', { class: 'gm-fill' }),
     ]),
   ]);
@@ -132,7 +133,9 @@ export function mountUi(deps) {
   overall.addEventListener('input', () => store.setOverallNote(overall.value));
 
   sendBtn.addEventListener('click', () => {
-    said.textContent = `Downloaded ${batch.download()}. Send that file back.`;
+    const name = batch.download();
+    store.markExported();
+    said.textContent = `Saved ${name} to your downloads. Reply to the message you got this file in and attach it.`;
   });
   copyBtn.addEventListener('click', async () => {
     const result = await batch.copy();
@@ -140,7 +143,10 @@ export function mountUi(deps) {
       window.__gitmargin.lastCopy = result.text;
       window.__gitmargin.lastCopyOk = result.ok;
     }
-    said.textContent = result.ok ? 'Copied. Paste it anywhere.' : 'Could not reach the clipboard.';
+    if (result.ok) store.markExported();
+    said.textContent = result.ok
+      ? 'Copied. Paste it anywhere.'
+      : 'Could not reach the clipboard. Use Send to author instead.';
   });
 
   // ---- comment box --------------------------------------------------------
@@ -423,6 +429,16 @@ export function mountUi(deps) {
       list.appendChild(row);
     });
 
+    // Storage is best effort on a local file, so say which way it went rather
+    // than leaving the reviewer to guess whether closing the tab is safe.
+    const ok = store.storageOk();
+    keepNote.textContent =
+      ok === false
+        ? 'Not saved in this browser. Send or copy before you close this tab.'
+        : ok === true
+          ? 'Kept in this browser until you send it.'
+          : '';
+
     const count = resolved.length;
     rail.textContent = count ? `${count} comment${count === 1 ? '' : 's'}` : 'gitmargin';
     listCount.textContent = count ? String(count) : '0';
@@ -462,6 +478,13 @@ export function mountUi(deps) {
     if (records.every((r) => r.target === host || host.contains(r.target))) return;
     schedule();
   }).observe(document.body, { childList: true, subtree: true, attributes: true, characterData: true });
+
+  // The last guard before the work is gone: comments written and never sent.
+  window.addEventListener('beforeunload', (e) => {
+    if (!store.hasUnexportedWork()) return;
+    e.preventDefault();
+    e.returnValue = '';
+  });
 
   window.addEventListener('scroll', schedule, true);
   window.addEventListener('resize', schedule);
