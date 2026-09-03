@@ -1,0 +1,224 @@
+// The whole loop, end to end, the way it actually happens:
+//
+//   attach a prototype -> the reviewer opens the copy from disk and comments
+//   -> "Send to author" downloads a file -> pull turns it into a batch
+//
+// Everything else in the suite tests one link. This tests that the links meet.
+// It is the only place where the CLI and the overlay are exercised together, so
+// a change to the stamp, the embedded block, or the escaping fails here first.
+import { test, expect } from '@playwright/test';
+import { execFileSync } from 'node:child_process';
+import { copyFile, mkdir, readFile } from 'node:fs/promises';
+import { pathToFileURL } from 'node:url';
+import { resolve, join } from 'node:path';
+import { findEnvelope } from '../src/cli/comment-block.js';
+
+const CLI = resolve('bin/gitmargin.js');
+
+/** Run a gitmargin command and return its stdout. Throws on a non-zero exit. */
+function gitmargin(args) {
+  return execFileSync(process.execPath, [CLI, ...args], { encoding: 'utf8' });
+}
+
+/**
+ * Copy the prototype somewhere writable and attach the overlay to it.
+ *
+ * The copy matters: `attach` writes next to its input, and a test that wrote
+ * into fixtures/ would leave the repository dirty and race the other workers.
+ */
+async function attachFixture(testInfo, fixture = 'fixtures/onboarding.html') {
+  const dir = testInfo.outputPath('attach');
+  await mkdir(dir, { recursive: true });
+  const source = join(dir, 'onboarding.html');
+  await copyFile(resolve(fixture), source);
+
+  const attached = gitmargin(['attach', source]).trim();
+  const versionId = /content="(v\d+-[0-9a-f]{6})"/.exec(await readFile(attached, 'utf8'))[1];
+  return { attached, versionId };
+}
+
+/** Leave one comment. Same shape as the helper in roundtrip.spec.js. */
+async function comment(page, selector, text, tag) {
+  await page.click('.gm-switch');
+  await page.click(selector);
+  await expect(page.locator('.gm-box')).toBeVisible();
+  await page.fill('.gm-box textarea', text);
+  if (tag) await page.click(`.gm-chip[data-tag="${tag}"]`);
+  await page.click('.gm-box-actions .gm-btn.primary');
+  await page.click('.gm-switch');
+}
+
+test('attach, comment, send back, pull: the batch names the version and the screen', async ({ page }, testInfo) => {
+  const { attached, versionId } = await attachFixture(testInfo);
+
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(String(e)));
+  await page.goto(pathToFileURL(attached).href);
+  await page.waitForFunction(() => !!window.__gitmargin);
+
+  // The overlay must have picked up the stamp attach wrote, not a default.
+  expect(await page.evaluate(() => window.__gitmargin.versionId)).toBe(versionId);
+  expect(await page.evaluate(() => window.__gitmargin.file)).toBe('onboarding.html');
+
+  // Walk two steps so the trail has something in it, then comment on step 3,
+  // whose screen name has to come from the heading fallback.
+  await page.click('#step-1 .next');
+  await page.click('#step-2 .next');
+  await expect(page.locator('#step-3')).toHaveClass(/active/);
+  await comment(page, '#step-3 .next', 'I expected to be able to pick more than one.', 'bug');
+
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    page.click('.gm-send .gm-btn.primary'),
+  ]);
+  // attach stamped the ORIGINAL name, so the reviewer's file comes back with a
+  // name the author recognises rather than "onboarding.gitmargin.reviewed.html".
+  expect(download.suggestedFilename()).toBe('onboarding.reviewed.html');
+
+  const returned = testInfo.outputPath('onboarding.reviewed.html');
+  await download.saveAs(returned);
+
+  const batch = JSON.parse(gitmargin(['pull', returned]));
+  expect(batch.gitmargin).toBe('0.1');
+  expect(batch.file).toBe('onboarding.html');
+  expect(batch.version_id).toBe(versionId);
+  expect(batch.rules.length).toBeGreaterThan(0);
+  expect(batch.sources).toHaveLength(1);
+  expect(batch.sources[0].carrier).toBe('html');
+  expect(batch.sources[0].lossy).toBe(false);
+
+  expect(batch.comments).toHaveLength(1);
+  const [c] = batch.comments;
+  expect(c.intent).toEqual({ text: 'I expected to be able to pick more than one.', tag: 'bug' });
+  expect(c.source).toBe(0);
+  expect(c.state.trail.map((t) => t.text)).toEqual(['Next', 'Next']);
+  expect(c.state.screen.name).toBeTruthy();
+  expect(c.anchor.selector).toBeTruthy();
+
+  expect(errors).toEqual([]);
+});
+
+test('the file a reviewer sends back carries the overlay whole', async ({ page }, testInfo) => {
+  // The regression this protects: the overlay's source builds the comment
+  // block, so once attach inlines the bundle the document contains a perfect
+  // lookalike of that block's opening tag. Stripping by tag alone matched the
+  // lookalike and ran on to the overlay's own closing tag, silently deleting
+  // two thirds of it. The file still opened; it just could not be reviewed
+  // again, which is the one thing a returned file has to support.
+  const { attached } = await attachFixture(testInfo);
+  const overlayOf = (html) => (html.match(/<script id="gitmargin-overlay">([\s\S]*?)\n<\/script>/) || [])[1] || '';
+  const sent = overlayOf(await readFile(attached, 'utf8'));
+  expect(sent.length).toBeGreaterThan(10_000);
+
+  await page.goto(pathToFileURL(attached).href);
+  await page.waitForFunction(() => !!window.__gitmargin);
+  await comment(page, '#step-1 .next', 'Does the overlay survive?', 'question');
+
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    page.click('.gm-send .gm-btn.primary'),
+  ]);
+  const returned = testInfo.outputPath('intact/onboarding.reviewed.html');
+  await download.saveAs(returned);
+
+  expect(overlayOf(await readFile(returned, 'utf8'))).toBe(sent);
+
+  // ...and the proof that it is really still working code: reopen the returned
+  // file and it must load its own comments back.
+  await page.goto(pathToFileURL(returned).href);
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  await page.waitForFunction(() => !!window.__gitmargin);
+  await expect(page.locator('.gm-card')).toHaveCount(1);
+});
+
+test('two reviewers on the same version become one batch', async ({ page }, testInfo) => {
+  const { attached, versionId } = await attachFixture(testInfo);
+  const files = [];
+
+  for (const [who, what] of [
+    ['Priya', 'The Bluetooth prompt appears before I know why.'],
+    ['Sam', 'I could not tell this step was optional.'],
+  ]) {
+    await page.goto(pathToFileURL(attached).href);
+    // Each reviewer is a fresh machine: no local copy, nothing carried over.
+    await page.evaluate(() => localStorage.clear());
+    await page.reload();
+    await page.waitForFunction(() => !!window.__gitmargin);
+
+    await comment(page, '#step-1 h2', what, 'question');
+    await page.fill('.gm-who input', who);
+
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      page.click('.gm-send .gm-btn.primary'),
+    ]);
+    const saved = testInfo.outputPath(`${who}.reviewed.html`);
+    await download.saveAs(saved);
+    files.push(saved);
+  }
+
+  const batch = JSON.parse(gitmargin(['pull', ...files]));
+  expect(batch.version_id).toBe(versionId);
+  expect(batch.sources.map((s) => s.reviewer)).toEqual(['Priya', 'Sam']);
+  expect(batch.comments).toHaveLength(2);
+  // Ids are random per comment, so two reviewers never collide and both survive.
+  expect(new Set(batch.comments.map((c) => c.id)).size).toBe(2);
+  expect(batch.comments.map((c) => c.source)).toEqual([0, 1]);
+});
+
+test('the clipboard block pulls back as a lossier batch of the same comments', async ({ page }, testInfo) => {
+  const { attached } = await attachFixture(testInfo);
+
+  await page.goto(pathToFileURL(attached).href);
+  await page.waitForFunction(() => !!window.__gitmargin);
+  await comment(page, '#step-1 .next', 'This should say what happens next.', 'change');
+
+  // Read what the overlay put on the clipboard from its own report: a file://
+  // page cannot be relied on to read the clipboard back in every engine.
+  await page.click('.gm-send .gm-btn:not(.primary)');
+  const block = await page.evaluate(() => window.__gitmargin.lastCopy);
+  expect(block).toContain('gitmargin batch v0.1');
+
+  const batch = JSON.parse(
+    execFileSync(process.execPath, [CLI, 'pull', '-'], { encoding: 'utf8', input: block })
+  );
+  expect(batch.sources[0].carrier).toBe('markdown');
+  expect(batch.sources[0].lossy).toBe(true);
+  expect(batch.comments).toHaveLength(1);
+  expect(batch.comments[0].intent.text).toBe('This should say what happens next.');
+  expect(batch.comments[0].intent.tag).toBe('change');
+  // The trail survives as text; the timings and the anchor detail do not.
+  expect(batch.comments[0].anchor.selector).toBeTruthy();
+  expect(batch.comments[0].state.trail.every((t) => t.seconds_before === null)).toBe(true);
+});
+
+test('a reviewed file can be attached again for a second round', async ({ page }, testInfo) => {
+  const { attached } = await attachFixture(testInfo);
+
+  await page.goto(pathToFileURL(attached).href);
+  await page.waitForFunction(() => !!window.__gitmargin);
+  await comment(page, '#step-1 .next', 'Round one.', 'change');
+
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    page.click('.gm-send .gm-btn.primary'),
+  ]);
+  const returned = testInfo.outputPath('round1/onboarding.reviewed.html');
+  await download.saveAs(returned);
+
+  // The author edits nothing and re-attaches what came back. The old comment
+  // block must not travel into the new round: it belongs to the batch already
+  // pulled, and carrying it forward would double-count it.
+  const again = gitmargin(['attach', returned]).trim();
+  const html = await readFile(again, 'utf8');
+
+  // "No block" has to be asked of the validator, not of the text. Every
+  // attached file contains the block's opening tag as a string, inside the
+  // bundle that writes it, so no substring or regex check for the tag can ever
+  // pass here. What must be true is that nothing PARSES as a block.
+  expect(findEnvelope(html)).toBeNull();
+  expect(html).not.toContain('Round one.');
+  expect(html.match(/<script[^>]*\bid="gitmargin-overlay"/g)).toHaveLength(1);
+  expect(html.match(/<meta name="gitmargin-version"/g)).toHaveLength(1);
+});

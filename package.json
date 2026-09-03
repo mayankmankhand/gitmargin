@@ -10,11 +10,23 @@
   },
   "scripts": {
     "build": "esbuild src/overlay/index.js --bundle --minify --format=iife --loader:.css=text --outfile=dist/gitmargin.js",
-    "test": "npm run build && playwright test",
+    "attach": "node bin/gitmargin.js attach",
+    "pull": "node bin/gitmargin.js pull",
+    "test": "npm run build && node --test tests/*.test.js && playwright test",
     "serve": "node scripts/serve-fixture.js"
   },
   "devDependencies": {
     "@playwright/test": "^1.48.0",
     "esbuild": "^0.28.2"
-  }
+  },
+  "bin": {
+    "gitmargin": "bin/gitmargin.js"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "dist/",
+    "docs/batch-format.md",
+    "README.md"
+  ]
 }

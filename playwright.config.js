@@ -78,6 +78,10 @@ const projects = [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }].c
 
 export default defineConfig({
   testDir: 'tests',
+  // Playwright owns *.spec.js only. The CLI tests next door are *.test.js and
+  // run under Node's own runner; without this they would be collected here
+  // too, where node:test's imports mean nothing.
+  testMatch: '**/*.spec.js',
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: 0,

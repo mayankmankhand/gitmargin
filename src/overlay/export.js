@@ -142,9 +142,26 @@ export function markdown() {
  * reviewed file can be reviewed again without collecting duplicates.
  */
 export function reviewedHtml() {
+  // Only remove a block that really IS one.
+  //
+  // Once `attach` (issue #5) inlines the bundle, this module's own source is in
+  // the document as text, and the line just below builds the block's opening
+  // tag - so the document contains a perfect lookalike. Matching the tag alone
+  // found that first and then ran on to the OVERLAY's closing tag, because
+  // every real `</script>` inside the bundle is escaped by the minifier. The
+  // result was a reviewed file missing two thirds of its overlay: openable,
+  // and a dead end for the next person. Parsing the contents is what tells the
+  // real block from the description of one.
   const stripped = originalHtml().replace(
-    /[ \t]*<script\b[^>]*\bid=["']gitmargin-comments["'][^>]*>[\s\S]*?<\/script>[ \t]*\r?\n?/gi,
-    ''
+    /[ \t]*<script\b[^>]*\bid=["']gitmargin-comments["'][^>]*>([\s\S]*?)<\/script>[ \t]*\r?\n?/gi,
+    (whole, body) => {
+      try {
+        const parsed = JSON.parse(body);
+        return parsed && Array.isArray(parsed.comments) ? '' : whole;
+      } catch {
+        return whole;
+      }
+    }
   );
   const block = `<script type="application/json" id="gitmargin-comments">\n${embeddedJson()}\n</script>\n`;
 
