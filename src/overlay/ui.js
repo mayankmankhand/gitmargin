@@ -136,7 +136,10 @@ export function mountUi(deps) {
   });
   copyBtn.addEventListener('click', async () => {
     const result = await batch.copy();
-    if (window.__gitmargin) window.__gitmargin.lastCopy = result.text;
+    if (window.__gitmargin) {
+      window.__gitmargin.lastCopy = result.text;
+      window.__gitmargin.lastCopyOk = result.ok;
+    }
     said.textContent = result.ok ? 'Copied. Paste it anywhere.' : 'Could not reach the clipboard.';
   });
 

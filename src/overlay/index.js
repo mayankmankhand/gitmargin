@@ -65,7 +65,11 @@ function start() {
     markdown: batch.markdown,
     reviewedHtml: batch.reviewedHtml,
     originalLength: originalHtml.length,
+    // Read by the test suite: the clipboard cannot be read back reliably from a
+    // file:// page in every engine, so the overlay reports what it put there.
+    trail: () => trailFor(),
     lastCopy: null,
+    lastCopyOk: null,
     ui,
   };
 }

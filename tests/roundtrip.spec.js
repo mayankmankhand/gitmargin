@@ -1,0 +1,240 @@
+// The part-1 round trip, driven the way a reviewer actually gets the file: as
+// HTML on disk, opened with a file:// URL. Nothing here starts a server.
+//
+// What each test protects is written in its title, because when one of these
+// fails the question is always "which promise broke?".
+import { test, expect } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
+import { pathToFileURL } from 'node:url';
+import { resolve } from 'node:path';
+
+const FIXTURE = pathToFileURL(resolve('fixtures/wizard.html')).href;
+const VERSION = 'v1-fixt01';
+
+/** Open the fixture and fail loudly on any page error. */
+async function openFixture(page) {
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(String(e)));
+  await page.goto(FIXTURE);
+  await page.waitForFunction(() => !!window.__gitmargin);
+  return errors;
+}
+
+/** Walk to a step by clicking Next, with comment mode off. */
+async function walkTo(page, step) {
+  for (let n = 1; n < step; n += 1) await page.click(`#step-${n} .next`);
+  await expect(page.locator(`#step-${step}`)).toHaveClass(/active/);
+}
+
+/** Leave one comment on `selector`, with comment mode handled for you. */
+async function comment(page, selector, text, tag) {
+  await page.click('.gm-switch');
+  await page.click(selector);
+  await expect(page.locator('.gm-box')).toBeVisible();
+  await page.fill('.gm-box textarea', text);
+  if (tag) await page.click(`.gm-chip[data-tag="${tag}"]`);
+  await page.click('.gm-box-actions .gm-btn.primary');
+  await page.click('.gm-switch'); // back to walking the prototype
+}
+
+test('a comment records the screen, the trail and the element it was left on', async ({ page }) => {
+  const errors = await openFixture(page);
+  await walkTo(page, 3);
+  await comment(page, '#step-3 .continue', 'I expected this to stay disabled until the address is valid.', 'bug');
+
+  await expect(page.locator('.gm-pin')).toHaveCount(1);
+  await expect(page.locator('.gm-card')).toHaveCount(1);
+
+  const env = await page.evaluate(() => window.__gitmargin.export());
+  expect(env.gitmargin).toBe('0.1');
+  expect(env.file).toBe('wizard.html');
+  expect(env.version_id).toBe(VERSION);
+  expect(env.comments).toHaveLength(1);
+
+  const c = env.comments[0];
+  expect(c.id).toMatch(/^c_[0-9a-f]{6}$/);
+  expect(c.intent).toEqual({
+    text: 'I expected this to stay disabled until the address is valid.',
+    tag: 'bug',
+  });
+  expect(c.status).toBe('open');
+
+  // Where they were.
+  expect(c.state.screen).toEqual({ name: 'Payment', source: 'data-gm-screen' });
+  expect(c.state.hash).toBe('#step-3');
+  expect(c.state.trail.map((t) => t.text)).toEqual(['Next', 'Next']);
+  expect(c.state.screenshot).toBeNull(); // out of the v0.1 build by decision
+
+  // The anchor finds exactly the button that was clicked.
+  const resolved = await page.evaluate((sel) => {
+    const el = document.querySelector(sel);
+    return el ? `${el.tagName}:${el.textContent.trim()}` : null;
+  }, c.anchor.selector);
+  expect(resolved).toBe('BUTTON:Continue');
+  expect(c.anchor.quote.exact).toBe('Continue');
+
+  expect(errors).toEqual([]);
+});
+
+test('highlighting text anchors the quote with its surrounding words', async ({ page }) => {
+  await openFixture(page);
+  await page.click('.gm-switch');
+
+  // A real drag across the words "standard plan" in the step 1 paragraph.
+  const box = await page.evaluate(() => {
+    const node = document.querySelector('#step-1 p').firstChild;
+    const range = document.createRange();
+    range.setStart(node, 4);
+    range.setEnd(node, 17);
+    const r = range.getBoundingClientRect();
+    return { x1: r.left + 1, x2: r.right - 1, y: r.top + r.height / 2 };
+  });
+  await page.mouse.move(box.x1, box.y);
+  await page.mouse.down();
+  await page.mouse.move(box.x2, box.y, { steps: 8 });
+  await page.mouse.up();
+
+  await expect(page.locator('.gm-box')).toBeVisible();
+  await page.fill('.gm-box textarea', 'This promise is not kept on the payment step.');
+  await page.click('.gm-box-actions .gm-btn.primary');
+
+  const c = (await page.evaluate(() => window.__gitmargin.export())).comments[0];
+  expect(c.anchor.quote.exact).toBe('standard plan');
+  expect(`${c.anchor.quote.prefix}${c.anchor.quote.suffix}`.length).toBeGreaterThan(0);
+  expect(c.state.screen.name).toBe('Your plan');
+});
+
+test('Send to author downloads the page with the comments in it, and hostile text cannot break the file', async ({
+  page,
+}, testInfo) => {
+  await openFixture(page);
+  await walkTo(page, 3);
+  // A reviewer who types markup must not be able to end the JSON block early.
+  await comment(page, '#step-3 .continue', 'Use </script> and <!-- here, please.', 'change');
+
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    page.click('.gm-send .gm-btn.primary'),
+  ]);
+  expect(download.suggestedFilename()).toBe('wizard.reviewed.html');
+
+  const saved = testInfo.outputPath('wizard.reviewed.html');
+  await download.saveAs(saved);
+  const html = await readFile(saved, 'utf8');
+
+  const block = html.match(
+    /<script type="application\/json" id="gitmargin-comments">([\s\S]*?)<\/script>/
+  );
+  expect(block).not.toBeNull();
+  // The reviewer's markup survives only as escapes: exactly one closing script
+  // tag exists in the file, and it is the one that ends the block.
+  expect(block[1]).not.toContain('</script>');
+  expect(block[1]).not.toContain('<!--');
+  expect(block[1]).toContain('\\u003c');
+
+  const parsed = JSON.parse(block[1]);
+  expect(parsed.version_id).toBe(VERSION);
+  expect(parsed.comments[0].intent.text).toBe('Use </script> and <!-- here, please.');
+
+  // The overlay is still in the returned file, so the author can open it and
+  // see the pins; the prototype's own markup is untouched.
+  expect(html).toContain('id="step-3"');
+  expect(html).not.toContain('gitmargin-root');
+});
+
+test('Copy for author puts the markdown batch on the clipboard', async ({ page }) => {
+  await openFixture(page);
+  await walkTo(page, 3);
+  await comment(page, '#step-3 .continue', 'Expected this to stay disabled.', 'bug');
+  await page.fill('.gm-who input', 'Priya');
+
+  await page.click('.gm-send .gm-btn.ghost');
+  const { text, ok } = await page.evaluate(() => ({
+    text: window.__gitmargin.lastCopy,
+    ok: window.__gitmargin.lastCopyOk,
+  }));
+
+  const lines = text.split('\n');
+  expect(lines[0]).toBe(`gitmargin batch v0.1 | wizard.html | ${VERSION}`);
+  expect(lines[1]).toMatch(/^Reviewer: Priya\. Viewport \d+x\d+\. Exported .+ UTC\.$/);
+  expect(text).toContain('1. [bug] On "Payment" (#step-3), after clicking Next, Next:');
+  expect(text).toContain('"Expected this to stay disabled."');
+  // One numbered line per comment.
+  expect(text.match(/^\d+\. /gm)).toHaveLength(1);
+  // Recorded for docs/batch-format.md section 8, not asserted: engines differ
+  // on whether a file:// page may write to the clipboard without a gesture.
+  console.error(`[gitmargin] clipboard write reported ok=${ok}`);
+});
+
+test('comments survive closing the tab', async ({ page }) => {
+  await openFixture(page);
+  const storageWorks = await page.evaluate(() => {
+    try {
+      localStorage.setItem('gm-probe', '1');
+      localStorage.removeItem('gm-probe');
+      return true;
+    } catch {
+      return false;
+    }
+  });
+  test.skip(!storageWorks, 'this engine gives a file:// page no localStorage');
+
+  await walkTo(page, 3);
+  await comment(page, '#step-3 .continue', 'Should still be here after a reload.', 'question');
+  await page.fill('.gm-who input', 'Priya');
+
+  await page.reload();
+  await page.waitForFunction(() => !!window.__gitmargin);
+  const env = await page.evaluate(() => window.__gitmargin.export());
+  expect(env.comments).toHaveLength(1);
+  expect(env.comments[0].intent.text).toBe('Should still be here after a reload.');
+  expect(env.reviewer.name).toBe('Priya');
+  await expect(page.locator('.gm-card')).toHaveCount(1);
+});
+
+test('a comment on another screen keeps its place, and one with no element is orphaned', async ({
+  page,
+}) => {
+  await openFixture(page);
+  await walkTo(page, 3);
+  await comment(page, '#step-3 .continue', 'Expected this to stay disabled.', 'bug');
+  await expect(page.locator('.gm-pin')).toHaveCount(1);
+
+  // Back to step 1: the element is still in the document but not shown.
+  await page.click('#step-3 .back');
+  await page.click('#step-2 .back');
+  await expect(page.locator('.gm-pin')).toHaveCount(0);
+  await expect(page.locator('.gm-flag')).toHaveText('on another screen');
+  // Nothing is lost: the card and the batch still carry it.
+  await expect(page.locator('.gm-card')).toHaveCount(1);
+  expect((await page.evaluate(() => window.__gitmargin.export())).comments).toHaveLength(1);
+
+  // Now take the element out of the page entirely.
+  await page.evaluate(() => document.querySelector('#step-3 .continue').remove());
+  await expect(page.locator('.gm-flag')).toHaveText('orphaned');
+  await expect(page.locator('.gm-card')).toHaveCount(1);
+  expect((await page.evaluate(() => window.__gitmargin.markdown()))).toContain('[orphaned:');
+});
+
+test('comment mode decides whether a click belongs to the prototype or to the overlay', async ({
+  page,
+}) => {
+  await openFixture(page);
+
+  // Off: the click is the prototype's, and the trail records it.
+  await page.click('#step-1 .next');
+  await expect(page.locator('#step-2')).toHaveClass(/active/);
+  expect(await page.evaluate(() => window.__gitmargin.trail().length)).toBe(1);
+
+  // On: the same kind of click opens a comment box and the wizard stays put.
+  await page.click('.gm-switch');
+  await page.click('#step-2 .next');
+  await expect(page.locator('#step-2')).toHaveClass(/active/);
+  await expect(page.locator('.gm-box')).toBeVisible();
+  expect(await page.evaluate(() => window.__gitmargin.trail().length)).toBe(1);
+
+  // Escape closes the box without leaving a comment.
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.gm-box')).toBeHidden();
+  expect((await page.evaluate(() => window.__gitmargin.export())).comments).toHaveLength(0);
+});

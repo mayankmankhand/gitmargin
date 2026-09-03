@@ -5,41 +5,76 @@
 // non-http URLs by design, so these tests drive Playwright directly.
 //
 // Chromium is required and stands in for Edge, which shares its engine. Firefox
-// and WebKit (Safari's engine) run only when their browser is installed, so a
-// machine with just Chromium still gets a green suite instead of three failures
-// about missing executables.
-import { defineConfig, devices } from '@playwright/test';
+// and WebKit (Safari's engine) are optional: a machine with only Chromium still
+// gets a green suite instead of failures about browsers it never installed.
+import { defineConfig, devices, chromium, firefox, webkit } from '@playwright/test';
 import { existsSync } from 'node:fs';
-import { chromium, firefox, webkit } from '@playwright/test';
+import { execFileSync } from 'node:child_process';
 
-/**
- * True when Playwright can actually launch this browser on this machine.
- * executablePath() returns a path even when the download never happened, so the
- * path has to be probed on disk rather than trusted (LESSONS: "FS-probes for
- * 'is X installed' should fall through, not be authoritative" - here the probe
- * only ever REMOVES an optional project, never the required one).
- */
-function installed(browserType) {
-  try {
-    return existsSync(browserType.executablePath());
-  } catch {
-    return false;
-  }
-}
-
-const optional = [
+const OPTIONAL = [
   { name: 'firefox', type: firefox, use: devices['Desktop Firefox'] },
   { name: 'webkit', type: webkit, use: devices['Desktop Safari'] },
-].filter((p) => installed(p.type));
+];
 
-if (optional.length < 2) {
-  const missing = ['firefox', 'webkit'].filter((n) => !optional.some((p) => p.name === n));
+/**
+ * Which optional browsers can actually RUN here.
+ *
+ * The binary being on disk is not the question: `playwright install` downloads
+ * WebKit happily onto a host that is missing the ~30 shared libraries it needs,
+ * and the fs check would then enable a project that cannot launch. So each
+ * candidate is asked for its version, which fails fast when the libraries are
+ * absent. Set GM_BROWSERS to override, e.g. GM_BROWSERS=chromium,firefox.
+ */
+function usableBrowsers() {
+  if (process.env.GM_BROWSERS) return process.env.GM_BROWSERS.split(',').filter(Boolean);
+
+  const usable = ['chromium'];
+  const broken = [];
+  const absent = [];
+  for (const { name, type } of OPTIONAL) {
+    let path;
+    try {
+      path = type.executablePath();
+    } catch {
+      absent.push(name);
+      continue;
+    }
+    if (!existsSync(path)) {
+      absent.push(name);
+      continue;
+    }
+    try {
+      execFileSync(path, ['--version'], { timeout: 20_000, stdio: 'ignore' });
+      usable.push(name);
+    } catch {
+      broken.push(name);
+    }
+  }
+
+  // Workers inherit this environment, so the probe runs once per test run.
+  process.env.GM_BROWSERS = usable.join(',');
+
   // stderr, not stdout: stdout belongs to the test reporter.
-  console.error(
-    `[gitmargin] Skipping browser project(s): ${missing.join(', ')}. ` +
-      `Install with "npx playwright install ${missing.join(' ')}" to widen coverage.`
-  );
+  if (absent.length) {
+    console.error(
+      `[gitmargin] Not installed, skipping: ${absent.join(', ')}. ` +
+        `Add with "npx playwright install ${absent.join(' ')}".`
+    );
+  }
+  if (broken.length) {
+    console.error(
+      `[gitmargin] Installed but cannot start, skipping: ${broken.join(', ')}. ` +
+        'The host is missing shared libraries; on Debian or Ubuntu run ' +
+        `"npx playwright install --with-deps ${broken.join(' ')}" (needs sudo).`
+    );
+  }
+  return usable;
 }
+
+const enabled = usableBrowsers();
+const projects = [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }].concat(
+  OPTIONAL.filter((p) => enabled.includes(p.name)).map((p) => ({ name: p.name, use: { ...p.use } }))
+);
 
 export default defineConfig({
   testDir: 'tests',
@@ -51,8 +86,5 @@ export default defineConfig({
     acceptDownloads: true,
     trace: 'retain-on-failure',
   },
-  projects: [
-    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
-    ...optional.map((p) => ({ name: p.name, use: { ...p.use } })),
-  ],
+  projects,
 });
