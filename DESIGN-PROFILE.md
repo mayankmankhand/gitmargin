@@ -22,9 +22,9 @@ and never overwrites a design system you already have. Edit it freely.
 <!-- One of: unknown | none | exists. When it exists, say where it lives (a tokens
      file, a theme config, a component library, a style guide, a Figma link) and what
      it covers (colors, type, spacing, components, motion). -->
-- **Status:** unknown
-- **Where it lives:**
-- **What it covers:**
+- **Status:** none
+- **Where it lives:** nothing yet. Confirmed 2026-09-02 during /explore on issue #3: no token or theme files, no package manifest, no style guide. The overlay's look, once picked, is written into the issue #3 plan's UI/UX Design section and becomes the system for later surfaces.
+- **What it covers:** (nothing yet)
 
 ## Allowed variance
 
@@ -38,6 +38,7 @@ and never overwrites a design system you already have. Edit it freely.
 
 <!-- Reactions captured while reacting to idea lists in /explore: what felt right,
      what felt tacky, what to avoid. One line each, newest last. -->
+- 2026-09-02, issue #3 overlay: shown seven one-line looks (margin notes, sticky notes, inspector, Docs literal, red pen, ghost, wayfinding) and answered "you decide"; no per-idea reactions. Standing constraint accepted: the overlay sits on someone else's prototype and must read over any page without competing with it.
 
 ## Directions tried
 
