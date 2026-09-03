@@ -1,0 +1,20 @@
+{
+  "name": "gitmargin",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Comments on a single HTML prototype that tell a coding agent where the reviewer was and what they expected.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "esbuild src/overlay/index.js --bundle --minify --format=iife --loader:.css=text --outfile=dist/gitmargin.js",
+    "test": "npm run build && playwright test",
+    "serve": "node scripts/serve-fixture.js"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.48.0",
+    "esbuild": "^0.28.2"
+  }
+}

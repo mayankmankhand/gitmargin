@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Checkout wizard</title>
+
+<!-- The gitmargin stamp. `npx gitmargin attach` (issue #5) writes these two tags;
+     this fixture carries them by hand so the overlay has a version to key on. -->
+<meta name="gitmargin-version" content="v1-fixt01">
+<meta name="gitmargin-file" content="wizard.html">
+
+<style>
+  :root { --line: #d9d9de; --ink: #1c1c1f; --muted: #6b6b76; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+         color: var(--ink); background: #fbfbfc; }
+  .shell { max-width: 640px; margin: 0 auto; padding: 40px 24px 96px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .lede { color: var(--muted); margin: 0 0 28px; }
+  .rail { display: flex; gap: 8px; margin-bottom: 28px; }
+  .rail span { flex: 1; height: 3px; background: var(--line); border-radius: 2px; }
+  .rail span.on { background: var(--ink); }
+  .step { display: none; }
+  .step.active { display: block; }
+  h2 { font-size: 17px; margin: 0 0 6px; }
+  p { margin: 0 0 18px; }
+  label { display: block; font-size: 13px; color: var(--muted); margin: 0 0 4px; }
+  input, select { width: 100%; padding: 9px 11px; border: 1px solid var(--line); border-radius: 6px;
+                  font: inherit; background: #fff; margin-bottom: 16px; }
+  .row { display: flex; gap: 12px; }
+  .row > div { flex: 1; }
+  .actions { display: flex; gap: 10px; align-items: center; margin-top: 24px; }
+  button { font: inherit; padding: 9px 18px; border-radius: 6px; border: 1px solid var(--ink);
+           background: var(--ink); color: #fff; cursor: pointer; }
+  button.ghost { background: #fff; color: var(--ink); }
+  button.icon { padding: 9px 12px; }
+  .summary { border: 1px solid var(--line); border-radius: 8px; padding: 16px; background: #fff; }
+  .summary div { display: flex; justify-content: space-between; padding: 5px 0; }
+  dialog { border: 1px solid var(--line); border-radius: 10px; padding: 22px; max-width: 380px; }
+  dialog::backdrop { background: rgba(0,0,0,.35); }
+</style>
+</head>
+<body>
+
+<div class="shell">
+  <h1>Northwind Supplies</h1>
+  <p class="lede">Four steps and you are done.</p>
+
+  <div class="rail" aria-hidden="true">
+    <span class="on"></span><span></span><span></span><span></span>
+  </div>
+
+  <section class="step active" id="step-1" data-gm-screen="Your plan" aria-current="step">
+    <h2>Choose a plan</h2>
+    <p>The standard plan covers up to five seats and includes next-day delivery on every order over twenty pounds.</p>
+    <label for="plan">Plan</label>
+    <select id="plan">
+      <option>Standard, 12 a month</option>
+      <option>Team, 30 a month</option>
+    </select>
+    <div class="actions">
+      <button class="next" data-to="2">Next</button>
+    </div>
+  </section>
+
+  <section class="step" id="step-2" data-gm-screen="Shipping address">
+    <h2>Where should it go?</h2>
+    <p>We deliver on weekdays only.</p>
+    <label for="line1">Address line 1</label>
+    <input id="line1" value="14 Fen Road">
+    <div class="row">
+      <div>
+        <label for="city">City</label>
+        <input id="city" value="Cambridge">
+      </div>
+      <div>
+        <label for="postcode">Postcode</label>
+        <input id="postcode" value="CB4 1UN">
+      </div>
+    </div>
+    <div class="actions">
+      <button class="back ghost" data-to="1">Back</button>
+      <button class="next" data-to="3">Next</button>
+    </div>
+  </section>
+
+  <section class="step" id="step-3" data-gm-screen="Payment">
+    <h2>How would you like to pay?</h2>
+    <p>Your card is charged when the order ships, not today.</p>
+    <label for="card">Card number</label>
+    <input id="card" value="4242 4242 4242 4242">
+    <div class="actions">
+      <button class="back ghost" data-to="2">Back</button>
+      <!-- Icon-only button: no text at all, so the anchor's text quote has nothing
+           to hold on to and the selector has to carry the comment by itself. -->
+      <button class="icon ghost" id="help" aria-label="Why do you need my card?">?</button>
+      <button class="continue" data-to="4">Continue</button>
+    </div>
+  </section>
+
+  <section class="step" id="step-4" data-gm-screen="Review order">
+    <h2>Check everything over</h2>
+    <p>Nothing is charged until you place the order.</p>
+    <div class="summary">
+      <div><span>Plan</span><span>Standard</span></div>
+      <div><span>Deliver to</span><span>14 Fen Road, Cambridge</span></div>
+      <div><span>Card</span><span>ending 4242</span></div>
+    </div>
+    <div class="actions">
+      <button class="back ghost" data-to="3">Back</button>
+      <button class="place">Place order</button>
+    </div>
+  </section>
+</div>
+
+<dialog id="help-dialog">
+  <h2>About your card</h2>
+  <p>We store the card with our payment provider, never on our own servers.</p>
+  <button class="close ghost">Close</button>
+</dialog>
+
+<script>
+  // Minimal wizard: show one step, mark the rail, and put the step in the hash.
+  var steps = document.querySelectorAll('.step');
+  var pips = document.querySelectorAll('.rail span');
+
+  function show(n) {
+    steps.forEach(function (s, i) {
+      var on = i === n - 1;
+      s.classList.toggle('active', on);
+      if (on) { s.setAttribute('aria-current', 'step'); } else { s.removeAttribute('aria-current'); }
+    });
+    pips.forEach(function (p, i) { p.classList.toggle('on', i < n); });
+    location.hash = 'step-' + n;
+  }
+
+  document.addEventListener('click', function (e) {
+    var to = e.target.closest('[data-to]');
+    if (to) { show(Number(to.dataset.to)); }
+    if (e.target.closest('#help')) { document.getElementById('help-dialog').showModal(); }
+    if (e.target.closest('.close')) { document.getElementById('help-dialog').close(); }
+  });
+</script>
+
+<script src="../dist/gitmargin.js"></script>
+</body>
+</html>
