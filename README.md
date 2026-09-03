@@ -58,7 +58,7 @@ The unclaimed square is still **platform-agnostic, identity-aware commenting on 
 
 ## Planned roadmap
 
-- [ ] **v0 part 1: the file.** The overlay (anchors, pins, threads, state capture, send back), `npx gitmargin attach` and `pull`, and one dogfood round: a four-step wizard prototype sent as a file to two reviewers, comments back, Claude Code applies them without the author explaining where anything was.
+- [ ] **v0 part 1: the file.** The overlay (anchors, pins, comments, state capture, send back), `npx gitmargin attach` and `pull`, and one dogfood round: a four-step wizard prototype sent as a file to two reviewers, comments back, Claude Code applies them without the author explaining where anything was.
 - [ ] **v0 part 2: identity and private hosting (parked).** Sign-in via OpenID Connect with GitLab first, the server on Vercel plus Neon, `publish` to GitLab Pages, the Slack and GitLab mirrors, an MCP server, the phone mode, and the four one-day spikes that must come first: sign-in inside Slack's in-app browser, GitLab consent behaviour, publish timing on GitLab Pages, and corporate MFA policies inside that browser. Parked until there is a gitlab.com group, a Slack workspace, and phones to test with (section 7 of the split doc).
 - [ ] **Later ports:** Vercel with Sign in with Slack, ungated hosts (S3, Firebase) with corporate SSO, a Cloudflare Access gate adapter, GitHub Pages (Enterprise Cloud), a self-hosting package, two-way Slack sync.
 

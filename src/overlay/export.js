@@ -118,7 +118,15 @@ export function markdown() {
     const noun = nounFor(c.anchor.tag || c.anchor.selector);
     const target = quote ? `the "${quote}" ${noun}` : `the ${noun}`;
     const selector = c.anchor.selector ? ` (${c.anchor.selector})` : '';
-    const status = resolve(c.anchor).status === 'orphaned' ? ' [orphaned: spot not found]' : '';
+    // Say how confidently the spot was found. An agent that is told the element
+    // is only approximate can ask rather than edit the wrong thing.
+    const resolved = resolve(c.anchor);
+    const status =
+      resolved.status === 'orphaned'
+        ? ' [orphaned: spot not found]'
+        : resolved.via === 'ancestor' || resolved.via === 'quote-loose'
+          ? ' [nearby: the exact element was not found, this is the closest match]'
+          : '';
 
     return `${i + 1}. ${tag}${bits.join(', ')}: ${target}${selector}${status}.\n   "${c.intent.text}"`;
   });

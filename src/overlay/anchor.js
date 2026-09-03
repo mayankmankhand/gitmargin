@@ -81,13 +81,24 @@ function byQuote(exact) {
   const matches = Array.from(document.querySelectorAll('body *')).filter(
     (el) => !el.closest('#gitmargin-root') && collapse(el.textContent).includes(exact)
   );
+  // Whether this element's text IS the quote, or merely contains it. A
+  // containment match is how a highlighted fragment is found again, but a short
+  // quote can also land on unrelated copy that happens to include those words,
+  // so the two are not equally trustworthy and the caller marks them apart.
+  const isExact = (el) => collapse(el.textContent) === exact;
   // Keep only the tightest containers: an element whose descendant also matches
   // is just an ancestor of the real one. Without this, <body> matches every
   // quote on the page - including one whose element is on a hidden step, which
   // would resolve the comment to the whole document and draw a pin for it.
   return matches
     .filter((el) => !matches.some((other) => other !== el && el.contains(other)))
-    .sort((a, b) => a.querySelectorAll('*').length - b.querySelectorAll('*').length);
+    .sort((a, b) => {
+      // Exact matches first, then the tightest container.
+      const byExact = Number(isExact(b)) - Number(isExact(a));
+      if (byExact) return byExact;
+      return a.querySelectorAll('*').length - b.querySelectorAll('*').length;
+    })
+    .map((el) => ({ element: el, exact: isExact(el) }));
 }
 
 /**
@@ -146,12 +157,24 @@ export function resolve(anchor) {
   if (shownBySelector) return { element: shownBySelector, status: 'found', via: 'selector' };
 
   const quoteHits = byQuote(anchor.quote && anchor.quote.exact);
-  const shownByQuote = quoteHits.find(isVisible);
-  if (shownByQuote) return { element: shownByQuote, status: 'found', via: 'quote' };
+  // One candidate is an answer; several is a guess. A highlighted fragment
+  // normally has exactly one containing element - its own paragraph, which is
+  // the element the anchor named anyway - so that stays an exact result. It is
+  // when the same words appear somewhere else on the page that picking one is
+  // no better than a coin toss, and the panel and the batch say so.
+  const ambiguous = quoteHits.length > 1;
+  const quoteVia = ambiguous ? 'quote-loose' : 'quote';
+
+  const shownByQuote = quoteHits.find((hit) => isVisible(hit.element));
+  if (shownByQuote) {
+    return { element: shownByQuote.element, status: 'found', via: quoteVia };
+  }
 
   // Nothing on screen, but the spot may still exist on another screen.
   if (selectorHits.length) return { element: selectorHits[0], status: 'hidden', via: 'selector' };
-  if (quoteHits.length) return { element: quoteHits[0], status: 'hidden', via: 'quote' };
+  if (quoteHits.length) {
+    return { element: quoteHits[0].element, status: 'hidden', via: quoteVia };
+  }
 
   const ancestor = ancestorFor(anchor.selector);
   if (ancestor) {

@@ -660,7 +660,8 @@ test('an element with no text of its own still anchors by selector', async ({ pa
   await walkTo(page, 3);
   await page.click('.gm-switch');
 
-  // The help button shows an icon; its accessible name is the only wording.
+  // A text input has no text of its own, so the quote is empty and the
+  // selector is the only pointer left.
   await page.click('#card');
   await page.fill('.gm-box textarea', 'This field should mask the number.');
   await page.click('.gm-box-actions .gm-btn.primary');
@@ -693,4 +694,97 @@ test('the panel keeps updating while a comment is being edited', async ({ page }
   await page.waitForTimeout(120);
   await expect(page.locator('.gm-card textarea')).toHaveValue('A careful rewrite in progress');
   await expect(page.locator('.gm-section .count')).toHaveText('1');
+});
+
+test('a pin is dropped when its element slides off sideways, not just downwards', async ({
+  page,
+}) => {
+  await openFixture(page);
+  await walkTo(page, 3);
+  await comment(page, '#step-3 .continue', 'Checking a horizontal exit.', 'change');
+  await expect(page.locator('.gm-pin')).toHaveCount(1);
+
+  // An off-canvas drawer is the usual way a prototype moves something out of
+  // view, and it moves sideways rather than down.
+  await page.evaluate(() => {
+    document.querySelector('.shell').style.transform = 'translateX(-4000px)';
+  });
+  await expect(page.locator('.gm-pin')).toHaveCount(0);
+  await expect(page.locator('.gm-leader')).toHaveCount(0);
+  await expect(page.locator('.gm-card')).toHaveCount(1);
+
+  // And off to the right, where a clamped pin would land on the panel itself.
+  await page.evaluate(() => {
+    document.querySelector('.shell').style.transform = 'translateX(4000px)';
+  });
+  await expect(page.locator('.gm-pin')).toHaveCount(0);
+
+  // Back in view, the pin returns.
+  await page.evaluate(() => {
+    document.querySelector('.shell').style.transform = '';
+  });
+  await expect(page.locator('.gm-pin')).toHaveCount(1);
+});
+
+test('a quote that matches in two places is marked approximate, not guessed at', async ({
+  page,
+}) => {
+  await openFixture(page);
+  await walkTo(page, 3);
+  await comment(page, '#step-3 .continue', 'Expected this to stay disabled.', 'bug');
+  await expect(page.locator('.gm-flag')).toHaveCount(0);
+
+  // Break the selector and put the same word somewhere else on the page, so
+  // the quote no longer identifies one element.
+  await page.evaluate(() => {
+    document.querySelector('#step-3 .continue').className = 'renamed';
+    const decoy = document.createElement('p');
+    decoy.textContent = 'Please Continue when you are ready.';
+    document.querySelector('#step-3').append(decoy);
+  });
+
+  await expect(page.locator('.gm-flag')).toHaveText(['nearby']);
+  expect(await page.evaluate(() => window.__gitmargin.markdown())).toContain(
+    '[nearby: the exact element was not found, this is the closest match]'
+  );
+});
+
+test('an icon-only control is described by its accessible name', async ({ page }) => {
+  await openFixture(page);
+  await walkTo(page, 3);
+  await page.click('.gm-switch');
+  await page.click('#help');
+
+  await page.fill('.gm-box textarea', 'This should explain the charge, not the storage.');
+  await page.click('.gm-box-actions .gm-btn.primary');
+
+  const c = (await page.evaluate(() => window.__gitmargin.export())).comments[0];
+  // visibleText falls back to the accessible name only when there is no text;
+  // this button shows a question mark, so the quote is that mark and the
+  // selector carries the identity.
+  expect(c.anchor.selector).toBe('#help');
+  expect(c.anchor.tag).toBe('button');
+  expect(await page.evaluate(() => window.__gitmargin.markdown())).toContain('button (#help)');
+});
+
+test('leaving comment mode does not throw away a comment in progress', async ({ page }) => {
+  await openFixture(page);
+  await walkTo(page, 3);
+  await page.click('.gm-switch');
+  await page.click('#step-3 .continue');
+  await page.fill('.gm-box textarea', 'Most of a thought.');
+
+  // Turning the mode off governs what a click does; it must not discard this.
+  await page.click('.gm-switch');
+  expect(await page.evaluate(() => window.__gitmargin.ui.isCommentMode())).toBe(false);
+  await expect(page.locator('.gm-box textarea')).toHaveValue('Most of a thought.');
+
+  // And it can still be saved.
+  await page.click('.gm-box-actions .gm-btn.primary');
+  expect((await page.evaluate(() => window.__gitmargin.export())).comments).toHaveLength(1);
+});
+
+test('the keyboard route is stated where a reviewer can read it', async ({ page }) => {
+  await openFixture(page);
+  await expect(page.locator('.gm-empty')).toContainText('press C');
 });

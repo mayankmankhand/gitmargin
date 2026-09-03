@@ -102,10 +102,16 @@ No phone mode: part 1 is laptop-first. No sync between reviewers: each one sends
 Comments are not encrypted in the file: whoever holds the file can read them, exactly as they can read the
 prototype.
 
-One measured limit found while building it: a prototype that opens a **modal** dialog (`showModal()`) puts that
-dialog above the overlay, so while it is open the panel and the comment box cannot be reached. A non-modal dialog is
-fine, and the screen name is read from either. Working around it would mean writing into the prototype's page, which
-part 1 does not do, so it stands as a known gap for the dogfood.
+Two measured limits found while building it, both standing as known gaps for the dogfood:
+
+- A prototype that opens a **modal** dialog (`showModal()`) puts that dialog above the overlay, so while it is open
+  the panel and the comment box cannot be reached. A non-modal dialog is fine, and the screen name is read from
+  either. Working around it would mean writing into the prototype's page, which part 1 does not do.
+- **Keyboard reach is partial.** A reviewer can turn comment mode on, tab to any control the prototype makes
+  focusable, and press C to comment on it, and a text selection made with the keyboard works the same way. What is
+  still out of reach is content that never takes focus at all, which on a typical prototype means the headings and
+  paragraphs. Covering those needs a roving cursor that walks the page element by element, which is a feature rather
+  than a fix, so it is written down here rather than half-built.
 
 ## 6. The success test
 

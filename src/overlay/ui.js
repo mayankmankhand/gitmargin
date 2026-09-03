@@ -92,6 +92,7 @@ export function mountUi(deps) {
     type: 'button',
     role: 'switch',
     'aria-checked': 'false',
+    title: 'While this is on, clicking marks a spot instead of using the page. Escape turns it off.',
   }, [
     el('span', { class: 'dot' }),
     el('span', { class: 'label', text: 'Comment mode' }),
@@ -112,7 +113,7 @@ export function mountUi(deps) {
   const sendBtn = el('button', { class: 'gm-btn primary', type: 'button', text: 'Send to author' });
   const copyBtn = el('button', { class: 'gm-btn ghost', type: 'button', text: 'Copy for author' });
   const said = el('div', { class: 'gm-said', role: 'status', 'aria-live': 'polite' });
-  const keepNote = el('div', { class: 'gm-keep' });
+  const keepNote = el('div', { class: 'gm-keep', role: 'status', 'aria-live': 'polite' });
 
   const panel = el('div', {
     class: 'gm-panel is-open',
@@ -151,7 +152,10 @@ export function mountUi(deps) {
     host.classList.toggle('gm-armed', commentMode);
     switchBtn.setAttribute('aria-checked', commentMode ? 'true' : 'false');
     if (commentMode) openPanel();
-    else closeBox();
+    // Leaving the mode governs what a click does; it is not a reason to throw
+    // away a comment in progress. An empty box closes, a written one stays open
+    // so the reviewer can still save it (review R16, residual path).
+    else if (!boxText.value.trim()) closeBox();
   };
 
   rail.addEventListener('click', openPanel);
@@ -390,7 +394,12 @@ export function mountUi(deps) {
     if (event.key !== 'c' && event.key !== 'C') return;
     if (event.metaKey || event.ctrlKey || event.altKey) return;
 
-    const active = document.activeElement;
+    // A prototype built from web components puts its fields inside shadow roots,
+    // where document.activeElement reports only the host (review R20, residual).
+    let active = document.activeElement;
+    while (active && active.shadowRoot && active.shadowRoot.activeElement) {
+      active = active.shadowRoot.activeElement;
+    }
     // Never steal the key from something the reviewer is typing into.
     if (active && (active.isContentEditable || active.matches('input, textarea, select'))) return;
 
@@ -424,11 +433,20 @@ export function mountUi(deps) {
     resolved.forEach(({ comment, status, element }, index) => {
       if (status !== 'found' || !element) return;
 
-      // Off the viewport: no pin at all. Checked before the pin is claimed, so
-      // a pin that scrolls away is removed rather than left at the edge
-      // (review R23).
+      // Off the viewport on ANY edge: no pin at all. Checked before the pin is
+      // claimed, so a pin that leaves the screen is removed rather than left at
+      // the edge (review R23). The horizontal half matters as much as the
+      // vertical: an off-canvas drawer slides sideways, and a clamped pin then
+      // lands on top of the overlay's own panel.
       const rect = element.getBoundingClientRect();
-      if (rect.bottom < 0 || rect.top > window.innerHeight) return;
+      if (
+        rect.bottom < 0 ||
+        rect.top > window.innerHeight ||
+        rect.right < 0 ||
+        rect.left > window.innerWidth
+      ) {
+        return;
+      }
       seen.add(comment.id);
 
       let pin = pins.get(comment.id);
@@ -516,7 +534,7 @@ export function mountUi(deps) {
     if (status === 'orphaned') meta.appendChild(el('span', { class: 'gm-flag', text: 'orphaned' }));
     // The exact element is gone and only its container was found, so the pin is
     // approximate. Saying so beats pointing confidently at the wrong thing.
-    if (via === 'ancestor' && status !== 'orphaned') {
+    if ((via === 'ancestor' || via === 'quote-loose') && status !== 'orphaned') {
       meta.appendChild(el('span', { class: 'gm-flag', text: 'nearby' }));
     }
 
@@ -586,7 +604,9 @@ export function mountUi(deps) {
       list.appendChild(
         el('div', {
           class: 'gm-empty',
-          text: 'No comments yet. Turn on comment mode, then click anything on the page.',
+          text:
+            'No comments yet. Turn on comment mode, then click anything on the page. ' +
+            'With a keyboard: select some text or tab to a control, then press C.',
         })
       );
     }

@@ -54,7 +54,8 @@ export const hasExported = () => exported;
 export const markExported = () => {
   exported = true;
 };
-export const hasUnexportedWork = () => state.comments.length > 0 && !exported;
+export const hasUnexportedWork = () =>
+  (state.comments.length > 0 || state.overallNote.trim().length > 0) && !exported;
 const listeners = new Set();
 
 function persist() {
@@ -128,7 +129,7 @@ export function setReviewer(name) {
 
 export function setOverallNote(note) {
   state.overallNote = String(note || '');
-  announce();
+  touched();
 }
 
 export function add(comment) {
