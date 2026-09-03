@@ -13,6 +13,15 @@ export const FORMAT_VERSION = '0.1';
 
 const isoSeconds = (d = new Date()) => d.toISOString().replace(/\.\d{3}Z$/, 'Z');
 
+/** What to call the thing in the markdown line, read off the selector's last tag. */
+const NOUNS = { button: 'button', a: 'link', input: 'field', select: 'field', textarea: 'field', img: 'image', label: 'label' };
+function nounFor(selector) {
+  const last = String(selector || '').split('>').pop().trim();
+  const tag = (last.match(/^[a-z][a-z0-9]*/i) || [''])[0].toLowerCase();
+  if (/^h[1-6]$/.test(tag)) return 'heading';
+  return NOUNS[tag] || 'element';
+}
+
 /** The envelope an agent reads. Batch format section 2. */
 export function envelope() {
   return {
@@ -51,7 +60,7 @@ export function embeddedJson() {
 /** One markdown line per comment. Batch format section 5. */
 export function markdown() {
   const env = envelope();
-  const stampedAt = env.exported_at.replace('T', ' ').replace('Z', ' UTC').slice(0, 20);
+  const stampedAt = `${env.exported_at.slice(0, 10)} ${env.exported_at.slice(11, 16)} UTC`;
   const head = [
     `gitmargin batch v${FORMAT_VERSION} | ${env.file || 'unknown file'} | ${env.version_id || 'no version id'}`,
     `Reviewer: ${env.reviewer.name || 'not given'}. ` +
@@ -59,8 +68,8 @@ export function markdown() {
   ];
 
   const lines = env.comments.map((c, i) => {
+    const tag = c.intent.tag ? `[${c.intent.tag}] ` : '';
     const bits = [];
-    if (c.intent.tag) bits.push(`[${c.intent.tag}]`);
 
     const screen = c.state.screen && c.state.screen.name;
     const where = screen ? `On "${screen}"${c.state.hash ? ` (${c.state.hash})` : ''}` : 'On this page';
@@ -70,11 +79,11 @@ export function markdown() {
     if (trail.length) bits.push(`after clicking ${trail.join(', ')}`);
 
     const quote = c.anchor.quote && c.anchor.quote.exact;
-    const target = quote ? `the "${quote}" element` : 'the element';
+    const target = quote ? `the "${quote}" ${nounFor(c.anchor.selector)}` : `the ${nounFor(c.anchor.selector)}`;
     const selector = c.anchor.selector ? ` (${c.anchor.selector})` : '';
     const status = resolve(c.anchor).status === 'orphaned' ? ' [orphaned: spot not found]' : '';
 
-    return `${i + 1}. ${bits.join(', ')}: ${target}${selector}${status}.\n   "${c.intent.text}"`;
+    return `${i + 1}. ${tag}${bits.join(', ')}: ${target}${selector}${status}.\n   "${c.intent.text}"`;
   });
 
   const tail = env.overall_note ? [`Overall: ${env.overall_note}`] : [];

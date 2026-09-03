@@ -61,20 +61,31 @@ export function selectorFor(el) {
   const own = idSelector(el);
   if (own) return own;
 
+  // Walk up to the nearest ancestor with a unique id and anchor there. A path
+  // anchored on `#step-3` says which screen the element is on, survives changes
+  // elsewhere in the page, and is what a human reads in the batch. Stopping at
+  // the first merely-unique selector gives shorter but blinder ones.
   const parts = [];
   let node = el;
-  while (node && node.nodeType === 1) {
-    const anchored = idSelector(node);
-    if (anchored) {
-      parts.unshift(anchored);
+  let anchor = null;
+  while (node && node.nodeType === 1 && node !== document.documentElement) {
+    parts.unshift(segment(node));
+    const parentId = idSelector(node.parentElement);
+    if (parentId) {
+      anchor = parentId;
       break;
     }
-    parts.unshift(segment(node));
-    if (node === document.documentElement) break;
-    // Stop as soon as what we have already identifies exactly one element.
-    if (parts.length > 1 && isUnique(parts.join(' > '))) break;
     node = node.parentElement;
   }
-  const selector = parts.join(' > ');
-  return selector || null;
+
+  const full = (anchor ? `${anchor} > ` : '') + parts.join(' > ');
+  if (isUnique(full)) return full;
+
+  // Repeated structure with no id to hold on to: take the shortest tail that
+  // still identifies one element, and accept the full path when none does.
+  for (let i = parts.length - 1; i >= 0; i -= 1) {
+    const tail = parts.slice(i).join(' > ');
+    if (isUnique(tail)) return tail;
+  }
+  return full || null;
 }
