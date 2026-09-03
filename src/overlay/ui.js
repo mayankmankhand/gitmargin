@@ -578,12 +578,8 @@ export function mountUi(deps) {
     return row;
   }
 
-  function renderPanel(resolved, force) {
-    // Rebuilt wholesale, EXCEPT while a card is being edited: that textarea
-    // lives inside the list, so rebuilding replaces what is being typed with
-    // the original text, and a scroll or a ticking prototype is enough to
-    // trigger it (review R7). The pins still re-render either way.
-    if (!force && editingId !== null && list.childElementCount) return;
+  /** Rebuild the comment list. Skipped while an edit is open (see renderPanel). */
+  function renderList(resolved) {
     list.textContent = '';
     cards.clear();
     if (!resolved.length) {
@@ -599,6 +595,15 @@ export function mountUi(deps) {
       cards.set(entry.comment.id, { row });
       list.appendChild(row);
     });
+  }
+
+  function renderPanel(resolved, force) {
+    // The LIST is rebuilt wholesale, except while a card is being edited: that
+    // textarea lives inside it, so rebuilding replaces what is being typed with
+    // the original text, and a scroll or a ticking prototype is enough to
+    // trigger it (review R7). Everything outside the list still updates, so the
+    // count and the saved notice do not freeze behind an open edit.
+    if (force || editingId === null || !list.childElementCount) renderList(resolved);
 
     // Storage is best effort on a local file, so say which way it went rather
     // than leaving the reviewer to guess whether closing the tab is safe.

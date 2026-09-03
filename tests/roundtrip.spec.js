@@ -676,3 +676,21 @@ test('an element with no text of its own still anchors by selector', async ({ pa
   // The markdown still reads as a sentence rather than a selector dump.
   expect(await page.evaluate(() => window.__gitmargin.markdown())).toContain('the field (#card)');
 });
+
+test('the panel keeps updating while a comment is being edited', async ({ page }) => {
+  await openFixture(page);
+  await walkTo(page, 3);
+  await comment(page, '#step-3 .continue', 'The original text.', 'change');
+  await page.click('.gm-card');
+  await page.click('.gm-card-actions button');
+  await page.fill('.gm-card textarea', 'A careful rewrite in progress');
+
+  // The saved notice and the count live outside the list, so guarding the list
+  // against rebuilds must not freeze them too.
+  await expect(page.locator('.gm-keep')).toHaveText('Kept in this browser until you send it.');
+  await expect(page.locator('.gm-section .count')).toHaveText('1');
+  await page.evaluate(() => document.querySelector('#step-3 h2').append(' '));
+  await page.waitForTimeout(120);
+  await expect(page.locator('.gm-card textarea')).toHaveValue('A careful rewrite in progress');
+  await expect(page.locator('.gm-section .count')).toHaveText('1');
+});
