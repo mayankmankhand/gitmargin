@@ -209,11 +209,18 @@ test('a comment on another screen keeps its place, and one with no element is or
   await expect(page.locator('.gm-card')).toHaveCount(1);
   expect((await page.evaluate(() => window.__gitmargin.export())).comments).toHaveLength(1);
 
-  // Now take the element out of the page entirely.
+  // Take the element itself out of the page. The comment is NOT orphaned: the
+  // third pointer finds the nearest surviving container, and the card says the
+  // pin is only nearby rather than exact.
   await page.evaluate(() => document.querySelector('#step-3 .continue').remove());
+  await expect(page.locator('.gm-flag')).toHaveText(['on another screen', 'nearby']);
+  await expect(page.locator('.gm-card')).toHaveCount(1);
+
+  // Take the whole container out and there is nothing left to anchor to.
+  await page.evaluate(() => document.querySelector('#step-3').remove());
   await expect(page.locator('.gm-flag')).toHaveText('orphaned');
   await expect(page.locator('.gm-card')).toHaveCount(1);
-  expect((await page.evaluate(() => window.__gitmargin.markdown()))).toContain('[orphaned:');
+  expect(await page.evaluate(() => window.__gitmargin.markdown())).toContain('[orphaned:');
 });
 
 test('comment mode decides whether a click belongs to the prototype or to the overlay', async ({
@@ -336,4 +343,41 @@ test('each comment records the viewport it was written at', async ({ page }) => 
   await page.setViewportSize({ width: 1440, height: 900 });
   const after = (await page.evaluate(() => window.__gitmargin.export())).comments[0];
   expect(after.state.viewport).toEqual({ width: 1024, height: 720 });
+});
+
+test('a highlighted quote finds the spot again when the selector stops matching', async ({
+  page,
+}) => {
+  await openFixture(page);
+  await page.click('.gm-switch');
+
+  // Highlight a fragment inside the step 1 paragraph. The stored quote is a
+  // FRAGMENT of that paragraph's text, which is the case an exact-match
+  // fallback can never rescue.
+  const box = await page.evaluate(() => {
+    const node = document.querySelector('#step-1 p').firstChild;
+    const range = document.createRange();
+    range.setStart(node, 4);
+    range.setEnd(node, 17);
+    const r = range.getBoundingClientRect();
+    return { x1: r.left + 1, x2: r.right - 1, y: r.top + r.height / 2 };
+  });
+  await page.mouse.move(box.x1, box.y);
+  await page.mouse.down();
+  await page.mouse.move(box.x2, box.y, { steps: 8 });
+  await page.mouse.up();
+  await page.fill('.gm-box textarea', 'This promise is not kept on the payment step.');
+  await page.click('.gm-box-actions .gm-btn.primary');
+  await expect(page.locator('.gm-pin')).toHaveCount(1);
+
+  // Regenerate the page the way an AI would: same words, different structure,
+  // so the stored selector no longer matches anything.
+  await page.evaluate(() => {
+    document.querySelector('#step-1').id = 'plan-step';
+  });
+
+  // The quote still finds it, exactly, with no approximate or orphaned flag.
+  await expect(page.locator('.gm-pin')).toHaveCount(1);
+  await expect(page.locator('.gm-flag')).toHaveCount(0);
+  expect(await page.evaluate(() => window.__gitmargin.markdown())).not.toContain('[orphaned:');
 });

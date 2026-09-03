@@ -112,7 +112,17 @@ here?". `tag` is optional: `change`, `bug`, `question`, or `like`.
 **anchor**, the spot: `selector` is a CSS selector for the element; `quote` is the text quote with a few words
 either side, in the W3C Web Annotation model's prefix, exact, suffix form; `point` is where inside the element's box
 the reviewer clicked, as fractions. Three ways to find the same spot on purpose: an AI-regenerated page changes
-shape. When none of them match, the comment is orphaned, which is a normal state.
+shape. They are tried in that order:
+
+1. **The selector.** A visible match wins immediately.
+2. **The quote.** The tightest element whose text *contains* the quote. Containment rather than equality, because a
+   highlighted quote is a fragment of a longer paragraph and an element quote is truncated at 160 characters, so
+   equality could never rescue either.
+3. **The nearest surviving ancestor** named by the selector, found by dropping its trailing segments. This is the
+   only pointer left when a regenerated page has changed both the class names and the copy. A comment resolved this
+   way is marked approximate, because the container was found and the element was not.
+
+When none of the three match, the comment is orphaned, which is a normal state.
 
 **state**, the where: `hash` is the page's URL fragment; `title` the page title; `screen` the name of the step, tab,
 or dialog that was open, and how it was found (section 4); `trail` the clicks since the page loaded, oldest first,

@@ -64,38 +64,100 @@ export function anchorFromSelection(selection) {
   };
 }
 
-/** Every element whose own visible text is exactly `exact`, smallest first. */
+/**
+ * Elements whose visible text CONTAINS the quote, tightest container first.
+ *
+ * Containment rather than equality, because equality could never rescue the two
+ * cases the quote exists for: a highlight is a fragment of a longer paragraph by
+ * construction, and an element's stored quote is truncated at MAX_QUOTE, so a
+ * long element's quote is only ever a prefix of its own text (review R9).
+ * Sorting by subtree size keeps the tightest match ahead of its ancestors, which
+ * all contain the same text.
+ */
 function byQuote(exact) {
   if (!exact) return [];
-  return Array.from(document.querySelectorAll('body *'))
-    .filter((el) => !el.closest('#gitmargin-root') && collapse(el.textContent) === exact)
+  const matches = Array.from(document.querySelectorAll('body *')).filter(
+    (el) => !el.closest('#gitmargin-root') && collapse(el.textContent).includes(exact)
+  );
+  // Keep only the tightest containers: an element whose descendant also matches
+  // is just an ancestor of the real one. Without this, <body> matches every
+  // quote on the page - including one whose element is on a hidden step, which
+  // would resolve the comment to the whole document and draw a pin for it.
+  return matches
+    .filter((el) => !matches.some((other) => other !== el && el.contains(other)))
     .sort((a, b) => a.querySelectorAll('*').length - b.querySelectorAll('*').length);
 }
 
 /**
- * Find the element an anchor points at.
+ * The nearest surviving ancestor named by a selector, found by dropping its
+ * trailing segments one at a time.
  *
- * Returns `{ element, status }` where status is:
+ * This is the third way back to a spot, and the only one left when a page has
+ * been regenerated with new class names and new copy: the exact element is gone
+ * but its container is usually still there, which is enough to put an agent in
+ * the right part of the page rather than reporting nothing (review R10).
+ */
+function ancestorFor(selector) {
+  if (!selector) return null;
+  const parts = selector.split('>').map((x) => x.trim()).filter(Boolean);
+  for (let take = parts.length - 1; take > 0; take -= 1) {
+    try {
+      const found = document.querySelector(parts.slice(0, take).join(' > '));
+      if (found && !found.closest('#gitmargin-root')) return found;
+    } catch {
+      /* a selector from another version of the page may not parse */
+    }
+  }
+  return null;
+}
+
+/**
+ * Find the element an anchor points at, trying the three ways in order.
+ *
+ * Returns `{ element, status, via }` where status is:
  *   found     - the element is in the page and on screen
  *   hidden    - the element exists but is not being shown (another wizard step)
  *   orphaned  - nothing matched; the comment keeps its text and is flagged
+ * and `via` says which of the three pointers answered: selector, quote, or
+ * ancestor. An ancestor match is deliberately approximate; the panel says so.
+ *
+ * A visible selector match returns immediately. That is not only the common
+ * case, it is the hot one: this runs once per comment on every animation frame
+ * of a scroll, and the quote scan reads the text of every element in the page
+ * (review R8).
  */
 export function resolve(anchor) {
-  if (!anchor) return { element: null, status: 'orphaned' };
+  if (!anchor) return { element: null, status: 'orphaned', via: null };
 
-  const candidates = [];
+  const selectorHits = [];
   if (anchor.selector) {
     try {
-      candidates.push(...document.querySelectorAll(anchor.selector));
+      for (const el of document.querySelectorAll(anchor.selector)) {
+        if (el && !el.closest('#gitmargin-root')) selectorHits.push(el);
+      }
     } catch {
       /* a selector from another version of the page may not even parse */
     }
   }
-  candidates.push(...byQuote(anchor.quote && anchor.quote.exact));
 
-  const usable = candidates.filter((el) => el && !el.closest('#gitmargin-root'));
-  if (!usable.length) return { element: null, status: 'orphaned' };
+  const shownBySelector = selectorHits.find(isVisible);
+  if (shownBySelector) return { element: shownBySelector, status: 'found', via: 'selector' };
 
-  const shown = usable.find(isVisible);
-  return shown ? { element: shown, status: 'found' } : { element: usable[0], status: 'hidden' };
+  const quoteHits = byQuote(anchor.quote && anchor.quote.exact);
+  const shownByQuote = quoteHits.find(isVisible);
+  if (shownByQuote) return { element: shownByQuote, status: 'found', via: 'quote' };
+
+  // Nothing on screen, but the spot may still exist on another screen.
+  if (selectorHits.length) return { element: selectorHits[0], status: 'hidden', via: 'selector' };
+  if (quoteHits.length) return { element: quoteHits[0], status: 'hidden', via: 'quote' };
+
+  const ancestor = ancestorFor(anchor.selector);
+  if (ancestor) {
+    return {
+      element: ancestor,
+      status: isVisible(ancestor) ? 'found' : 'hidden',
+      via: 'ancestor',
+    };
+  }
+  return { element: null, status: 'orphaned', via: null };
 }

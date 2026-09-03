@@ -345,13 +345,18 @@ export function mountUi(deps) {
   }
 
   function cardFor(entry, index) {
-    const { comment, status } = entry;
+    const { comment, status, via } = entry;
     const meta = el('div', { class: 'gm-meta' });
     if (comment.intent.tag) meta.appendChild(el('span', { class: 'gm-tag', text: comment.intent.tag }));
     const screen = comment.state.screen && comment.state.screen.name;
     if (screen) meta.appendChild(el('span', { text: screen }));
     if (status === 'hidden') meta.appendChild(el('span', { class: 'gm-flag', text: 'on another screen' }));
     if (status === 'orphaned') meta.appendChild(el('span', { class: 'gm-flag', text: 'orphaned' }));
+    // The exact element is gone and only its container was found, so the pin is
+    // approximate. Saying so beats pointing confidently at the wrong thing.
+    if (via === 'ancestor' && status !== 'orphaned') {
+      meta.appendChild(el('span', { class: 'gm-flag', text: 'nearby' }));
+    }
 
     const body = el('div', { class: 'body' }, [meta]);
 
@@ -433,8 +438,8 @@ export function mountUi(deps) {
 
   function render() {
     const resolved = store.comments().map((comment) => {
-      const { element, status } = resolve(comment.anchor);
-      return { comment, element, status };
+      const { element, status, via } = resolve(comment.anchor);
+      return { comment, element, status, via };
     });
     renderPanel(resolved);
     renderPins(resolved);
