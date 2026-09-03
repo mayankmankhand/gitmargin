@@ -42,8 +42,9 @@ You receive the file or the text
 ```
 
 The questions in the diagram are tracked, not open-ended: the screen name is answered in section 3 below and in
-section 4 of [batch-format.md](batch-format.md); orphaned anchors and version mismatches in its section 6; whether the
-download works from disk is the first open point in its section 8.
+section 4 of [batch-format.md](batch-format.md); orphaned anchors and version mismatches in its section 6. Whether
+the download works from disk was the first open point in its section 8 and is now answered there: yes in Chromium
+and Firefox, tested from a `file://` URL; WebKit is the one engine still untested.
 
 Three pieces:
 
@@ -72,7 +73,9 @@ forgets to say.
   heading.
 - The click trail: what the reviewer clicked since the page loaded, as "Next, Next, Continue". For a multi-step
   prototype the trail *is* the state, and it lets both a human and an agent get back to the same view.
-- The viewport, and a screenshot of the visible screen when that can be done cheaply.
+- The viewport. A screenshot of the visible screen was considered and left out of the v0.1 build: the field is in
+  the format and always null, because a rendering library costs every prototype about 200KB and the trail plus the
+  screen name already answer "where" (section 8 of [batch-format.md](batch-format.md)).
 
 **Why they stopped:** the free text they typed, and the optional tag. The trail records what was clicked, never what
 was typed into fields.
@@ -82,10 +85,11 @@ was typed into fields.
 Two routes, both built, both needing nothing but the file:
 
 - **Send to author.** A button that downloads the same HTML with the comments embedded in it. The reviewer sends
-  that file back the way they received the original. This route is lossless: it carries screenshots and the full
-  trail.
+  that file back the way they received the original. This route is lossless: it carries the full trail and every
+  field of every comment.
 - **Copy for author.** A button that puts a readable text block on the clipboard. The reviewer pastes it into any
-  message. This route is lighter and lossy: no screenshots, and the trail is summarised.
+  message. This route is lighter and lossy: the trail is summarised to the words that were clicked, and the
+  per-comment anchor detail is dropped.
 
 A version id is stamped into the file at attach time, so a returned batch always says which version it belongs to,
 and comments from two reviewers on the same version merge by comment id (ids are random, so two files never
