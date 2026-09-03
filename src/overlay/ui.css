@@ -180,14 +180,14 @@ input, textarea { font: inherit; color: inherit; }
   align-items: center;
   gap: 7px;
   padding: 4px 9px 4px 5px;
-  border: 1px solid var(--gm-line-strong);
+  border: 1px solid var(--gm-field-line);
   border-radius: 999px;
   white-space: nowrap;
 }
 .gm-switch:hover { border-color: var(--gm-accent); }
 .gm-switch .dot {
   width: 8px; height: 8px; border-radius: 50%;
-  border: 1px solid var(--gm-line-strong);
+  border: 1px solid var(--gm-field-line);
   background: transparent;
 }
 .gm-switch.is-on { border-color: var(--gm-accent); color: var(--gm-accent); }
