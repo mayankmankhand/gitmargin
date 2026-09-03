@@ -28,7 +28,7 @@ and stays the destination. Part 1 does not claim it.
 
 ```
 You generate prototype.html with an AI
-  -> npx gitmargin attach prototype.html   (writes a copy with the overlay in and a version id)
+  -> gitmargin attach prototype.html       (writes a copy with the overlay in and a version id)
   -> you send that copy to a reviewer, any way you like
 The reviewer opens it in a browser, from disk or anywhere
   -> clicks through the wizard             (the overlay logs each click: "Next", "Next")
@@ -37,7 +37,7 @@ The reviewer opens it in a browser, from disk or anywhere
   -> "Send to author" downloads the file with the comments inside  (does download work from disk?)
      or "Copy for author" puts a text block on the clipboard
 You receive the file or the text
-  -> npx gitmargin pull reviewed.html      -> the batch: what, where, and which version
+  -> gitmargin pull reviewed.html          -> the batch: what, where, and which version
   -> Claude Code applies the edits          (what if an anchor is orphaned? the wrong version?)
 ```
 
@@ -51,10 +51,14 @@ Three pieces:
 1. **The overlay.** One script inside the HTML. On a laptop you click an element or highlight text and a comment
    box opens: one text field with the placeholder "What did you expect here?" and an optional tag (change, bug,
    question, like). A small numbered pin marks the element; a slim panel on the right lists every thread.
-2. **Attach and pull.** `npx gitmargin attach prototype.html` writes a copy of the file next to the original with
+2. **Attach and pull.** `gitmargin attach prototype.html` writes a copy of the file next to the original with
    the overlay inside, and stamps a version id into that copy. The original is untouched; the copy is what you
-   send. `npx gitmargin pull reviewed.html` reads the comments back out, from the returned file or from a pasted
-   text block, and prints the batch for an agent. Both commands need Node and nothing else.
+   send. `gitmargin pull reviewed.html` reads the comments back out, from the returned file or from a pasted
+   text block, and prints the batch for an agent as JSON. Both commands need Node and nothing else.
+
+   Not published to npm: only the author ever runs them, so they are run from the repository as
+   `node bin/gitmargin.js <command>` (or `npm run attach --` / `npm run pull --`). Publishing would make
+   `npx gitmargin` work and changes nothing else; it is a later decision, not a part-1 one.
 3. **The batch.** What the agent reads: for each comment, what the reviewer wanted and where they were. The format
    is drafted in [batch-format.md](batch-format.md).
 

@@ -18,8 +18,9 @@ Status: v0 decided 2026-09-02 and split into two parts the same day. **Part 1's 
 tested** (issue #3): a reviewer opens the prototype from disk, clicks an element or highlights text,
 says what they expected, and the comments come back as the file with them embedded or as a clipboard
 text block. Each comment records where they were (anchor, click trail, screen name, viewport) and
-why they stopped. What remains in part 1: `npx gitmargin attach` and `pull` (issue #5), then a
-dogfood round with two reviewers (issue #6). **Part 2** (parked) = sign-in via OpenID Connect, the
+why they stopped. **`gitmargin attach` and `pull` are built and tested** (issue #5): run from the repo as
+`node bin/gitmargin.js <command>`, not published to npm. What remains in part 1: a dogfood round with two
+reviewers (issue #6). **Part 2** (parked) = sign-in via OpenID Connect, the
 server on Vercel + Neon, the Slack and GitLab mirrors, publish to GitLab Pages, the phone mode, and
 the four spikes. The split and the reasons: `docs/v0-split.md`; the original decision and the
 out-of-scope list: `docs/v0-decision.md`; the batch an agent reads: `docs/batch-format.md` (v0.2).

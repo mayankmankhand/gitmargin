@@ -1,12 +1,13 @@
 # The batch: what the overlay hands to a coding agent
 
-**Status: v0.2, 2026-09-02.** Draft v0.1 was written before any code existed; v0.2 is the same document after the
-part-1 overlay was built and tested, with the open points in section 8 answered. The shape it belongs to is in
-[v0-split.md](v0-split.md).
+**Status: v0.3, 2026-09-03.** Draft v0.1 was written before any code existed; v0.2 followed the part-1 overlay
+build, answering the open points in section 8; v0.3 follows the `attach` and `pull` commands (issue #5) and records
+what they settled. The shape it belongs to is in [v0-split.md](v0-split.md).
 
-The **document** revision is v0.2. The **wire format** stays `0.1`, in the envelope's `gitmargin` field and in the
-first line of the markdown block, because nothing about the shape changed: the answers below removed choices, they
-did not move a field. The two version numbers are deliberately not the same thing.
+The **document** revision is v0.3. The **wire format** stays `0.1`, in the envelope's `gitmargin` field and in the
+first line of the markdown block, because nothing the overlay writes has changed. What v0.3 adds is on the reading
+side: how `pull` prints a batch (section 1), what it adds when it merges several (section 5a), and where the agent
+rules now travel (section 6). The two version numbers are deliberately not the same thing.
 
 The batch is the whole point of part 1. A reviewer leaves comments on a prototype; the author gets them back; a
 coding agent reads them and makes the edits. For the agent to do that without the author explaining anything, each
@@ -20,11 +21,17 @@ The same data travels in three carriers:
 |---|---|---|---|
 | Embedded in the reviewed HTML, as a JSON script block just before the closing body tag: `<script type="application/json" id="gitmargin-comments">` | the overlay's "Send to author" button, which downloads the file as `<name>.reviewed.html` | JSON, section 2 | yes: every field of every comment, and the full trail |
 | A text block on the clipboard | the overlay's "Copy for author" button | markdown, section 5, with a first line the pull command recognises: `gitmargin batch v0.1 \| <file> \| <version id>` | no: the trail is summarised and the anchor detail is dropped |
-| The pull output | `npx gitmargin pull <reviewed file or pasted block>` | JSON, plus the markdown rendering for pasting into a chat, with the section 6 rules as a preamble | as lossless as its input |
+| The pull output | `node bin/gitmargin.js pull <reviewed file or pasted block>` | JSON on stdout by default, section 5a; `--markdown` prints the human rendering instead | as lossless as its input |
 
-An agent can read the markdown directly; the JSON is for tools.
+An agent can read the markdown directly; the JSON is for tools. **JSON is the default** because the usual reader is
+a coding agent, and a markdown preamble sitting on top of JSON is not parseable. That is why the section 6 rules
+travel inside the JSON rather than above it.
 
-Two rules the embedded carrier lives by, both settled by the build:
+The commands are not published to npm, so they are run from the repository: `node bin/gitmargin.js <command>`, or
+`npm run attach --` and `npm run pull --`. Only the author ever runs them; a reviewer only ever opens an HTML
+file.
+
+Four rules the embedded carrier lives by, all settled by building against it:
 
 - **Every `<` inside the JSON block is written as its escape, `\u003c`.** A reviewer who types `</script>` or
   `<!--` into a comment would otherwise end the block or comment out the rest of the file. `JSON.parse` turns the
@@ -39,6 +46,14 @@ Two rules the embedded carrier lives by, both settled by the build:
   read from the file. One known limit: a prototype script that ran before the overlay has already changed the DOM,
   and its changes are in the snapshot. For the init-on-load scripts an AI writes, that is harmless; the issue #6
   dogfood is where it gets tested against prototypes nobody planned for.
+- **The block is found by parsing it, never by matching its tag.** Once `attach` inlines the overlay, the document
+  contains the overlay's own source, and that source builds the block: the literal
+  `<script type="application/json" id="gitmargin-comments">` therefore appears inside the bundle as a perfect
+  lookalike. A reader that trusts the tag finds the lookalike first and then runs on to the *overlay's* closing
+  tag, because a minifier escapes every real `</script>` inside the bundle. Doing that in the strip deleted two
+  thirds of the overlay from every returned file: the file still opened, and could never be reviewed again. So a
+  candidate counts only when its contents parse as JSON carrying a `comments` array, and the last such candidate
+  wins. This applies to every reader: the overlay's own exporter, `pull`, and `attach`.
 
 ## 2. The envelope
 
@@ -173,11 +188,50 @@ Overall: The flow makes sense. Step 3 is where I got stuck.
 One line per comment: the tag, the screen, the trail as the texts clicked, the element as its quote and selector,
 then the reviewer's words verbatim.
 
+## 5a. What `pull` adds
+
+The batch `pull` prints is the envelope above plus what is needed to describe *several* of them at once. One source
+or ten, the shape is the same.
+
+```json
+{
+  "gitmargin": "0.1",
+  "generated_by": "gitmargin pull",
+  "generated_at": "2026-09-03T10:31:20Z",
+  "file": "checkout-wizard.html",
+  "version_id": "v3-8f2c1a",
+  "sources": [
+    { "index": 0, "input": "priya.reviewed.html", "carrier": "html", "lossy": false,
+      "file": "checkout-wizard.html", "version_id": "v3-8f2c1a", "reviewer": "Priya",
+      "overall_note": "Step 3 is where I got stuck.", "exported_at": "2026-09-14T16:42:07Z",
+      "comment_count": 2 }
+  ],
+  "comments": [ ],
+  "rules": [ ]
+}
+```
+
+- **`sources`** is one entry per input. The envelope in section 2 holds exactly one reviewer and one overall note,
+  so merging two files needs somewhere to put both. Each comment gains a **`source`** field naming its index.
+- **`file` and `version_id`** at the top are filled in only when every source agrees. When they disagree the fields
+  are `null` and `pull` warns on stderr, because picking one would hide the disagreement rather than resolve it.
+- **Comments merge by id.** Ids are random, so two reviewers never collide; a comment appearing twice is the same
+  comment reaching the author by two routes, usually one reviewer forwarding another's file. The first occurrence
+  wins and the repeat is counted, never silently dropped.
+- **A pasted markdown block has no ids**, so `pull` derives one from the source and the comment's position and
+  text. It is stable across runs, which is all that is needed to name a comment; it is *not* a match for the id the
+  overlay generated, so two pasted blocks cannot be merged safely against each other. `carrier` and `lossy` on the
+  source say so plainly. Two reviewers who each send a *file* merge properly, which is the case that matters.
+- **`rules`** is section 6, carried inside the data.
+- Everything is printed on stdout and nothing else is: warnings, notes and errors go to stderr, so the output stays
+  something another program can read. `pull` never writes to disk.
+
 ## 6. Rules for the agent
 
-These rules travel with the batch: `pull` prints them as a short preamble above the markdown rendering, so whatever
-the author pastes into the agent carries them. The JSON carrier does not repeat them; a tool that reads the JSON is
-expected to implement them.
+These rules travel with the batch rather than living only here, because whatever the author pastes the batch into
+has read no documentation. `pull` puts them in a `rules` array inside the JSON, and prints them as a text preamble
+above the markdown when `--markdown` is used. The embedded HTML carrier does not repeat them; a tool reading that
+block directly is expected to implement them.
 
 - **Find the spot by state first, then by anchor.** Go to the screen (the hash, or replay the trail), then the
   selector, then the quote. If nothing matches, report the comment as orphaned; do not guess.
