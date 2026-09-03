@@ -13,9 +13,9 @@ export const FORMAT_VERSION = '0.1';
 
 const isoSeconds = (d = new Date()) => d.toISOString().replace(/\.\d{3}Z$/, 'Z');
 
-/** What to call the thing in the markdown line, read off the selector's last tag. */
+/** What to call the thing in words, read off the selector's last tag. */
 const NOUNS = { button: 'button', a: 'link', input: 'field', select: 'field', textarea: 'field', img: 'image', label: 'label' };
-function nounFor(selector) {
+export function nounFor(selector) {
   const last = String(selector || '').split('>').pop().trim();
   const tag = (last.match(/^[a-z][a-z0-9]*/i) || [''])[0].toLowerCase();
   if (/^h[1-6]$/.test(tag)) return 'heading';

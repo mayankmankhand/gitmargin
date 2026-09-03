@@ -204,7 +204,7 @@ test('a comment on another screen keeps its place, and one with no element is or
   await page.click('#step-3 .back');
   await page.click('#step-2 .back');
   await expect(page.locator('.gm-pin')).toHaveCount(0);
-  await expect(page.locator('.gm-flag')).toHaveText('on another screen');
+  await expect(page.locator('.gm-flag')).toHaveText(['on another screen']);
   // Nothing is lost: the card and the batch still carry it.
   await expect(page.locator('.gm-card')).toHaveCount(1);
   expect((await page.evaluate(() => window.__gitmargin.export())).comments).toHaveLength(1);
@@ -218,7 +218,7 @@ test('a comment on another screen keeps its place, and one with no element is or
 
   // Take the whole container out and there is nothing left to anchor to.
   await page.evaluate(() => document.querySelector('#step-3').remove());
-  await expect(page.locator('.gm-flag')).toHaveText('orphaned');
+  await expect(page.locator('.gm-flag')).toHaveText(['orphaned']);
   await expect(page.locator('.gm-card')).toHaveCount(1);
   expect(await page.evaluate(() => window.__gitmargin.markdown())).toContain('[orphaned:');
 });
@@ -432,4 +432,186 @@ test('the reviewer is told whether their comments are being kept', async ({ page
   await expect(page.locator('.gm-keep')).toHaveText(
     'Not saved in this browser. Send or copy before you close this tab.'
   );
+});
+
+test('a written comment is not thrown away by Escape or by clicking elsewhere', async ({
+  page,
+}) => {
+  await openFixture(page);
+  await walkTo(page, 3);
+  await page.click('.gm-switch');
+  await page.click('#step-3 .continue');
+  await page.fill('.gm-box textarea', 'Half a thought that took a while to write.');
+
+  // Escape once warns and keeps the text.
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.gm-box')).toBeVisible();
+  await expect(page.locator('.gm-boxwarn')).toHaveText('Press again to discard what you typed.');
+  await expect(page.locator('.gm-box textarea')).toHaveValue(
+    'Half a thought that took a while to write.'
+  );
+
+  // Typing again means the reviewer is still working, so the guard re-arms and
+  // a click on another spot warns rather than blanking the box.
+  await page.locator('.gm-box textarea').type(' More.');
+  await expect(page.locator('.gm-boxwarn')).toHaveText('');
+  await page.click('#step-3 h2');
+  await expect(page.locator('.gm-box textarea')).toHaveValue(
+    'Half a thought that took a while to write. More.'
+  );
+  await expect(page.locator('.gm-boxwarn')).toHaveText('Press again to discard what you typed.');
+
+  // Only the second attempt in a row discards, deliberately.
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.gm-box')).toBeHidden();
+  expect((await page.evaluate(() => window.__gitmargin.export())).comments).toHaveLength(0);
+});
+
+test('deleting a comment takes two clicks', async ({ page }) => {
+  await openFixture(page);
+  await walkTo(page, 3);
+  await comment(page, '#step-3 .continue', 'A comment worth several minutes.', 'bug');
+  await page.click('.gm-card');
+
+  await page.click('.gm-card-actions .gm-del');
+  await expect(page.locator('.gm-card-actions .gm-del')).toHaveText('Delete?');
+  await expect(page.locator('.gm-card')).toHaveCount(1);
+  expect((await page.evaluate(() => window.__gitmargin.export())).comments).toHaveLength(1);
+
+  await page.click('.gm-card-actions .gm-del');
+  await expect(page.locator('.gm-card')).toHaveCount(0);
+  expect((await page.evaluate(() => window.__gitmargin.export())).comments).toHaveLength(0);
+});
+
+test('a comment can be made and dismissed with the keyboard alone', async ({ page }) => {
+  await openFixture(page);
+  await page.click('.gm-switch');
+
+  // Select a fragment the way shift and the arrow keys would, then press the
+  // comment key. A paragraph never takes focus, so this is the only route.
+  await page.evaluate(() => {
+    const node = document.querySelector('#step-1 p').firstChild;
+    const range = document.createRange();
+    range.setStart(node, 4);
+    range.setEnd(node, 17);
+    const sel = getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+  });
+  await page.keyboard.press('c');
+  await expect(page.locator('.gm-box')).toBeVisible();
+
+  await page.fill('.gm-box textarea', 'Reached without a mouse.');
+  await page.keyboard.press('Control+Enter');
+  const env = await page.evaluate(() => window.__gitmargin.export());
+  expect(env.comments).toHaveLength(1);
+  expect(env.comments[0].anchor.quote.exact).toBe('standard plan');
+
+  // Escape with no box open is the way out of comment mode.
+  await page.keyboard.press('Escape');
+  expect(await page.evaluate(() => window.__gitmargin.ui.isCommentMode())).toBe(false);
+});
+
+test('collapsing the panel cannot leave the prototype frozen', async ({ page }) => {
+  await openFixture(page);
+  await page.click('.gm-switch');
+  expect(await page.evaluate(() => window.__gitmargin.ui.isCommentMode())).toBe(true);
+
+  await page.click('.gm-close');
+  expect(await page.evaluate(() => window.__gitmargin.ui.isCommentMode())).toBe(false);
+  // And the prototype answers clicks again.
+  await page.click('#step-1 .next');
+  await expect(page.locator('#step-2')).toHaveClass(/active/);
+});
+
+test('the overlay exposes state and names to assistive technology', async ({ page }) => {
+  await openFixture(page);
+  await walkTo(page, 3);
+  const sw = page.locator('.gm-switch');
+  await expect(sw).toHaveAttribute('role', 'switch');
+  await expect(sw).toHaveAttribute('aria-checked', 'false');
+  await sw.click();
+  await expect(sw).toHaveAttribute('aria-checked', 'true');
+
+  // The name field's label is associated, not just adjacent.
+  expect(
+    await page.evaluate(() => {
+      const root = document.getElementById('gitmargin-root').shadowRoot;
+      const input = root.getElementById('gm-reviewer');
+      const label = root.querySelector('label[for="gm-reviewer"]');
+      return !!(input && label && root.querySelector(`#${label.htmlFor}`) === input);
+    })
+  ).toBe(true);
+
+  await page.click('#step-3 h2');
+  await page.fill('.gm-box textarea', 'Checking the pin label.');
+  await page.click('.gm-box-actions .gm-btn.primary');
+  await expect(page.locator('.gm-pin')).toHaveAttribute(
+    'aria-label',
+    'Comment 1: Checking the pin label.'
+  );
+});
+
+test('card actions are revealed by keyboard focus, not only by hover', async ({ page }) => {
+  await openFixture(page);
+  await walkTo(page, 3);
+  await comment(page, '#step-3 .continue', 'Checking focus reveal.', 'change');
+
+  await page.evaluate(() => {
+    const root = document.getElementById('gitmargin-root').shadowRoot;
+    root.querySelector('.gm-card-actions button').focus();
+  });
+  await expect
+    .poll(async () =>
+      Number(
+        await page.evaluate(() => {
+          const root = document.getElementById('gitmargin-root').shadowRoot;
+          return getComputedStyle(root.querySelector('.gm-card-actions')).opacity;
+        })
+      )
+    )
+    .toBe(1);
+});
+
+test('a pin is not drawn for an element scrolled out of the viewport', async ({ page }) => {
+  await openFixture(page);
+  await walkTo(page, 3);
+  await comment(page, '#step-3 .continue', 'Checking off-screen pins.', 'change');
+  await expect(page.locator('.gm-pin')).toHaveCount(1);
+
+  // Push the content far below the fold and look at the top of the page.
+  await page.evaluate(() => {
+    document.body.style.paddingTop = '4000px';
+    window.scrollTo(0, 0);
+  });
+  await expect(page.locator('.gm-pin')).toHaveCount(0);
+  // The comment is not lost, only its pin.
+  await expect(page.locator('.gm-card')).toHaveCount(1);
+});
+
+test('the comment box names the element in words, never a CSS selector', async ({ page }) => {
+  await openFixture(page);
+  await walkTo(page, 3);
+  await page.click('.gm-switch');
+  await page.click('#card');
+
+  const where = await page.locator('.gm-box .where').textContent();
+  expect(where).toBe('the field');
+  expect(where).not.toContain('#');
+  expect(where).not.toContain('>');
+});
+
+test('an open edit survives a re-render of the page', async ({ page }) => {
+  await openFixture(page);
+  await walkTo(page, 3);
+  await comment(page, '#step-3 .continue', 'The original text.', 'change');
+  await page.click('.gm-card');
+  await page.click('.gm-card-actions button');
+
+  await page.fill('.gm-card textarea', 'A careful rewrite in progress');
+  // Anything the prototype does triggers the observer: a clock, a carousel, a
+  // scroll. Here, a DOM change stands in for all of them.
+  await page.evaluate(() => document.querySelector('#step-3 h2').append(' '));
+  await page.waitForTimeout(120);
+  await expect(page.locator('.gm-card textarea')).toHaveValue('A careful rewrite in progress');
 });

@@ -74,26 +74,43 @@ export function mountUi(deps) {
   let stashedSelection = null;
 
   // ---- panel --------------------------------------------------------------
-  const rail = el('button', { class: 'gm-rail', type: 'button', title: 'Open gitmargin comments' });
-  const switchBtn = el('button', { class: 'gm-switch', type: 'button' }, [
+  const rail = el('button', {
+    class: 'gm-rail',
+    type: 'button',
+    'aria-label': 'Open the gitmargin comment panel',
+  });
+  const switchBtn = el('button', {
+    class: 'gm-switch',
+    type: 'button',
+    role: 'switch',
+    'aria-checked': 'false',
+  }, [
     el('span', { class: 'dot' }),
     el('span', { class: 'label', text: 'Comment mode' }),
   ]);
   const closeBtn = el('button', { class: 'gm-close', type: 'button', title: 'Collapse', text: '›' });
-  const nameInput = el('input', { type: 'text', placeholder: 'optional' });
+  const nameInput = el('input', { type: 'text', id: 'gm-reviewer', placeholder: 'optional' });
 
   const listLabel = el('div', { class: 'gm-section' }, [el('span', { text: 'Comments' }), el('span', { class: 'gm-spacer' })]);
   const listCount = el('span', { class: 'count' });
   listLabel.appendChild(listCount);
   const list = el('div', { class: 'gm-list' });
-  const overall = el('textarea', { placeholder: 'Anything that is not about one spot', hidden: 'hidden' });
+  const overall = el('textarea', {
+    placeholder: 'Anything that is not about one spot',
+    'aria-label': 'A note about the whole thing',
+    hidden: 'hidden',
+  });
   const noteToggle = el('button', { class: 'gm-note-toggle', type: 'button', text: 'Add a note about the whole thing' });
   const sendBtn = el('button', { class: 'gm-btn primary', type: 'button', text: 'Send to author' });
   const copyBtn = el('button', { class: 'gm-btn ghost', type: 'button', text: 'Copy for author' });
-  const said = el('div', { class: 'gm-said' });
+  const said = el('div', { class: 'gm-said', role: 'status', 'aria-live': 'polite' });
   const keepNote = el('div', { class: 'gm-keep' });
 
-  const panel = el('div', { class: 'gm-panel is-open' }, [
+  const panel = el('div', {
+    class: 'gm-panel is-open',
+    role: 'complementary',
+    'aria-label': 'gitmargin comments',
+  }, [
     rail,
     el('div', { class: 'gm-panel-inner' }, [
       el('div', { class: 'gm-head' }, [
@@ -102,7 +119,10 @@ export function mountUi(deps) {
         switchBtn,
         closeBtn,
       ]),
-      el('div', { class: 'gm-who' }, [el('label', { text: 'Your name, for the author' }), nameInput]),
+      el('div', { class: 'gm-who' }, [
+        el('label', { for: 'gm-reviewer', text: 'Your name, for the author' }),
+        nameInput,
+      ]),
       listLabel,
       list,
       el('div', { class: 'gm-foot' }, [noteToggle, overall, el('div', { class: 'gm-send' }, [sendBtn, copyBtn]), said, keepNote]),
@@ -117,12 +137,22 @@ export function mountUi(deps) {
     setRecording(!commentMode); // the trail records the prototype, not the overlay
     switchBtn.classList.toggle('is-on', commentMode);
     document.documentElement.style.cursor = commentMode ? 'crosshair' : '';
+    // A page-level signal that survives collapsing the panel. The crosshair is
+    // not enough on its own: a prototype's own `cursor: pointer` wins over it
+    // on exactly the buttons a reviewer tries to click (review R14).
+    host.classList.toggle('gm-armed', commentMode);
+    switchBtn.setAttribute('aria-checked', commentMode ? 'true' : 'false');
     if (commentMode) openPanel();
     else closeBox();
   };
 
   rail.addEventListener('click', openPanel);
-  closeBtn.addEventListener('click', () => panel.classList.remove('is-open'));
+  closeBtn.addEventListener('click', () => {
+    // Collapsing hides the switch, so leaving comment mode armed behind it
+    // would freeze the prototype with no visible cause (review R14).
+    setMode(false);
+    panel.classList.remove('is-open');
+  });
   switchBtn.addEventListener('click', () => setMode(!commentMode));
   noteToggle.addEventListener('click', () => {
     overall.hidden = !overall.hidden;
@@ -151,10 +181,20 @@ export function mountUi(deps) {
 
   // ---- comment box --------------------------------------------------------
   const boxWhere = el('div', { class: 'where' });
-  const boxText = el('textarea', { placeholder: 'What did you expect here?' });
+  const boxText = el('textarea', {
+    placeholder: 'What did you expect here?',
+    'aria-label': 'What did you expect here?',
+  });
   const chips = TAGS.map((tag) =>
-    el('button', { class: 'gm-chip', type: 'button', text: tag, 'data-tag': tag })
+    el('button', {
+      class: 'gm-chip',
+      type: 'button',
+      text: tag,
+      'data-tag': tag,
+      'aria-pressed': 'false',
+    })
   );
+  const boxWarn = el('div', { class: 'gm-boxwarn' });
   const saveBtn = el('button', { class: 'gm-btn primary', type: 'button', text: 'Save' });
   const cancelBtn = el('button', { class: 'gm-btn', type: 'button', text: 'Cancel' });
   const box = el('div', { class: 'gm-box', hidden: 'hidden' }, [
@@ -162,6 +202,7 @@ export function mountUi(deps) {
     boxText,
     el('div', { class: 'gm-chips' }, chips),
     el('div', { class: 'gm-box-actions' }, [saveBtn, cancelBtn]),
+    boxWarn,
   ]);
   shadow.appendChild(box);
 
@@ -169,27 +210,80 @@ export function mountUi(deps) {
     chip.addEventListener('click', () => {
       const tag = chip.dataset.tag;
       draft.tag = draft.tag === tag ? null : tag;
-      chips.forEach((c) => c.classList.toggle('is-on', c.dataset.tag === draft.tag));
+      chips.forEach((c) => {
+        const on = c.dataset.tag === draft.tag;
+        c.classList.toggle('is-on', on);
+        c.setAttribute('aria-pressed', on ? 'true' : 'false');
+      });
     })
   );
 
   function closeBox() {
     box.hidden = true;
     draft = null;
-    chips.forEach((c) => c.classList.remove('is-on'));
+    chips.forEach((c) => {
+      c.classList.remove('is-on');
+      c.setAttribute('aria-pressed', 'false');
+    });
     boxText.value = '';
+    boxWarn.textContent = '';
   }
 
-  function openBox({ anchor, element, x, y, where }) {
+  /**
+   * Close, but not silently over work in progress.
+   *
+   * Escape is the reflex used to dismiss an autofill dropdown or an
+   * input-method candidate list, and a click elsewhere on the page is how a
+   * reviewer explores. Either one used to throw away a written paragraph with
+   * no prompt and no undo (review R16). The second attempt goes through.
+   */
+  function closeBoxGuarded() {
+    if (boxText.value.trim() && !boxWarn.textContent) {
+      boxWarn.textContent = 'Press again to discard what you typed.';
+      boxText.focus();
+      return false;
+    }
+    closeBox();
+    return true;
+  }
+
+  /**
+   * How the box describes the spot. The reviewer may be a designer or an
+   * executive, so a raw CSS selector is not an answer; the exported markdown
+   * already says "the Continue button", and this says the same (review R27).
+   */
+  function describe(anchor, element) {
+    const quoted = anchor.quote && anchor.quote.exact;
+    if (quoted) return `"${quoted.slice(0, 60)}"`;
+    const label = element && element.nodeType === 1
+      ? (element.getAttribute('aria-label') || element.getAttribute('title') || '').trim()
+      : '';
+    const tag = element && element.nodeType === 1 ? element.localName : '';
+    const noun = batch.nounFor(tag || anchor.selector);
+    return label ? `the "${label}" ${noun}` : `the ${noun}`;
+  }
+
+  function openBox({ anchor, element, x, y }) {
     draft = { anchor, element, tag: null };
-    boxWhere.textContent = where;
+    boxWhere.textContent = describe(anchor, element);
     boxText.value = '';
     box.hidden = false;
-    // Place it near the spot, then keep it inside the viewport.
+    // Place it near the spot, then keep it inside the viewport. A keyboard
+    // entry has no pointer coordinates, so fall back to the element's own box
+    // rather than pinning the panel to the top-left corner (review R20).
     const width = 268;
     const height = box.getBoundingClientRect().height || 190;
-    box.style.left = `${clamp(x + 12, 8, window.innerWidth - width - 8)}px`;
-    box.style.top = `${clamp(y + 12, 8, window.innerHeight - height - 8)}px`;
+    let atX = x;
+    let atY = y;
+    if (!Number.isFinite(atX) || !Number.isFinite(atY) || (atX === 0 && atY === 0)) {
+      const rect = element && element.getBoundingClientRect
+        ? element.getBoundingClientRect()
+        : { left: 24, bottom: 24 };
+      atX = rect.left;
+      atY = rect.bottom;
+    }
+    box.style.left = `${clamp(atX + 12, 8, window.innerWidth - width - 8)}px`;
+    box.style.top = `${clamp(atY + 12, 8, window.innerHeight - height - 8)}px`;
     boxText.focus();
   }
 
@@ -208,14 +302,27 @@ export function mountUi(deps) {
   }
 
   saveBtn.addEventListener('click', saveDraft);
-  cancelBtn.addEventListener('click', closeBox);
+  cancelBtn.addEventListener('click', closeBoxGuarded);
   boxText.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) saveDraft();
   });
+  // Still writing, so the "press again to discard" arming no longer applies.
+  boxText.addEventListener('input', () => {
+    boxWarn.textContent = '';
+  });
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && !box.hidden) {
+    if (e.key !== 'Escape') return;
+    if (!box.hidden) {
       e.preventDefault();
-      closeBox();
+      closeBoxGuarded();
+      return;
+    }
+    // R14: with no box open, Escape is the way out of comment mode. Without it
+    // there was no keyboard exit at all, and a reviewer who could not find the
+    // switch had a frozen prototype and no explanation.
+    if (commentMode) {
+      e.preventDefault();
+      setMode(false);
     }
   });
 
@@ -243,6 +350,9 @@ export function mountUi(deps) {
       event.preventDefault();
       event.stopPropagation();
 
+      // Work in progress wins over a new target (review R16).
+      if (!box.hidden && !closeBoxGuarded()) return;
+
       let anchor;
       let element = target;
       if (stashedSelection) {
@@ -253,17 +363,47 @@ export function mountUi(deps) {
       } else {
         anchor = anchorFromElement(target, event);
       }
-      const quoted = anchor.quote && anchor.quote.exact;
-      openBox({
-        anchor,
-        element,
-        x: event.clientX,
-        y: event.clientY,
-        where: quoted ? `"${quoted.slice(0, 60)}"` : anchor.selector || 'this element',
-      });
+      openBox({ anchor, element, x: event.clientX, y: event.clientY });
     },
     true
   );
+
+  /**
+   * The keyboard path into a comment.
+   *
+   * Pressing Enter on a focused control already dispatches a click, which the
+   * handler above catches. What had no route at all was everything that never
+   * receives focus - headings, paragraphs, table rows - which is most of what a
+   * reviewer has opinions about, and text selected with shift and the arrow
+   * keys, because the selection was only ever stashed on mouseup (review R20).
+   */
+  document.addEventListener('keydown', (event) => {
+    if (!commentMode || !box.hidden) return;
+    if (event.key !== 'c' && event.key !== 'C') return;
+    if (event.metaKey || event.ctrlKey || event.altKey) return;
+
+    const active = document.activeElement;
+    // Never steal the key from something the reviewer is typing into.
+    if (active && (active.isContentEditable || active.matches('input, textarea, select'))) return;
+
+    const selection = window.getSelection();
+    const hasText = selection && !selection.isCollapsed && selection.toString().trim();
+    // A selection in the page is the intent regardless of what holds focus:
+    // turning comment mode on with the mouse leaves focus inside the overlay.
+    if (!hasText && active && active.closest && active.closest(`#${ROOT_ID}`)) return;
+    const element = hasText
+      ? (selection.getRangeAt(0).commonAncestorContainer.nodeType === 1
+          ? selection.getRangeAt(0).commonAncestorContainer
+          : selection.getRangeAt(0).commonAncestorContainer.parentElement)
+      : active && active !== document.body
+        ? active
+        : null;
+    if (!element) return;
+
+    event.preventDefault();
+    const anchor = hasText ? anchorFromSelection(selection) : anchorFromElement(element, null);
+    openBox({ anchor, element });
+  });
 
   // ---- rendering ----------------------------------------------------------
   const pins = new Map(); // comment id -> pin element
@@ -275,6 +415,12 @@ export function mountUi(deps) {
 
     resolved.forEach(({ comment, status, element }, index) => {
       if (status !== 'found' || !element) return;
+
+      // Off the viewport: no pin at all. Checked before the pin is claimed, so
+      // a pin that scrolls away is removed rather than left at the edge
+      // (review R23).
+      const rect = element.getBoundingClientRect();
+      if (rect.bottom < 0 || rect.top > window.innerHeight) return;
       seen.add(comment.id);
 
       let pin = pins.get(comment.id);
@@ -292,6 +438,9 @@ export function mountUi(deps) {
       }
       pin.textContent = String(index + 1);
       pin.title = comment.intent.text;
+      // The visible label is a bare digit, and the comment text lives in a
+      // title a keyboard or touch user never sees (review R21).
+      pin.setAttribute('aria-label', `Comment ${index + 1}: ${comment.intent.text}`);
       pin.classList.toggle('is-selected', selectedId === comment.id);
 
       // Selecting a comment frames the thing it is about. This is the whole
@@ -310,7 +459,6 @@ export function mountUi(deps) {
       // the corner reads as damage to the prototype, and a pin in the left
       // gutter collides with whatever shares the row. Below when there is no
       // room above.
-      const rect = element.getBoundingClientRect();
       const above = rect.top - 30;
       const pinLeft = clamp(rect.left - 2, 2, window.innerWidth - 20);
       const pinTop = clamp(above >= 2 ? above : rect.bottom + 12, 2, window.innerHeight - 20);
@@ -375,25 +523,33 @@ export function mountUi(deps) {
         const text = area.value.trim();
         if (text) store.update(comment.id, { intent: { ...comment.intent, text } });
         editingId = null;
-        render();
+        render(true);
       });
       cancel.addEventListener('click', () => {
         editingId = null;
-        render();
+        render(true);
       });
       body.append(area, el('div', { class: 'gm-card-actions' }, [save, cancel]));
     } else {
       const edit = el('button', { type: 'button', text: 'Edit' });
-      const del = el('button', { type: 'button', text: 'Delete' });
+      const del = el('button', { type: 'button', class: 'gm-del', text: 'Delete' });
       edit.addEventListener('click', (e) => {
         e.stopPropagation();
         editingId = comment.id;
-        render();
+        render(true);
       });
+      // Two steps, in place. A comment is the reviewer's own prose and nothing
+      // keeps a copy once it is gone, so one mis-aimed click should not be
+      // enough - Delete sits next to Edit in the same muted type (review R17).
       del.addEventListener('click', (e) => {
         e.stopPropagation();
+        if (del.dataset.armed !== 'yes') {
+          del.dataset.armed = 'yes';
+          del.textContent = 'Delete?';
+          return;
+        }
         store.remove(comment.id);
-        render();
+        render(true);
       });
       body.append(
         el('p', { class: 'gm-text', text: comment.intent.text }),
@@ -406,13 +562,20 @@ export function mountUi(deps) {
     row.addEventListener('click', () => {
       selectedId = selectedId === comment.id ? null : comment.id;
       render();
+      // Selecting from the panel should show the thing being framed.
+      if (selectedId === comment.id && entry.element && entry.status === 'found') {
+        entry.element.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      }
     });
     return row;
   }
 
-  function renderPanel(resolved) {
-    // Rebuilt wholesale: the fields that hold focus (name, overall note) live
-    // outside the list, so nothing the reviewer is typing into is replaced.
+  function renderPanel(resolved, force) {
+    // Rebuilt wholesale, EXCEPT while a card is being edited: that textarea
+    // lives inside the list, so rebuilding replaces what is being typed with
+    // the original text, and a scroll or a ticking prototype is enough to
+    // trigger it (review R7). The pins still re-render either way.
+    if (!force && editingId !== null && list.childElementCount) return;
     list.textContent = '';
     cards.clear();
     if (!resolved.length) {
@@ -452,12 +615,12 @@ export function mountUi(deps) {
     }
   }
 
-  function render() {
+  function render(force) {
     const resolved = store.comments().map((comment) => {
       const { element, status, via } = resolve(comment.anchor);
       return { comment, element, status, via };
     });
-    renderPanel(resolved);
+    renderPanel(resolved, force);
     renderPins(resolved);
   }
 

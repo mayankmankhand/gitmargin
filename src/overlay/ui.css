@@ -10,8 +10,12 @@
   all: initial;
   --gm-accent: #363a9c;      /* deep ink indigo: the only colour in the overlay */
   --gm-accent-soft: rgba(54, 58, 156, 0.14);
-  --gm-line: rgba(20, 20, 30, 0.16);
+  --gm-line: rgba(20, 20, 30, 0.16);        /* decorative dividers only */
   --gm-line-strong: rgba(20, 20, 30, 0.32);
+  /* The boundary of anything a person operates: a field, a chip, a button.
+     WCAG 1.4.11 asks 3:1 for that, and the two tokens above measure 1.4:1 and
+     2.1:1 on white. Same one-pixel stroke, darker value (review R26). */
+  --gm-field-line: rgba(20, 20, 30, 0.50);
   --gm-bg: #ffffff;
   --gm-panel: #f5f5f8;       /* the panel's own ground: a layer, not more page */
   --gm-text: #17171b;
@@ -29,9 +33,31 @@
 /* As a popover the root joins the top layer, so the panel stays reachable when
    the prototype opens a modal <dialog>. Popovers come with a border, padding
    and a background of their own; all three go. */
+/* Comment mode is a modal state layered over someone else's page: every click
+   goes to the overlay instead of the prototype. This border is the one cue that
+   survives collapsing the panel. */
+:host(.gm-armed)::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  border: 2px solid var(--gm-accent);
+  opacity: 0.5;
+  pointer-events: none;
+}
+
 :host(:popover-open) { border: 0; padding: 0; margin: 0; background: transparent; width: auto; height: auto; }
 
 * { box-sizing: border-box; }
+
+/* One focus rule for the whole overlay. The fields below replace the browser
+   ring with a 1px hue change, which is not a perceivable indicator on its own
+   (review R18 and the R19 split note); this restores a real one for keyboard
+   use without bringing rings back for the mouse. */
+:where(button, input, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--gm-accent);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
 button { font: inherit; color: inherit; cursor: pointer; background: none; border: 0; padding: 0; }
 input, textarea { font: inherit; color: inherit; }
 
@@ -95,8 +121,11 @@ input, textarea { font: inherit; color: inherit; }
   right: 0;
   height: 100%;
   width: 12px;                    /* a hairline to look at, 12px to hit */
-  background: transparent;
-  border-left: 1px solid var(--gm-line);
+  /* Its own ground, not the prototype's. This strip is the only way back into
+     the overlay, and the page behind it is unknown by definition: over a dark
+     band or a photograph, muted grey on transparent disappears (review R24). */
+  background: var(--gm-panel);
+  border-left: 1px solid var(--gm-field-line);
   pointer-events: auto;
   transition: width 150ms ease, background-color 150ms ease;
   display: flex;
@@ -121,7 +150,7 @@ input, textarea { font: inherit; color: inherit; }
   font-size: 10px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--gm-muted);
+  color: var(--gm-text);
   background: transparent;
   width: 100%;
 }
@@ -173,7 +202,7 @@ input, textarea { font: inherit; color: inherit; }
 .gm-who input {
   width: 100%;
   border: 0;
-  border-bottom: 1px solid var(--gm-line);
+  border-bottom: 1px solid var(--gm-field-line);
   padding: 3px 0;
   background: transparent;
   outline: none;
@@ -217,11 +246,14 @@ input, textarea { font: inherit; color: inherit; }
 .gm-flag { color: var(--gm-muted); border: 1px solid var(--gm-line-strong); border-radius: 3px; padding: 0 4px; font-size: 10px; }
 .gm-text { margin: 5px 0 0; font-size: 13.5px; line-height: 1.5; overflow-wrap: anywhere; }
 .gm-card-actions { display: flex; gap: 12px; margin-top: 7px; opacity: 0; transition: opacity 120ms ease; }
-.gm-card:hover .gm-card-actions, .gm-card.is-selected .gm-card-actions { opacity: 1; }
+.gm-card:hover .gm-card-actions,
+.gm-card:focus-within .gm-card-actions,
+.gm-card.is-selected .gm-card-actions { opacity: 1; }
 .gm-card-actions button { color: var(--gm-muted); font-size: 11px; }
 .gm-card-actions button:hover { color: var(--gm-accent); }
+.gm-card-actions .gm-del[data-armed='yes'] { color: var(--gm-accent); font-weight: 600; }
 @media (prefers-reduced-motion: reduce) { .gm-card-actions { transition: none; } }
-.gm-card textarea { width: 100%; border: 1px solid var(--gm-line-strong); border-radius: 4px; padding: 6px; resize: vertical; outline: none; }
+.gm-card textarea { width: 100%; border: 1px solid var(--gm-field-line); border-radius: 4px; padding: 6px; resize: vertical; outline: none; }
 .gm-card textarea:focus { border-color: var(--gm-accent); }
 
 .gm-foot { border-top: 1px solid var(--gm-line); padding: 10px 14px 12px; background: var(--gm-panel); }
@@ -240,7 +272,7 @@ input, textarea { font: inherit; color: inherit; }
   width: 100%;
   min-height: 44px;
   background: var(--gm-bg);
-  border: 1px solid var(--gm-line);
+  border: 1px solid var(--gm-field-line);
   border-radius: 4px;
   padding: 6px 7px;
   resize: vertical;
@@ -251,7 +283,7 @@ input, textarea { font: inherit; color: inherit; }
 .gm-send { display: flex; gap: 10px; align-items: center; margin-top: 10px; }
 .gm-btn {
   flex: none;
-  border: 1px solid var(--gm-line-strong);
+  border: 1px solid var(--gm-field-line);
   border-radius: 5px;
   padding: 7px 8px;
   text-align: center;
@@ -281,7 +313,7 @@ input, textarea { font: inherit; color: inherit; }
 .gm-box textarea {
   width: 100%;
   min-height: 62px;
-  border: 1px solid var(--gm-line);
+  border: 1px solid var(--gm-field-line);
   border-radius: 4px;
   padding: 6px 7px;
   resize: vertical;
@@ -290,8 +322,10 @@ input, textarea { font: inherit; color: inherit; }
 .gm-box textarea:focus { border-color: var(--gm-accent); }
 .gm-box textarea::placeholder { color: var(--gm-muted); }
 .gm-chips { display: flex; gap: 5px; margin: 8px 0; }
-.gm-chip { border: 1px solid var(--gm-line); border-radius: 999px; padding: 2px 9px; font-size: 11px; color: var(--gm-muted); }
+.gm-chip { border: 1px solid var(--gm-field-line); border-radius: 999px; padding: 2px 9px; font-size: 11px; color: var(--gm-muted); }
 .gm-chip:hover { border-color: var(--gm-accent); color: var(--gm-accent); }
 .gm-chip.is-on { border-color: var(--gm-accent); background: var(--gm-accent); color: #fff; }
 .gm-box-actions { display: flex; gap: 7px; }
+.gm-boxwarn { color: var(--gm-accent); font-size: 11px; margin-top: 7px; }
+.gm-boxwarn:empty { display: none; }
 .gm-box-actions .gm-btn { padding: 5px 8px; }
