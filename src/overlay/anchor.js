@@ -47,6 +47,7 @@ export function anchorFromElement(el, event) {
   const exact = collapse(visibleText(el)).slice(0, MAX_QUOTE);
   return {
     selector: selectorFor(el),
+    tag: el.localName,
     quote: quoteAround(el.parentElement || document.body, exact),
     point: pointIn(el, event),
   };
@@ -59,6 +60,7 @@ export function anchorFromSelection(selection) {
   const el = elementOf(range.commonAncestorContainer);
   return {
     selector: selectorFor(el),
+    tag: el ? el.localName : null,
     quote: quoteAround(el, exact),
     point: { x: 0.5, y: 0.5 },
   };

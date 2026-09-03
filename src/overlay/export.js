@@ -15,8 +15,8 @@ const isoSeconds = (d = new Date()) => d.toISOString().replace(/\.\d{3}Z$/, 'Z')
 
 /** What to call the thing in words, read off the selector's last tag. */
 const NOUNS = { button: 'button', a: 'link', input: 'field', select: 'field', textarea: 'field', img: 'image', label: 'label' };
-export function nounFor(selector) {
-  const last = String(selector || '').split('>').pop().trim();
+export function nounFor(selectorOrTag) {
+  const last = String(selectorOrTag || '').split('>').pop().trim();
   const tag = (last.match(/^[a-z][a-z0-9]*/i) || [''])[0].toLowerCase();
   if (/^h[1-6]$/.test(tag)) return 'heading';
   return NOUNS[tag] || 'element';
@@ -113,7 +113,10 @@ export function markdown() {
     if (trail.length) bits.push(`after clicking ${trail.join(', ')}`);
 
     const quote = c.anchor.quote && c.anchor.quote.exact;
-    const target = quote ? `the "${quote}" ${nounFor(c.anchor.selector)}` : `the ${nounFor(c.anchor.selector)}`;
+    // Prefer the recorded tag: a selector that is only an id ("#card") carries
+    // no tag to read, and "the element" is worse than "the field" (review R27).
+    const noun = nounFor(c.anchor.tag || c.anchor.selector);
+    const target = quote ? `the "${quote}" ${noun}` : `the ${noun}`;
     const selector = c.anchor.selector ? ` (${c.anchor.selector})` : '';
     const status = resolve(c.anchor).status === 'orphaned' ? ' [orphaned: spot not found]' : '';
 

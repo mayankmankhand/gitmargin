@@ -2,7 +2,7 @@
 
 **Google-Docs-style comments for private HTML prototypes, using the access control your team already has.**
 
-> Early stage, no code yet. v0 is being built in two parts. **Part 1, in progress:** comments on a single HTML file, with no server, that tell a coding agent where the reviewer was and what they expected. **Part 2, parked:** the identity and private-hosting half of the line above. The split and the reasons are in [docs/v0-split.md](docs/v0-split.md); the original decision, with the alternatives, is in [docs/v0-decision.md](docs/v0-decision.md).
+> Early stage. v0 is being built in two parts. **Part 1, in progress:** comments on a single HTML file, with no server, that tell a coding agent where the reviewer was and what they expected. The overlay is built and tested; `npx gitmargin attach` and `pull`, and a dogfood round with real reviewers, are what remain. **Part 2, parked:** the identity and private-hosting half of the line above. The split and the reasons are in [docs/v0-split.md](docs/v0-split.md); the original decision, with the alternatives, is in [docs/v0-decision.md](docs/v0-decision.md).
 
 ## The problem
 
@@ -28,10 +28,10 @@ And there is a second problem hiding inside the first. Even when a comment does 
 
 **Part 1, building now: the file is the whole product.**
 
-1. **Adds an overlay.** One script inside your HTML file. A reviewer opens the file anywhere, from disk included, clicks an element or highlights text, and leaves a threaded comment, like a Google Doc.
+1. **Adds an overlay.** One script inside your HTML file. A reviewer opens the file anywhere, from disk included, clicks an element or highlights text, and leaves a comment anchored to that spot, like a Google Doc.
 2. **Records where they were and what they expected.** Every comment carries the step, tab, or dialog that was open, the clicks that led there ("Next, Next, Continue"), and one question answered in the reviewer's own words: *what did you expect here?* Those are the two things a coding agent needs and a human forgets to say.
 3. **Comes back as a file or a text block.** "Send to author" downloads the same HTML with the comments inside; "Copy for author" puts a readable block on the clipboard. No server, no account, no upload.
-4. **Speaks AI.** `npx gitmargin pull` turns the returned file into a batch a coding agent can apply in one pass. The format is drafted in [docs/batch-format.md](docs/batch-format.md).
+4. **Speaks AI.** `npx gitmargin pull` turns the returned file into a batch a coding agent can apply in one pass. The format is specified in [docs/batch-format.md](docs/batch-format.md).
 
 **Part 2, the destination, parked until it can be tested.** Your host already knows who's allowed to see the page; part 2 reuses that for comments. Reviewers sign in through the provider your company already uses, by way of OpenID Connect, GitLab first, then Slack, Okta, Entra, or Google as configuration. Comments live in a small gitmargin server you run and are mirrored into the GitLab issue and the Slack thread with a link back. `npx gitmargin publish ./dist` replaces the drag-into-Slack habit: it puts the overlay in, publishes to the host your company already sanctions, and posts the link. Terms of art in this section, such as OpenID Connect, are explained in the research report's [glossary](research/prior-art-landscape.md#8-glossary).
 
@@ -75,7 +75,7 @@ This project stands on ideas from people who solved neighbouring problems:
 
 ## Status
 
-Decision made and amended, code not started; part 1 is next. See [docs/v0-split.md](docs/v0-split.md) for what part 1 is and what part 2 parks, [docs/batch-format.md](docs/batch-format.md) for what the agent gets, and [docs/v0-decision.md](docs/v0-decision.md) for the original decision. If you've hit this problem, a private prototype and no good way to collect feedback on it, I'd genuinely like to hear how you work around it today. Open an issue or reach out.
+Decision made and amended. Part 1's overlay is built and tested: a reviewer can open a prototype from disk, comment on it, and send the comments back as the same file or as a text block. `npx gitmargin attach` and `pull` come next, then a dogfood round. See [docs/v0-split.md](docs/v0-split.md) for what part 1 is and what part 2 parks, [docs/batch-format.md](docs/batch-format.md) for what the agent gets, and [docs/v0-decision.md](docs/v0-decision.md) for the original decision. If you've hit this problem, a private prototype and no good way to collect feedback on it, I'd genuinely like to hear how you work around it today. Open an issue or reach out.
 
 ## License
 

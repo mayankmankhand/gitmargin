@@ -615,3 +615,64 @@ test('an open edit survives a re-render of the page', async ({ page }) => {
   await page.waitForTimeout(120);
   await expect(page.locator('.gm-card textarea')).toHaveValue('A careful rewrite in progress');
 });
+
+test('a dialog names the screen it belongs to', async ({ page }) => {
+  await openFixture(page);
+  await walkTo(page, 3);
+
+  // Shown non-modally: the reviewer can still reach the overlay. The modal case
+  // is covered by the next test, which records why it cannot work today.
+  await page.evaluate(() => document.getElementById('help-dialog').show());
+  await page.click('.gm-switch');
+  await page.click('#help-dialog p');
+  await page.fill('.gm-box textarea', 'Say which provider, not just "our provider".');
+  await page.click('.gm-box-actions .gm-btn.primary');
+
+  const c = (await page.evaluate(() => window.__gitmargin.export())).comments[0];
+  expect(c.state.screen).toEqual({ name: 'About your card', source: 'dialog' });
+});
+
+test('a modal dialog covers the overlay: the known limit, recorded', async ({ page }) => {
+  await openFixture(page);
+  await walkTo(page, 3);
+  await page.click('.gm-switch');
+  await page.evaluate(() => document.getElementById('help-dialog').showModal());
+
+  // The click is still intercepted and the anchor is still captured...
+  await page.evaluate(() => document.querySelector('#help-dialog p').click());
+  expect(await page.evaluate(() => window.__gitmargin.ui.isBoxOpen())).toBe(true);
+
+  // ...but the box is behind the dialog's backdrop, so it cannot be used.
+  // A modal <dialog> opened after the overlay sits above it in the top layer
+  // and re-showing the popover does not reorder it. If a future engine changes
+  // that, this assertion fails and the limit can be lifted.
+  const onTop = await page.evaluate(() => {
+    const host = document.getElementById('gitmargin-root');
+    const r = host.shadowRoot.querySelector('.gm-box').getBoundingClientRect();
+    const el = document.elementFromPoint(r.x + r.width / 2, r.y + 20);
+    return el ? el.tagName : null;
+  });
+  expect(onTop).toBe('DIALOG');
+});
+
+test('an element with no text of its own still anchors by selector', async ({ page }) => {
+  await openFixture(page);
+  await walkTo(page, 3);
+  await page.click('.gm-switch');
+
+  // The help button shows an icon; its accessible name is the only wording.
+  await page.click('#card');
+  await page.fill('.gm-box textarea', 'This field should mask the number.');
+  await page.click('.gm-box-actions .gm-btn.primary');
+
+  const c = (await page.evaluate(() => window.__gitmargin.export())).comments[0];
+  expect(c.anchor.quote.exact).toBe('');
+  expect(c.anchor.selector).toBe('#card');
+  const resolves = await page.evaluate(
+    (sel) => document.querySelector(sel)?.id,
+    c.anchor.selector
+  );
+  expect(resolves).toBe('card');
+  // The markdown still reads as a sentence rather than a selector dump.
+  expect(await page.evaluate(() => window.__gitmargin.markdown())).toContain('the field (#card)');
+});

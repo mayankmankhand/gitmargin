@@ -56,7 +56,15 @@ export function mountUi(deps) {
   shadow.appendChild(el('style', { text: css }));
   document.body.appendChild(host);
   try {
-    // Joins the top layer, so the panel stays reachable over a modal <dialog>.
+    // Joins the top layer, which puts the overlay above ordinary page content
+    // whatever z-index that content uses.
+    //
+    // Known limit, measured: a <dialog> opened with showModal() AFTER this
+    // point sits above us in the top layer, and re-showing the popover does not
+    // reorder it (Chromium 151). While such a dialog is open the panel and the
+    // comment box are behind its backdrop, so a reviewer cannot comment on a
+    // modal dialog's contents. Recorded for the issue #6 dogfood rather than
+    // worked around, because every workaround writes into the prototype's DOM.
     host.showPopover();
   } catch {
     host.removeAttribute('popover'); // older engine: plain fixed positioning
