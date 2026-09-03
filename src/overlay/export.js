@@ -13,6 +13,18 @@ export const FORMAT_VERSION = '0.1';
 
 const isoSeconds = (d = new Date()) => d.toISOString().replace(/\.\d{3}Z$/, 'Z');
 
+/**
+ * Reviewer text, folded so it cannot imitate the block's own structure.
+ *
+ * "Copy for author" promises one line per comment. A comment carrying a blank
+ * line and its own `Rules for applying this batch:` header would otherwise
+ * render a second rules block in whatever the author pastes this into, and
+ * that block is the only thing telling an agent to treat comments as data
+ * rather than instructions (review R7). Every word survives; only the line
+ * breaks go.
+ */
+const oneLine = (text) => String(text ?? '').replace(/\r?\n/g, ' ').trim();
+
 /** What to call the thing in words, read off the selector's last tag. */
 const NOUNS = { button: 'button', a: 'link', input: 'field', select: 'field', textarea: 'field', img: 'image', label: 'label' };
 export function nounFor(selectorOrTag) {
@@ -128,10 +140,10 @@ export function markdown() {
           ? ' [nearby: the exact element was not found, this is the closest match]'
           : '';
 
-    return `${i + 1}. ${tag}${bits.join(', ')}: ${target}${selector}${status}.\n   "${c.intent.text}"`;
+    return `${i + 1}. ${tag}${bits.join(', ')}: ${target}${selector}${status}.\n   "${oneLine(c.intent.text)}"`;
   });
 
-  const tail = env.overall_note ? [`Overall: ${env.overall_note}`] : [];
+  const tail = env.overall_note ? [`Overall: ${oneLine(env.overall_note)}`] : [];
   return [head.join('\n'), lines.join('\n\n'), tail.join('')].filter(Boolean).join('\n\n');
 }
 

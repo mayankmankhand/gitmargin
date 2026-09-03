@@ -35,6 +35,22 @@ And there is a second problem hiding inside the first. Even when a comment does 
 
 **Part 2, the destination, parked until it can be tested.** Your host already knows who's allowed to see the page; part 2 reuses that for comments. Reviewers sign in through the provider your company already uses, by way of OpenID Connect, GitLab first, then Slack, Okta, Entra, or Google as configuration. Comments live in a small gitmargin server you run and are mirrored into the GitLab issue and the Slack thread with a link back. `npx gitmargin publish ./dist` replaces the drag-into-Slack habit: it puts the overlay in, publishes to the host your company already sanctions, and posts the link. Terms of art in this section, such as OpenID Connect, are explained in the research report's [glossary](research/prior-art-landscape.md#8-glossary).
 
+## Running it today
+
+gitmargin is not on npm yet, so part 1 runs from a clone of this repo:
+
+```bash
+git clone https://github.com/mayankmankhand/gitmargin.git
+cd gitmargin
+npm install && npm run build          # once: builds the overlay bundle
+
+node bin/gitmargin.js attach prototype.html   # writes prototype.gitmargin.html
+# send that file to a reviewer, any way you like; they open it and comment
+node bin/gitmargin.js pull reviewed.html      # prints the batch as JSON
+```
+
+`npm run attach -- prototype.html` and `npm run pull -- reviewed.html` do the same thing. Only the author runs these; a reviewer only ever opens an HTML file, with nothing installed.
+
 ## Design principles
 
 - **Feedback for an AI needs where and why, not just what.** "Make this bigger" is useless to an agent that cannot tell which of four screens "this" is on. Part 1 exists for this principle.
@@ -60,6 +76,7 @@ The unclaimed square is still **platform-agnostic, identity-aware commenting on 
 
 - [ ] **v0 part 1: the file.** The overlay (anchors, pins, comments, state capture, send back), `gitmargin attach` and `pull`, and one dogfood round: a four-step wizard prototype sent as a file to two reviewers, comments back, Claude Code applies them without the author explaining where anything was.
 - [ ] **v0 part 2: identity and private hosting (parked).** Sign-in via OpenID Connect with GitLab first, the server on Vercel plus Neon, `publish` to GitLab Pages, the Slack and GitLab mirrors, an MCP server, the phone mode, and the four one-day spikes that must come first: sign-in inside Slack's in-app browser, GitLab consent behaviour, publish timing on GitLab Pages, and corporate MFA policies inside that browser. Parked until there is a gitlab.com group, a Slack workspace, and phones to test with (section 7 of the split doc).
+- [ ] **Publish to npm.** Deliberately not done yet: nothing is published, so part 1 runs from a clone (see [Running it today](#running-it-today)). `package.json` already carries the `bin` entry, so publishing is a single step whenever the shape stops moving.
 - [ ] **Later ports:** Vercel with Sign in with Slack, ungated hosts (S3, Firebase) with corporate SSO, a Cloudflare Access gate adapter, GitHub Pages (Enterprise Cloud), a self-hosting package, two-way Slack sync.
 
 ## Prior art and credit where it's due

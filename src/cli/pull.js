@@ -38,8 +38,45 @@ const AGENT_RULES = [
 
 const isoSeconds = (d = new Date()) => d.toISOString().replace(/\.\d{3}Z$/, 'Z');
 
+/**
+ * Reviewer text, made unable to imitate the batch's own structure.
+ *
+ * The markdown rendering promises one line per comment. Interpolated raw, a
+ * comment containing a blank line and its own `Rules for applying this batch:`
+ * header renders a second rules block that revokes the first - and the first is
+ * the only thing telling an agent to treat comments as data rather than
+ * instructions (review R7). Folding the newlines away keeps the promise the
+ * format already made, and keeps every word the reviewer wrote.
+ */
+const oneLine = (text) => String(text ?? '').replace(/\r?\n/g, ' ').trim();
+
 /** Six hex, derived from the content so the same input always yields the same id. */
 const syntheticId = (...parts) => `c_${createHash('sha256').update(parts.join('|')).digest('hex').slice(0, 6)}`;
+
+/**
+ * The trailing `( ... )` group of a descriptor, matched by depth.
+ *
+ * Returns the offsets of the group, or null when the string does not end in a
+ * balanced one. Scanning backwards from the final `)` is what lets a selector
+ * carry its own parentheses, which every `:nth-of-type(n)` selector does.
+ */
+function trailingParens(text) {
+  const trimmed = text.replace(/\s+$/, '');
+  if (!trimmed.endsWith(')')) return null;
+  const close = trimmed.length - 1;
+  let depth = 0;
+  for (let i = close; i >= 0; i -= 1) {
+    if (trimmed[i] === ')') depth += 1;
+    else if (trimmed[i] === '(') {
+      depth -= 1;
+      // The opening paren must be preceded by the space the format writes,
+      // so a descriptor that merely ends in a parenthetical is not mistaken
+      // for one carrying a selector.
+      if (depth === 0) return i > 0 && /\s/.test(trimmed[i - 1]) ? { open: i, close, start: i - 1 } : null;
+    }
+  }
+  return null;
+}
 
 /** Fallback strings the overlay writes when a stamp was absent. */
 const nullish = (value) =>
@@ -72,18 +109,37 @@ export function parseMarkdown(text, label) {
   const head = /^gitmargin batch v(\S+)\s*\|\s*(.*?)\s*\|\s*(.*?)\s*$/.exec(lines[0] || '');
   if (!head) return null;
 
+  // Line 2 is a metadata line in two different shapes. The overlay writes
+  // `Reviewer: P. Viewport 1440x900. Exported T.`; `pull --markdown` writes
+  // `2 sources (Priya, Sam). 3 comments. Pulled T.` for a merged batch. Reading
+  // only the first meant a batch this tool printed could not be read back by
+  // this tool: the summary line fell through into the comment list, where it
+  // was reported as an unreadable block and dragged the last comment down with
+  // it. Consume EITHER, and treat any non-empty second line that is not itself
+  // a numbered item as metadata rather than content.
   const meta = /^Reviewer:\s*(.*?)\.\s*Viewport\s*(\d+)x(\d+)\.\s*Exported\s*(.*?)\.\s*$/.exec(lines[1] || '');
-  const body = lines.slice(meta ? 2 : 1).join('\n');
+  const hasMetaLine = Boolean(meta) || (Boolean((lines[1] || '').trim()) && !/^\d+\.\s/.test(lines[1] || ''));
+  const body = lines.slice(hasMetaLine ? 2 : 1).join('\n');
 
-  // The overall note is the last line of the block, when there is one.
-  const overall = /\n\s*Overall:\s*([\s\S]*?)\s*$/.exec(body);
+  // The overall note closes the block. The overlay writes `Overall:`; a merged
+  // batch writes `Overall (Priya):`, one per source, because several notes can
+  // arrive at once.
+  const overall = /\n\s*Overall(?:\s*\([^)]*\))?:\s*([\s\S]*?)\s*$/.exec(body);
   const items = (overall ? body.slice(0, overall.index) : body).trim();
 
   const comments = [];
+  const dropped = [];
   // Blocks are separated by a blank line before the next number.
   for (const block of items ? items.split(/\n\s*\n(?=\d+\.\s)/) : []) {
     const item = /^\s*(\d+)\.\s([\s\S]*?)\n\s+"([\s\S]*)"\s*$/.exec(block);
-    if (!item) continue;
+    if (!item) {
+      // A reviewer's own words can contain a blank line followed by "2.",
+      // which is exactly where this splitter cuts. Dropping the piece in
+      // silence lost real feedback and still reported a confident total
+      // (review R4). Keep the first line so the author can go and look.
+      dropped.push(block.trim().split('\n')[0].slice(0, 60));
+      continue;
+    }
     const [, position, rawDescriptor, intentText] = item;
 
     let descriptor = rawDescriptor.trim().replace(/\.$/, '');
@@ -93,9 +149,14 @@ export function parseMarkdown(text, label) {
     const flagged = /\s\[(orphaned|nearby):[^\]]*\]$/.exec(descriptor);
     if (flagged) descriptor = descriptor.slice(0, flagged.index);
 
-    const selectorMatch = /\s\(([^()]*)\)$/.exec(descriptor);
-    const selector = selectorMatch ? selectorMatch[1] : null;
-    if (selectorMatch) descriptor = descriptor.slice(0, selectorMatch.index);
+    // Match the trailing parenthesised group by BALANCE, not by content: the
+    // overlay emits `tag:nth-of-type(2)` for any element without a stable id or
+    // class, which is the ordinary case for a list item or a grid child, and a
+    // pattern forbidding inner parentheses threw that selector away entirely
+    // (review R6).
+    const selectorSpan = trailingParens(descriptor);
+    const selector = selectorSpan ? descriptor.slice(selectorSpan.open + 1, selectorSpan.close) : null;
+    if (selectorSpan) descriptor = descriptor.slice(0, selectorSpan.start);
 
     const tagMatch = /^\[([a-z]+)\]\s+/.exec(descriptor);
     const tag = tagMatch ? tagMatch[1] : null;
@@ -119,6 +180,8 @@ export function parseMarkdown(text, label) {
         selector,
         quote: quoteMatch ? { prefix: '', exact: quoteMatch[1], suffix: '' } : null,
         point: null,
+        // 'orphaned' (nothing matched), 'nearby' (found approximately), or null.
+        resolution: flagged ? flagged[1] : null,
       },
       state: {
         hash: screenMatch ? screenMatch[2] || null : null,
@@ -133,7 +196,13 @@ export function parseMarkdown(text, label) {
         viewport: meta ? { width: Number(meta[2]), height: Number(meta[3]) } : null,
         screenshot: null,
       },
-      status: flagged ? 'orphaned' : 'open',
+      // `status` is the workflow field the batch format defines (open,
+      // accepted, rejected, applied). How confidently the spot was found is a
+      // different question and gets its own field: collapsing `[nearby: ...]`
+      // into "orphaned" told the agent the element was not found when the
+      // overlay had in fact found it, and the shipped rules say to stand down
+      // on an orphaned comment (review R5).
+      status: 'open',
       replies: [],
     });
   }
@@ -147,6 +216,7 @@ export function parseMarkdown(text, label) {
     viewport: meta ? { width: Number(meta[2]), height: Number(meta[3]) } : null,
     overall_note: overall ? overall[1] : null,
     comments,
+    dropped,
   };
 }
 
@@ -164,13 +234,57 @@ function readSource(input) {
   if (fromHtml) return { label, carrier: 'html', lossy: false, envelope: fromHtml };
 
   const fromMarkdown = parseMarkdown(text, label);
-  if (fromMarkdown) return { label, carrier: 'markdown', lossy: true, envelope: fromMarkdown };
+  if (fromMarkdown) {
+    return { label, carrier: 'markdown', lossy: true, envelope: fromMarkdown, dropped: fromMarkdown.dropped };
+  }
 
   throw new CliError(
     `No gitmargin comments in ${label}.`,
     EXIT_USAGE,
     'Expected a file the reviewer sent back, or a "Copy for author" text block.'
   );
+}
+
+/**
+ * One comment, with only the fields the format defines, or null when the
+ * object is not shaped like a comment at all.
+ *
+ * Built field by field rather than copied: what arrives is whatever the sender
+ * put in the file. A missing `intent` used to crash the renderer with a raw
+ * stack trace, while the neighbouring reads were guarded (review R13).
+ */
+function normalise(comment, label, position) {
+  if (!comment || typeof comment !== 'object') return null;
+  const intent = comment.intent && typeof comment.intent === 'object' ? comment.intent : null;
+  if (!intent || typeof intent.text !== 'string') return null;
+
+  const id = typeof comment.id === 'string' && comment.id ? comment.id : syntheticId(label, position, intent.text);
+  const anchor = comment.anchor && typeof comment.anchor === 'object' ? comment.anchor : {};
+  const state = comment.state && typeof comment.state === 'object' ? comment.state : {};
+
+  return {
+    id,
+    time: typeof comment.time === 'string' ? comment.time : null,
+    intent: { text: intent.text, tag: typeof intent.tag === 'string' ? intent.tag : null },
+    anchor: {
+      selector: typeof anchor.selector === 'string' ? anchor.selector : null,
+      quote: anchor.quote && typeof anchor.quote === 'object' ? anchor.quote : null,
+      point: anchor.point && typeof anchor.point === 'object' ? anchor.point : null,
+      tag: typeof anchor.tag === 'string' ? anchor.tag : null,
+      resolution: typeof anchor.resolution === 'string' ? anchor.resolution : null,
+    },
+    state: {
+      hash: typeof state.hash === 'string' ? state.hash : null,
+      title: typeof state.title === 'string' ? state.title : null,
+      screen: state.screen && typeof state.screen === 'object' ? state.screen : null,
+      trail: Array.isArray(state.trail) ? state.trail.filter((t) => t && typeof t === 'object') : [],
+      scroll: state.scroll && typeof state.scroll === 'object' ? state.scroll : null,
+      viewport: state.viewport && typeof state.viewport === 'object' ? state.viewport : null,
+      screenshot: typeof state.screenshot === 'string' ? state.screenshot : null,
+    },
+    status: typeof comment.status === 'string' ? comment.status : 'open',
+    replies: Array.isArray(comment.replies) ? comment.replies : [],
+  };
 }
 
 /**
@@ -185,14 +299,25 @@ export function merge(sources) {
   const seen = new Map();
   let duplicates = 0;
 
+  const malformed = [];
+
   sources.forEach((source, index) => {
-    for (const comment of source.envelope.comments) {
-      if (seen.has(comment.id)) {
-        duplicates += 1;
-        continue;
+    source.envelope.comments.forEach((comment, position) => {
+      // The file came back from someone else, which this module treats as the
+      // trust boundary, so its shape is not something to assume. Spreading a
+      // raw object also carried every key the sender chose into the batch an
+      // agent reads (review R13).
+      const clean = normalise(comment, source.label, position);
+      if (!clean) {
+        malformed.push(`${source.label} #${position + 1}`);
+        return;
       }
-      seen.set(comment.id, { ...comment, source: index });
-    }
+      if (seen.has(clean.id)) {
+        duplicates += 1;
+        return;
+      }
+      seen.set(clean.id, { ...clean, source: index });
+    });
   });
 
   const distinct = (key) => [...new Set(sources.map((s) => s.envelope[key]).filter(Boolean))];
@@ -200,6 +325,7 @@ export function merge(sources) {
   const versions = distinct('version_id');
 
   return {
+    malformed,
     batch: {
       gitmargin: FORMAT_VERSION,
       generated_by: 'gitmargin pull',
@@ -268,14 +394,20 @@ export function toMarkdown(batch) {
     const selector = c.anchor && c.anchor.selector ? ` (${c.anchor.selector})` : '';
     const noun = nounFor((c.anchor && (c.anchor.tag || c.anchor.selector)) || '');
     const target = quote ? `the "${quote}" ${noun}` : `the ${noun}`;
-    const orphaned = c.status === 'orphaned' ? ' [orphaned: spot not found]' : '';
+    const resolution = c.anchor && c.anchor.resolution;
+    const flag =
+      resolution === 'orphaned'
+        ? ' [orphaned: spot not found]'
+        : resolution === 'nearby'
+          ? ' [nearby: the exact element was not found, this is the closest match]'
+          : '';
 
-    return `${i + 1}. ${tag}${bits.join(', ')}: ${target}${selector}${orphaned}.\n   "${c.intent.text}"`;
+    return `${i + 1}. ${tag}${bits.join(', ')}: ${target}${selector}${flag}.\n   "${oneLine(c.intent.text)}"`;
   });
 
   const notes = batch.sources
     .filter((s) => s.overall_note)
-    .map((s) => `Overall${s.reviewer ? ` (${s.reviewer})` : ''}: ${s.overall_note}`);
+    .map((s) => `Overall${s.reviewer ? ` (${s.reviewer})` : ''}: ${oneLine(s.overall_note)}`);
 
   return [preamble, header, lines.join('\n\n'), notes.join('\n')].filter(Boolean).join('\n\n');
 }
@@ -292,7 +424,7 @@ export function pull(args) {
   }
 
   const sources = inputs.map(readSource);
-  const { batch, duplicates, versions } = merge(sources);
+  const { batch, duplicates, versions, malformed } = merge(sources);
 
   process.stdout.write(wantsMarkdown ? `${toMarkdown(batch)}\n` : `${JSON.stringify(batch, null, 2)}\n`);
 
@@ -313,6 +445,23 @@ export function pull(args) {
   }
   if (duplicates) {
     process.stderr.write(`Merged ${duplicates} duplicate comment${duplicates === 1 ? '' : 's'} by id.\n`);
+  }
+  // Anything that did not survive parsing is named, never just discarded: this
+  // is the path a reviewer's feedback arrives on when they could not send the
+  // file, so a silent loss is a loss nobody can recover (review R4, R13).
+  const droppedAll = sources.flatMap((s) => (s.dropped || []).map((d) => `${s.label}: "${d}"`));
+  if (droppedAll.length) {
+    process.stderr.write(
+      `Warning: ${droppedAll.length} block${droppedAll.length === 1 ? '' : 's'} in the pasted text could not be read ` +
+        `and ${droppedAll.length === 1 ? 'is' : 'are'} NOT in this batch:\n` +
+        droppedAll.map((d) => `  ${d}\n`).join('')
+    );
+  }
+  if (malformed.length) {
+    process.stderr.write(
+      `Warning: ${malformed.length} comment${malformed.length === 1 ? '' : 's'} had no readable text and ` +
+        `${malformed.length === 1 ? 'was' : 'were'} skipped: ${malformed.join(', ')}.\n`
+    );
   }
   process.stderr.write(`${batch.comments.length} comment${batch.comments.length === 1 ? '' : 's'} from ${sources.length} source${sources.length === 1 ? '' : 's'}.\n`);
 

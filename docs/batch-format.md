@@ -27,9 +27,10 @@ An agent can read the markdown directly; the JSON is for tools. **JSON is the de
 a coding agent, and a markdown preamble sitting on top of JSON is not parseable. That is why the section 6 rules
 travel inside the JSON rather than above it.
 
-The commands are not published to npm, so they are run from the repository: `node bin/gitmargin.js <command>`, or
-`npm run attach --` and `npm run pull --`. Only the author ever runs them; a reviewer only ever opens an HTML
-file.
+The commands are not published to npm, so they run from a clone of the repository:
+`node bin/gitmargin.js pull reviewed.html`, or `npm run pull -- reviewed.html` (the `--` is what passes the
+filename through npm). A fresh clone runs `npm install && npm run build` once first. Only the author ever runs
+them; a reviewer only ever opens an HTML file.
 
 Four rules the embedded carrier lives by, all settled by building against it:
 
@@ -50,8 +51,8 @@ Four rules the embedded carrier lives by, all settled by building against it:
   contains the overlay's own source, and that source builds the block: the literal
   `<script type="application/json" id="gitmargin-comments">` therefore appears inside the bundle as a perfect
   lookalike. A reader that trusts the tag finds the lookalike first and then runs on to the *overlay's* closing
-  tag, because a minifier escapes every real `</script>` inside the bundle. Doing that in the strip deleted two
-  thirds of the overlay from every returned file: the file still opened, and could never be reviewed again. So a
+  tag, because a minifier escapes every real `</script>` inside the bundle. Doing that where `attach` strips a
+  previous overlay out of a returned file deleted two thirds of that overlay: the file still opened, and could never be reviewed again. So a
   candidate counts only when its contents parse as JSON carrying a `comments` array, and the last such candidate
   wins. This applies to every reader: the overlay's own exporter, `pull`, and `attach`.
 

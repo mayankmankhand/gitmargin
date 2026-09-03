@@ -54,11 +54,14 @@ Three pieces:
 2. **Attach and pull.** `gitmargin attach prototype.html` writes a copy of the file next to the original with
    the overlay inside, and stamps a version id into that copy. The original is untouched; the copy is what you
    send. `gitmargin pull reviewed.html` reads the comments back out, from the returned file or from a pasted
-   text block, and prints the batch for an agent as JSON. Both commands need Node and nothing else.
+   text block, and prints the batch for an agent as JSON. Neither command has a runtime dependency: Node and
+   nothing else.
 
-   Not published to npm: only the author ever runs them, so they are run from the repository as
-   `node bin/gitmargin.js <command>` (or `npm run attach --` / `npm run pull --`). Publishing would make
-   `npx gitmargin` work and changes nothing else; it is a later decision, not a part-1 one.
+   Not published to npm: only the author ever runs them, so they run from a clone of the repository as
+   `node bin/gitmargin.js attach prototype.html` and `node bin/gitmargin.js pull reviewed.html`, or through npm
+   as `npm run attach -- prototype.html` and `npm run pull -- reviewed.html`. Building the overlay bundle they
+   attach needs one dev dependency, so a fresh clone runs `npm install && npm run build` once first. Publishing
+   would make `npx gitmargin` work and changes nothing else; it is a later decision, not a part-1 one.
 3. **The batch.** What the agent reads: for each comment, what the reviewer wanted and where they were. The format
    is drafted in [batch-format.md](batch-format.md).
 

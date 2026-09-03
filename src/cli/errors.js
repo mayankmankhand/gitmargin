@@ -35,10 +35,17 @@ export class CliError extends Error {
  * no previous stamp to remove, so "matched nothing" is the normal case there.
  */
 export function replaceOnce(source, pattern, replacement, what) {
+  // Enforce the name rather than trusting it. `String.replace` with a global
+  // regex replaces EVERY match, so a future caller reaching for the obvious
+  // helper with a `/g` pattern would silently get replace-all. The guard's
+  // `test` would still pass, so nothing would report it (review R14).
+  if (pattern.global) {
+    throw new CliError(`replaceOnce was given a global regex while trying to ${what}.`, EXIT_REFUSED);
+  }
   if (!pattern.test(source)) {
     throw new CliError(`Could not ${what}.`, EXIT_REFUSED);
   }
-  // Reset a global/sticky regex: `test` advances lastIndex and would make the
+  // `test` advances lastIndex on a sticky pattern, which would make the
   // following replace start from the wrong offset.
   pattern.lastIndex = 0;
   return source.replace(pattern, replacement);

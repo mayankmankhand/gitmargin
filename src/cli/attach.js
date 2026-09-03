@@ -10,7 +10,7 @@
 // <script src> pointing at anything would arrive broken.
 
 import { createHash } from 'node:crypto';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CliError, EXIT_OK, EXIT_REFUSED, EXIT_USAGE, replaceOnce } from './errors.js';
@@ -85,6 +85,32 @@ export function outputNameFor(sourceBase) {
   return `${stem}.gitmargin${ext}`;
 }
 
+/**
+ * Do these two paths name the same file?
+ *
+ * Compared by identity, not by text. `outputNameFor` always writes the marker
+ * segment lowercase, so `p.GitMargin.html` produces the output name
+ * `p.gitmargin.html`: two different strings, one file on a case-insensitive
+ * volume. On this machine that is not hypothetical - /mnt/c is Windows-backed -
+ * and the miss meant `attach` overwrote its own input while printing "is
+ * untouched", destroying a returned reviewer's comments (review R2). Device and
+ * inode also settle the symlink and hardlink versions of the same question.
+ */
+export function isSameFile(a, b) {
+  let left;
+  try {
+    left = statSync(a);
+  } catch {
+    return false; // No output file yet, which is the normal first attach.
+  }
+  try {
+    const right = statSync(b);
+    return left.dev === right.dev && left.ino === right.ino;
+  } catch {
+    return false;
+  }
+}
+
 /** Attribute-safe: a prototype named `it"s.html` must not break the meta tag. */
 const attr = (value) => String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
 
@@ -106,10 +132,18 @@ export function stripPrevious(html) {
   );
 }
 
-/** Insert before the LAST match, the way the overlay's own exporter does. */
+/**
+ * Insert before the LAST match, the way the overlay's own exporter does.
+ *
+ * Scans a private copy of the pattern. Driving `exec` in a loop leaves a
+ * regex's `lastIndex` wherever the scan stopped, so sharing one would make the
+ * next call start from the middle of the document (review R14). Safe today only
+ * because the one call site passes a fresh literal; this makes it safe always.
+ */
 function insertBeforeLast(source, pattern, insert, what) {
+  const scan = new RegExp(pattern.source, pattern.flags.includes('g') ? pattern.flags : `${pattern.flags}g`);
   let at = -1;
-  for (let m = pattern.exec(source); m; m = pattern.exec(source)) at = m.index;
+  for (let m = scan.exec(source); m; m = scan.exec(source)) at = m.index;
   if (at < 0) throw new CliError(`Could not ${what}.`, EXIT_REFUSED);
   return source.slice(0, at) + insert + source.slice(at);
 }
@@ -180,7 +214,7 @@ export function attach(args) {
   // its own output. Writing there would modify the file we were handed, and
   // "the original is never opened for writing" has to hold without exception -
   // it is the reason this command is safe to run on anything.
-  if (path.resolve(outPath) === path.resolve(source)) {
+  if (isSameFile(outPath, source)) {
     throw new CliError(
       `${path.basename(source)} is already an attached copy.`,
       EXIT_REFUSED,

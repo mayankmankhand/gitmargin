@@ -23,7 +23,7 @@ why they stopped. **`gitmargin attach` and `pull` are built and tested** (issue 
 reviewers (issue #6). **Part 2** (parked) = sign-in via OpenID Connect, the
 server on Vercel + Neon, the Slack and GitLab mirrors, publish to GitLab Pages, the phone mode, and
 the four spikes. The split and the reasons: `docs/v0-split.md`; the original decision and the
-out-of-scope list: `docs/v0-decision.md`; the batch an agent reads: `docs/batch-format.md` (v0.2).
+out-of-scope list: `docs/v0-decision.md`; the batch an agent reads: `docs/batch-format.md` (v0.3).
 
 ## Working on the overlay
 

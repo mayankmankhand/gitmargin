@@ -18,10 +18,16 @@ import { CliError, EXIT_OK, EXIT_USAGE } from '../src/cli/errors.js';
 
 const USAGE = `gitmargin - comments on one HTML prototype, in a form an agent can act on
 
+Not on npm, so run these from the repo. Build the overlay once first:
+  npm install && npm run build
+
 Usage
-  gitmargin attach <prototype.html>          write a copy with the overlay in it
-  gitmargin pull <reviewed.html> [more...]   print the comments as JSON
-  gitmargin help                             this text
+  node bin/gitmargin.js attach <prototype.html>        write a copy with the overlay in it
+  node bin/gitmargin.js pull <reviewed.html> [more...] print the comments as JSON
+  node bin/gitmargin.js help                           this text
+
+  npm run attach -- <prototype.html>                   the same, through npm
+  npm run pull -- <reviewed.html>
 
 attach
   Writes <name>.gitmargin.html next to the original and stamps a version id
