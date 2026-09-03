@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sound Connect setup</title>
+
+<!--
+  Mock prototype of the Sony WH-1000XM5 first-run setup in the Sony Headphones
+  Connect app, modelled on Sony's own help guide so the steps match a real flow:
+  https://helpguide.sony.net/mdr/wh1000xm5/v1/en/contents/TP1000536738.html
+  (pairing mode, install and connect the app, then the app's sound settings).
+
+  Deliberately NOT stamped with the gitmargin meta tags and carries no overlay
+  script tag: this file is the untouched input `npx gitmargin attach` runs on.
+-->
+
+<style>
+  :root { --line: #d9d9de; --ink: #1c1c1f; --muted: #6b6b76; --accent: #1a56db; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+         color: var(--ink); background: #fbfbfc; }
+  .shell { max-width: 660px; margin: 0 auto; padding: 40px 24px 96px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  h2 { font-size: 17px; margin: 0 0 6px; }
+  h3 { font-size: 14px; margin: 18px 0 8px; }
+  p { margin: 0 0 18px; }
+  .lede { color: var(--muted); margin: 0 0 28px; }
+  .rail { display: flex; gap: 6px; margin-bottom: 8px; }
+  .rail span { flex: 1; height: 3px; background: var(--line); border-radius: 2px; }
+  .rail span.on { background: var(--ink); }
+  .count { color: var(--muted); font-size: 12px; margin: 0 0 26px; }
+  .step { display: none; }
+  .step.active { display: block; }
+  label { display: block; font-size: 13px; color: var(--muted); margin: 0 0 4px; }
+  input[type=text], input[type=email], input[type=password], select {
+    width: 100%; padding: 9px 11px; border: 1px solid var(--line); border-radius: 6px;
+    font: inherit; background: #fff; margin-bottom: 16px; }
+  .row { display: flex; gap: 12px; }
+  .row > div { flex: 1; }
+  .actions { display: flex; gap: 10px; align-items: center; margin-top: 24px; }
+  button { font: inherit; padding: 9px 18px; border-radius: 6px; border: 1px solid var(--ink);
+           background: var(--ink); color: #fff; cursor: pointer; }
+  button.ghost { background: #fff; color: var(--ink); }
+  .card { border: 1px solid var(--line); border-radius: 8px; padding: 16px; background: #fff; }
+  .card div.line { display: flex; justify-content: space-between; padding: 5px 0; }
+  .check { display: flex; gap: 8px; align-items: flex-start; margin-bottom: 10px;
+           font-size: 14px; color: var(--ink); }
+  .check input { margin-top: 3px; }
+  .radios label { display: flex; gap: 8px; align-items: baseline; font-size: 14px;
+                  color: var(--ink); margin-bottom: 10px; }
+  /* Tile grid: real radios under the hood so a pick sticks without any JS. */
+  .tiles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+  .tile { border: 1px solid var(--line); border-radius: 10px; padding: 14px; background: #fff;
+          cursor: pointer; display: block; font-size: 14px; color: var(--ink); }
+  .tile input { position: absolute; opacity: 0; }
+  .tile strong { display: block; margin-bottom: 2px; }
+  .tile small { color: var(--muted); }
+  .tile:has(input:checked) { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  /* Switch: a checkbox wearing a track and a knob, so no script owns its state. */
+  .switch { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; font-size: 14px; }
+  .switch input { position: absolute; opacity: 0; }
+  .track { width: 40px; height: 22px; border-radius: 11px; background: var(--line);
+           position: relative; transition: background .15s; flex: none; }
+  .track::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px;
+                  border-radius: 50%; background: #fff; transition: transform .15s; }
+  .switch input:checked + .track { background: var(--accent); }
+  .switch input:checked + .track::after { transform: translateX(18px); }
+  input[type=range] { width: 100%; margin: 4px 0 18px; }
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 18px; }
+  .tabs [role=tab] { background: none; border: none; border-bottom: 2px solid transparent;
+                     color: var(--muted); padding: 8px 12px; border-radius: 0; }
+  .tabs [role=tab][aria-selected=true] { color: var(--ink); border-bottom-color: var(--ink); }
+  [role=tabpanel][hidden] { display: none; }
+  .hint { font-size: 13px; color: var(--muted); }
+  dialog { border: 1px solid var(--line); border-radius: 10px; padding: 22px; max-width: 400px; }
+  dialog::backdrop { background: rgba(0,0,0,.35); }
+  svg.hero { display: block; margin: 0 auto 18px; }
+</style>
+</head>
+<body>
+
+<div class="shell">
+  <h1>Sony Sound Connect</h1>
+  <p class="lede">Seven steps to set up your WH-1000XM5.</p>
+
+  <div class="rail" aria-hidden="true">
+    <span class="on"></span><span></span><span></span><span></span><span></span><span></span><span></span>
+  </div>
+  <p class="count" id="count">Step 1 of 7</p>
+
+  <!-- Naming path: data-gm-screen (the tagged convention, rule 1). -->
+  <section class="step active" id="step-1" data-gm-screen="Pair your headphones">
+    <h2>Turn the headphones on</h2>
+    <p>Hold the power button for about five seconds until the light flashes blue. New headphones do this on their own the first time.</p>
+
+    <svg class="hero" width="120" height="80" viewBox="0 0 120 80" aria-hidden="true">
+      <path d="M20 55 V40 a40 34 0 0 1 80 0 V55" fill="none" stroke="#1c1c1f" stroke-width="4"/>
+      <rect x="8" y="48" width="24" height="30" rx="8" fill="#1c1c1f"/>
+      <rect x="88" y="48" width="24" height="30" rx="8" fill="#1c1c1f"/>
+    </svg>
+
+    <label class="check"><input type="checkbox" id="charged" checked> The headphones are charged</label>
+    <label class="check"><input type="checkbox" id="near"> They are within a metre of this phone</label>
+
+    <div class="actions">
+      <button class="ghost" id="ask-bt">Turn on Bluetooth</button>
+      <button class="next" data-to="2">Next</button>
+    </div>
+  </section>
+
+  <!-- Naming path: aria-current="step" (rule 3). Left in the markup rather than
+       moved by the script, because a hidden step fails the visibility test anyway. -->
+  <section class="step" id="step-2" aria-current="step">
+    <h2>Sign in to your Sony account</h2>
+    <p>Signing in keeps your equaliser and noise cancelling settings when you switch phones.</p>
+    <label for="email">Email</label>
+    <input type="email" id="email" value="rin@example.com">
+    <div class="row">
+      <div>
+        <label for="pw">Password</label>
+        <input type="password" id="pw" value="hunter2hunter2">
+      </div>
+      <div>
+        <label for="nick">Name for this headset</label>
+        <input type="text" id="nick" value="Rin's XM5">
+      </div>
+    </div>
+    <label class="check"><input type="checkbox" id="news"> Send me firmware news</label>
+    <div class="actions">
+      <button class="back ghost" data-to="1">Back</button>
+      <button class="next" data-to="3">Next</button>
+    </div>
+  </section>
+
+  <!-- Naming path: nearest visible heading (rule 5). No tag, no aria-current,
+       no selected tab on this step, so only the h2 is left to answer. -->
+  <section class="step" id="step-3">
+    <h2>How do you mostly listen?</h2>
+    <p>This only picks the starting settings. Everything stays changeable later.</p>
+    <div class="tiles">
+      <label class="tile"><input type="radio" name="use" value="commute" checked>
+        <strong>Commuting</strong><small>Trains, buses, walking</small></label>
+      <label class="tile"><input type="radio" name="use" value="office">
+        <strong>Working</strong><small>Open office or cafe</small></label>
+      <label class="tile"><input type="radio" name="use" value="flights">
+        <strong>Long flights</strong><small>Adds a cabin pressure step</small></label>
+      <label class="tile"><input type="radio" name="use" value="home">
+        <strong>At home</strong><small>Quiet room, long sessions</small></label>
+    </div>
+    <div class="actions">
+      <button class="back ghost" data-to="2">Back</button>
+      <button class="next" data-to="4">Next</button>
+    </div>
+  </section>
+
+  <!-- Naming path: the selected tab (rule 4). The strip lives inside the step so
+       it disappears with it and cannot name the other screens. -->
+  <section class="step" id="step-4">
+    <h2>Adaptive Sound Control</h2>
+    <p>The headphones notice whether you are still, walking or on a vehicle, and change the ambient sound to match.</p>
+
+    <div class="tabs" role="tablist">
+      <button role="tab" id="tab-sound" aria-selected="true" aria-controls="panel-sound">Sound</button>
+      <button role="tab" id="tab-controls" aria-selected="false" aria-controls="panel-controls">Controls</button>
+      <button role="tab" id="tab-about" aria-selected="false" aria-controls="panel-about">About</button>
+    </div>
+
+    <div role="tabpanel" id="panel-sound" aria-labelledby="tab-sound">
+      <label class="switch"><input type="checkbox" id="asc" checked><span class="track"></span> Adaptive Sound Control on</label>
+      <h3>When you are walking</h3>
+      <div class="radios">
+        <label><input type="radio" name="walking" value="ambient" checked> Let traffic through</label>
+        <label><input type="radio" name="walking" value="light"> Light noise cancelling</label>
+        <label><input type="radio" name="walking" value="full"> Full noise cancelling</label>
+      </div>
+    </div>
+
+    <div role="tabpanel" id="panel-controls" aria-labelledby="tab-controls" hidden>
+      <label class="switch"><input type="checkbox" id="touch" checked><span class="track"></span> Touch panel gestures</label>
+      <label class="switch"><input type="checkbox" id="wear"><span class="track"></span> Pause when I take them off</label>
+    </div>
+
+    <div role="tabpanel" id="panel-about" aria-labelledby="tab-about" hidden>
+      <div class="card">
+        <div class="line"><span>Model</span><span>WH-1000XM5</span></div>
+        <div class="line"><span>Firmware</span><span>2.0.1</span></div>
+        <div class="line"><span>Battery</span><span>78 per cent</span></div>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button class="back ghost" data-to="3">Back</button>
+      <button class="next" data-to="5">Next</button>
+    </div>
+  </section>
+
+  <!-- Naming path: data-gm-screen (rule 1). -->
+  <section class="step" id="step-5" data-gm-screen="Ambient sound">
+    <h2>Set the ambient level</h2>
+    <p>Twenty steps between full noise cancelling and hearing the room. Zero is the quietest.</p>
+    <label for="ambient">Ambient sound level</label>
+    <input type="range" id="ambient" min="0" max="20" value="6">
+    <label class="switch"><input type="checkbox" id="stc" checked><span class="track"></span> Speak-to-Chat pauses music when I talk</label>
+    <label for="voice">Voice assistant on the button</label>
+    <select id="voice">
+      <option>Phone assistant</option>
+      <option>Amazon Alexa</option>
+      <option>Nothing, keep it for noise cancelling</option>
+    </select>
+    <div class="actions">
+      <button class="back ghost" data-to="4">Back</button>
+      <button class="next" data-to="6">Next</button>
+    </div>
+  </section>
+
+  <!-- Naming path: data-gm-screen (rule 1). Conditional step: reached only when
+       "Long flights" was the answer on step 3, so the rail can skip a number. -->
+  <section class="step" id="step-6" data-gm-screen="Flight mode">
+    <h2>Cabin pressure and long flights</h2>
+    <p>Air pressure changes how noise cancelling sounds. The headphones can re-tune themselves once the cabin settles.</p>
+    <label for="eq">Starting equaliser</label>
+    <select id="eq">
+      <option>Flat</option>
+      <option selected>Excited</option>
+      <option>Mellow</option>
+      <option>Bright</option>
+      <option>Vocal</option>
+    </select>
+    <label class="check"><input type="checkbox" id="optimise" checked> Optimise for cabin pressure automatically</label>
+    <label class="check"><input type="checkbox" id="wired"> Remind me to pack the flight cable</label>
+    <div class="actions">
+      <button class="back ghost" data-to="5">Back</button>
+      <button class="next" data-to="7">Next</button>
+    </div>
+  </section>
+
+  <!-- Naming path: data-gm-screen (rule 1), with the policy dialog above it
+       exercising rule 2 while it is open. -->
+  <section class="step" id="step-7" data-gm-screen="All set">
+    <h2>You are ready</h2>
+    <p>The settings are on the headphones now. Nothing here needs the app to stay open.</p>
+    <div class="card">
+      <div class="line"><span>Headset</span><span>Rin's XM5</span></div>
+      <div class="line"><span>Signed in as</span><span>rin@example.com</span></div>
+      <div class="line"><span>Ambient level</span><span>6 of 20</span></div>
+      <div class="line"><span>Speak-to-Chat</span><span>On</span></div>
+    </div>
+    <p class="hint" style="margin-top:16px">Firmware 2.0.1 is the newest version for this headset.</p>
+    <div class="actions">
+      <button class="back ghost" data-to="6">Back</button>
+      <button class="ghost" id="ask-policy">What is shared with Sony?</button>
+      <button class="done">Finish</button>
+    </div>
+  </section>
+</div>
+
+<!-- Both dialogs sit outside the steps on purpose: inside a tagged step, rule 1
+     would answer first and the dialog naming path would never be exercised. -->
+<dialog id="bt-dialog">
+  <h2>Allow Bluetooth access?</h2>
+  <p>Sound Connect needs Bluetooth to find headphones nearby. It does not use your location.</p>
+  <div class="actions">
+    <button class="close ghost">Not now</button>
+    <button class="close">Allow</button>
+  </div>
+</dialog>
+
+<dialog id="policy-dialog">
+  <h2>What Sony receives</h2>
+  <p>Your headset model, firmware version and the settings above. Audio is never sent anywhere.</p>
+  <div class="actions">
+    <button class="close ghost">Close</button>
+  </div>
+</dialog>
+
+<script>
+  // Clickable, not clever: show one step, light the rail, park the step in the hash.
+  var steps = document.querySelectorAll('.step');
+  var pips = document.querySelectorAll('.rail span');
+  var count = document.getElementById('count');
+
+  // Step 6 belongs to the flight answer only, so it is skipped in whichever
+  // direction the reviewer arrived from.
+  function wantsFlightStep() {
+    var picked = document.querySelector('input[name="use"]:checked');
+    return !!picked && picked.value === 'flights';
+  }
+
+  function show(n) {
+    steps.forEach(function (s, i) { s.classList.toggle('active', i === n - 1); });
+    pips.forEach(function (p, i) { p.classList.toggle('on', i < n); });
+    count.textContent = 'Step ' + n + ' of 7';
+    location.hash = 'step-' + n;
+  }
+
+  document.addEventListener('click', function (e) {
+    var nav = e.target.closest('[data-to]');
+    if (nav) {
+      var to = Number(nav.dataset.to);
+      if (to === 6 && !wantsFlightStep()) { to = nav.classList.contains('back') ? 5 : 7; }
+      show(to);
+    }
+
+    var tab = e.target.closest('[role="tab"]');
+    if (tab) {
+      document.querySelectorAll('[role="tab"]').forEach(function (t) {
+        var on = t === tab;
+        t.setAttribute('aria-selected', String(on));
+        document.getElementById(t.getAttribute('aria-controls')).hidden = !on;
+      });
+    }
+
+    if (e.target.closest('#ask-bt')) { document.getElementById('bt-dialog').showModal(); }
+    if (e.target.closest('#ask-policy')) { document.getElementById('policy-dialog').showModal(); }
+    if (e.target.closest('.close')) { e.target.closest('dialog').close(); }
+    if (e.target.closest('.done')) { document.querySelector('.done').textContent = 'Done'; }
+  });
+</script>
+
+</body>
+</html>
