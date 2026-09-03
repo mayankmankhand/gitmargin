@@ -22,6 +22,40 @@ function nounFor(selector) {
   return NOUNS[tag] || 'element';
 }
 
+/**
+ * Comments already embedded in this file by an earlier round.
+ *
+ * The overlay writes the block, so it reads the block: without this the file a
+ * reviewer sends back is a file whose comments nobody can load, and re-sending
+ * it would replace them with an empty list rather than merge (review R3).
+ * Returns an empty array when there is no block or it does not parse.
+ */
+export function embeddedComments() {
+  const node = document.getElementById('gitmargin-comments');
+  if (!node) return [];
+  try {
+    const parsed = JSON.parse(node.textContent || 'null');
+    return parsed && Array.isArray(parsed.comments) ? parsed.comments : [];
+  } catch {
+    return [];
+  }
+}
+
+/** The reviewer name an earlier round recorded, or an empty string. */
+export function embeddedReviewer() {
+  const node = document.getElementById('gitmargin-comments');
+  if (!node) return { name: '', note: '' };
+  try {
+    const parsed = JSON.parse(node.textContent || 'null') || {};
+    return {
+      name: (parsed.reviewer && parsed.reviewer.name) || '',
+      note: parsed.overall_note || '',
+    };
+  } catch {
+    return { name: '', note: '' };
+  }
+}
+
 /** The envelope an agent reads. Batch format section 2. */
 export function envelope() {
   return {
@@ -97,13 +131,19 @@ export function markdown() {
  * reviewed file can be reviewed again without collecting duplicates.
  */
 export function reviewedHtml() {
-  const stripped = originalHtml.replace(
+  const stripped = originalHtml().replace(
     /[ \t]*<script\b[^>]*\bid=["']gitmargin-comments["'][^>]*>[\s\S]*?<\/script>[ \t]*\r?\n?/gi,
     ''
   );
   const block = `<script type="application/json" id="gitmargin-comments">\n${embeddedJson()}\n</script>\n`;
 
-  const at = stripped.toLowerCase().lastIndexOf('</body>');
+  // Case-insensitive search on the ORIGINAL string. Lowercasing first and
+  // slicing the original is a bug: lowercase is not length-preserving in
+  // Unicode, so one dotted capital I ahead of the tag shifts every later index
+  // and the block lands inside the closing tag (review R5).
+  let at = -1;
+  const closing = /<\/body\s*>/gi;
+  for (let m = closing.exec(stripped); m; m = closing.exec(stripped)) at = m.index;
   if (at < 0) return stripped + block;
   return stripped.slice(0, at) + block + stripped.slice(at);
 }

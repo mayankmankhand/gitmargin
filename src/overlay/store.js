@@ -52,6 +52,20 @@ export function load(versionId) {
   }
 }
 
+/**
+ * Merge comments that arrived inside the file with whatever is already loaded.
+ * Existing ids win, so a reviewer reopening their own reviewed file does not
+ * end up with two of everything (review R3).
+ */
+export function seed(comments, reviewerName, note) {
+  const known = new Set(state.comments.map((c) => c.id));
+  const incoming = (comments || []).filter((c) => c && c.id && !known.has(c.id));
+  if (incoming.length) state.comments = incoming.concat(state.comments);
+  if (!state.reviewer && reviewerName) state.reviewer = reviewerName;
+  if (!state.overallNote && note) state.overallNote = note;
+  if (incoming.length || reviewerName || note) announce();
+}
+
 /** Run `fn` whenever anything changes. */
 export function subscribe(fn) {
   listeners.add(fn);

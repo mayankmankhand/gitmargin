@@ -29,6 +29,9 @@ Two rules the embedded carrier lives by, both settled by the build:
 - **Every `<` inside the JSON block is written as its escape, `\u003c`.** A reviewer who types `</script>` or
   `<!--` into a comment would otherwise end the block or comment out the rest of the file. `JSON.parse` turns the
   escapes back into the characters, so a tool reading the JSON needs no special handling.
+- **The overlay reads the block as well as writing it.** Opening a reviewed file restores the comments it carries,
+  merged by comment id with anything the browser already held, so the returned file is a document anyone can open
+  rather than a dead end. Without that, re-sending a reviewed file would replace its comments with an empty list.
 - **The reviewed file is the page as it was delivered, not as the reviewer left it.** The overlay snapshots the
   document when its script starts, before it creates a single element of its own, and writes the comment block into
   that. Serialising the live page instead would save a wizard frozen on step 3 with the overlay's panel baked in.
@@ -92,6 +95,7 @@ The envelope shape is borrowed from human-review (a per-file list, free text, an
       { "seconds_before": 10, "selector": "#step-2 > div.actions > button.next", "text": "Next" }
     ],
     "scroll": { "x": 0, "y": 320 },
+    "viewport": { "width": 1440, "height": 900 },
     "screenshot": null
   },
   "status": "open",
@@ -113,7 +117,9 @@ shape. When none of them match, the comment is orphaned, which is a normal state
 **state**, the where: `hash` is the page's URL fragment; `title` the page title; `screen` the name of the step, tab,
 or dialog that was open, and how it was found (section 4); `trail` the clicks since the page loaded, oldest first,
 each with how many seconds before the comment it happened, a selector, and the visible text; `scroll` the scroll
-position; `screenshot` a data URL of the visible screen, or null when none was taken. **A v0.1 build always writes
+position; `viewport` the window size **at the moment the comment was written**, which is what decides the layout the
+reviewer was looking at (the envelope's `viewport` is the size at export time, and the two differ whenever the
+reviewer resizes or moves to another screen before sending); `screenshot` a data URL of the visible screen, or null when none was taken. **A v0.1 build always writes
 `null`**: shipping a rendering library would add roughly 200KB to every prototype, and the trail plus the screen
 name already answer "where". The field stays in the format so adding it later changes no shape.
 

@@ -11,6 +11,11 @@
 // Known limit (to confirm in the issue #6 dogfood): a prototype script that ran
 // before this one has already changed the DOM, and its changes are part of the
 // snapshot. For the init-on-load scripts an AI writes, that is harmless.
+//
+// The capture is deferred when the document is still parsing. The bundle is a
+// classic script, so nothing defers it for us: pasted into <head> by hand, it
+// would otherwise capture a document with no body at all and hand the author
+// back an empty page (review R6).
 
 function doctypeString(dt) {
   if (!dt) return '';
@@ -19,8 +24,32 @@ function doctypeString(dt) {
   return `<!DOCTYPE ${dt.name}${publicId}${systemId}>\n`;
 }
 
-/** The whole document as HTML text, captured at import time. */
-export const originalHtml = doctypeString(document.doctype) + document.documentElement.outerHTML;
+let captured = null;
+
+/** Take the snapshot now. Safe to call twice; the first capture wins. */
+export function capture() {
+  if (captured === null) {
+    captured = doctypeString(document.doctype) + document.documentElement.outerHTML;
+  }
+  return captured;
+}
+
+/**
+ * The page as delivered. Callers read this at export time, long after start(),
+ * so the getter always has a value; the fallback capture is there only so a
+ * misuse returns the live document rather than null.
+ */
+export function originalHtml() {
+  return captured === null ? capture() : captured;
+}
+
+// Capture immediately when the document is already parsed - the documented
+// placement, last in <body> - and otherwise as soon as parsing finishes.
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', capture, { once: true });
+} else {
+  capture();
+}
 
 function meta(name) {
   const el = document.querySelector(`meta[name="${name}"]`);

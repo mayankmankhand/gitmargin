@@ -32,6 +32,10 @@ export function createComment({ anchor, element, text, tag }) {
       screen: screenFor(element),
       trail: trailFor(),
       scroll: { x: Math.round(window.scrollX), y: Math.round(window.scrollY) },
+      // Per comment, not per export: viewport width decides which responsive
+      // layout the reviewer was looking at, and they may resize or move to
+      // another screen before they send the batch (review R11).
+      viewport: { width: window.innerWidth, height: window.innerHeight },
       // Out of the v0.1 build by decision: a rendering library costs every
       // prototype ~200KB, and the trail plus the screen name already say where.
       // The field stays so the format does not change when it arrives.
@@ -43,6 +47,11 @@ export function createComment({ anchor, element, text, tag }) {
 
 function start() {
   store.load(stamp.versionId);
+  // Comments this file already carries from an earlier round. Without this the
+  // returned file is a dead end: nobody can read it back, and re-sending it
+  // would replace its comments with an empty list (review R3).
+  const carried = batch.embeddedReviewer();
+  store.seed(batch.embeddedComments(), carried.name, carried.note);
   startTrail();
 
   const ui = mountUi({
@@ -64,7 +73,7 @@ function start() {
     export: batch.envelope,
     markdown: batch.markdown,
     reviewedHtml: batch.reviewedHtml,
-    originalLength: originalHtml.length,
+    originalLength: originalHtml().length,
     // Read by the test suite: the clipboard cannot be read back reliably from a
     // file:// page in every engine, so the overlay reports what it put there.
     trail: () => trailFor(),

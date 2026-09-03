@@ -4,7 +4,7 @@
 // What each test protects is written in its title, because when one of these
 // fails the question is always "which promise broke?".
 import { test, expect } from '@playwright/test';
-import { readFile } from 'node:fs/promises';
+import { readFile, rm } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import { resolve } from 'node:path';
 
@@ -237,4 +237,103 @@ test('comment mode decides whether a click belongs to the prototype or to the ov
   await page.keyboard.press('Escape');
   await expect(page.locator('.gm-box')).toBeHidden();
   expect((await page.evaluate(() => window.__gitmargin.export())).comments).toHaveLength(0);
+});
+
+// --- regressions from the issue #3 review -----------------------------------
+
+test('a returned file can be reopened and re-sent without losing its comments', async ({
+  page,
+}) => {
+  // The copy is saved NEXT TO the fixture on purpose: the fixture loads the
+  // bundle with a relative <script src>, so a copy anywhere else cannot find
+  // it. `npx gitmargin attach` (issue #5) inlines the bundle, which is what
+  // makes a real returned file portable; until then this is the honest setup.
+  const returned = resolve('fixtures/.tmp-reviewed.html');
+  await openFixture(page);
+  await walkTo(page, 3);
+  await comment(page, '#step-3 .continue', 'Expected this to stay disabled.', 'bug');
+  await page.fill('.gm-who input', 'Priya');
+
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    page.click('.gm-send .gm-btn.primary'),
+  ]);
+  await download.saveAs(returned);
+
+  try {
+    // A second reviewer, or the author, opens the file that came back. Clearing
+    // storage first is what makes this a real test: on another machine there is
+    // no local copy, so the embedded block is the only source.
+    await page.goto(pathToFileURL(returned).href);
+    await page.evaluate(() => localStorage.clear());
+    await page.reload();
+    await page.waitForFunction(() => !!window.__gitmargin);
+
+    await expect(page.locator('.gm-card')).toHaveCount(1);
+    const reopened = await page.evaluate(() => window.__gitmargin.export());
+    expect(reopened.comments).toHaveLength(1);
+    expect(reopened.comments[0].intent.text).toBe('Expected this to stay disabled.');
+    expect(reopened.reviewer.name).toBe('Priya');
+
+    // Re-sending keeps it rather than replacing it with an empty list, and
+    // leaves exactly one block rather than stacking a second one up.
+    const html = await page.evaluate(() => window.__gitmargin.reviewedHtml());
+    const block = JSON.parse(
+      html.match(/<script type="application\/json" id="gitmargin-comments">([\s\S]*?)<\/script>/)[1]
+    );
+    expect(block.comments).toHaveLength(1);
+    expect(html.match(/id="gitmargin-comments"/g)).toHaveLength(1);
+  } finally {
+    await rm(returned, { force: true });
+  }
+});
+
+test('the returned file closes its body tag properly when the page holds non-ASCII text', async ({
+  page,
+}, testInfo) => {
+  await openFixture(page);
+  await walkTo(page, 3);
+  await comment(page, '#step-3 .continue', 'Checking the closing tag survives.', 'change');
+
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    page.click('.gm-send .gm-btn.primary'),
+  ]);
+  const saved = testInfo.outputPath('wizard.unicode.html');
+  await download.saveAs(saved);
+  const html = await readFile(saved, 'utf8');
+
+  // The fixture carries a dotted capital I, whose lowercase form is longer.
+  expect(html).toContain('İstanbul');
+  expect(html).toMatch(/<\/script>\s*<\/body>\s*<\/html>\s*$/);
+  expect(html).not.toMatch(/<\s*\/body/i.source && /<(?!\/body>)[^<]*\/body>/);
+});
+
+test('an overlay pasted into the head still captures the whole page', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(String(e)));
+  await page.goto(pathToFileURL(resolve('fixtures/head-script.html')).href);
+  await page.waitForFunction(() => !!window.__gitmargin);
+
+  const html = await page.evaluate(() => window.__gitmargin.reviewedHtml());
+  expect(html).toContain('<body>');
+  expect(html).toContain('</body>');
+  expect(html).toContain('The overlay must still capture this whole page');
+  expect(html).toContain('id="go"');
+  expect(errors).toEqual([]);
+});
+
+test('each comment records the viewport it was written at', async ({ page }) => {
+  await page.setViewportSize({ width: 1024, height: 720 });
+  await openFixture(page);
+  await walkTo(page, 3);
+  await comment(page, '#step-3 .continue', 'Checking the viewport is recorded.', 'change');
+
+  const c = (await page.evaluate(() => window.__gitmargin.export())).comments[0];
+  expect(c.state.viewport).toEqual({ width: 1024, height: 720 });
+
+  // Resizing before export must not rewrite what the reviewer saw.
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const after = (await page.evaluate(() => window.__gitmargin.export())).comments[0];
+  expect(after.state.viewport).toEqual({ width: 1024, height: 720 });
 });

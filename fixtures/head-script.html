@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Overlay pasted into the head</title>
+<meta name="gitmargin-version" content="v1-head01">
+<meta name="gitmargin-file" content="head-script.html">
+<!-- Deliberately WRONG placement. `npx gitmargin attach` will put the script
+     last in <body>; a person pasting it by hand may not. This fixture exists so
+     the snapshot's readiness handling is tested rather than assumed (review R6). -->
+<script src="../dist/gitmargin.js"></script>
+</head>
+<body>
+<main data-gm-screen="Head placement">
+  <h1>Pasted into the head</h1>
+  <p>The overlay must still capture this whole page, not an empty one.</p>
+  <button id="go">Continue</button>
+</main>
+</body>
+</html>
