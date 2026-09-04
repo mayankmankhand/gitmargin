@@ -128,6 +128,11 @@ export function stripPrevious(html) {
     html
       .replace(/[ \t]*<meta\s+name=["']gitmargin-(?:version|file)["'][^>]*>[ \t]*\r?\n?/gi, '')
       .replace(/[ \t]*<script\b[^>]*\bid=["']gitmargin-overlay["'][^>]*>[\s\S]*?<\/script>[ \t]*\r?\n?/gi, '')
+      // The unsupported-browser notice, so re-attaching replaces it rather than
+      // stacking a second copy. Neither id appears inside the bundle, so like
+      // the overlay above these have no lookalike to confuse them.
+      .replace(/[ \t]*<script\b[^>]*\bid=["']gitmargin-fallback["'][^>]*>[\s\S]*?<\/script>[ \t]*\r?\n?/gi, '')
+      .replace(/[ \t]*<noscript\b[^>]*\bid=["']gitmargin-nojs["'][^>]*>[\s\S]*?<\/noscript>[ \t]*\r?\n?/gi, '')
       .replace(/[ \t]*<script\b[^>]*\bsrc=["'][^"']*gitmargin\.js["'][^>]*>[\s\S]*?<\/script>[ \t]*\r?\n?/gi, '')
   );
 }
@@ -147,6 +152,50 @@ function insertBeforeLast(source, pattern, insert, what) {
   if (at < 0) throw new CliError(`Could not ${what}.`, EXIT_REFUSED);
   return source.slice(0, at) + insert + source.slice(at);
 }
+
+/**
+ * Told plainly when the overlay could not start.
+ *
+ * Every way the overlay can fail on an old browser is mute. The bundle is built
+ * at esbuild's default target, so an engine that cannot parse modern syntax
+ * throws a SyntaxError before executing a byte; an engine that parses it but
+ * lacks Shadow DOM dies at `attachShadow`. Either way a reviewer gets a page
+ * that looks completely normal, has no comment interface and no error, and
+ * sends nothing back - and the author cannot tell that from a reviewer who
+ * simply had no comments.
+ *
+ * Deliberately ES5, with no arrow functions, no `let`, no template literals and
+ * no optional catch binding, because it has to run in exactly the browsers the
+ * bundle cannot. It only reads `window.__gitmargin`, the handle the overlay
+ * publishes on a successful start, so it needs no knowledge of why the failure
+ * happened. It is placed BEFORE the overlay so the snapshot in
+ * src/overlay/snapshot.js includes it and a returned file still carries it.
+ */
+const FALLBACK_NOTICE =
+  '<noscript id="gitmargin-nojs"><div style="position:fixed;top:0;left:0;right:0;z-index:2147483647;' +
+  'background:#1b1b3a;color:#fff;font:13px system-ui,sans-serif;padding:10px 14px">' +
+  'gitmargin needs JavaScript to leave comments on this page.</div></noscript>\n' +
+  '<script id="gitmargin-fallback">\n' +
+  '(function () {\n' +
+  '  /* If the overlay started, it published window.__gitmargin and there is\n' +
+  '     nothing to say. Checked on load, which is after the DOMContentLoaded\n' +
+  '     the overlay starts on. */\n' +
+  '  function check() {\n' +
+  '    if (window.__gitmargin || !document.body) { return; }\n' +
+  '    var bar = document.createElement("div");\n' +
+  '    bar.id = "gitmargin-unsupported";\n' +
+  '    bar.setAttribute("style", "position:fixed;top:0;left:0;right:0;z-index:2147483647;' +
+  'background:#1b1b3a;color:#fff;font:13px system-ui,sans-serif;padding:10px 14px");\n' +
+  '    bar.appendChild(document.createTextNode(\n' +
+  '      "This browser is too old to leave comments on this prototype. ' +
+  'Reopen this file in an up-to-date Chrome, Edge, Firefox or Safari, ' +
+  'or reply to whoever sent it to you."));\n' +
+  '    document.body.appendChild(bar);\n' +
+  '  }\n' +
+  '  if (window.addEventListener) { window.addEventListener("load", check, false); }\n' +
+  '  else if (window.attachEvent) { window.attachEvent("onload", check); }\n' +
+  '})();\n' +
+  '</script>\n';
 
 /**
  * Put the stamp and the overlay into one document.
@@ -179,8 +228,17 @@ export function attachToHtml(html, { bundle, versionId, originalName }) {
   // Last element in <body>. src/overlay/snapshot.js captures the page as
   // delivered at the moment its script runs, so anything after it would be
   // missing from what the reviewer sends back.
+  // The notice goes in first so it ends up ABOVE the overlay: the snapshot is
+  // taken when the overlay's script runs, so anything after it would be missing
+  // from the file the reviewer sends back.
+  const withNotice = insertBeforeLast(
+    out,
+    /<\/body\s*>/gi,
+    FALLBACK_NOTICE,
+    'find </body> to place the unsupported-browser notice before'
+  );
   const overlay = `<script id="gitmargin-overlay">\n${bundle}\n</script>\n`;
-  return insertBeforeLast(out, /<\/body\s*>/gi, overlay, 'find </body> to place the overlay before');
+  return insertBeforeLast(withNotice, /<\/body\s*>/gi, overlay, 'find </body> to place the overlay before');
 }
 
 export function attach(args) {

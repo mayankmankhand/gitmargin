@@ -53,6 +53,23 @@
    ring with a 1px hue change, which is not a perceivable indicator on its own
    (review R18 and the R19 split note); this restores a real one for keyboard
    use without bringing rings back for the mouse. */
+/* The pair below is the fallback for an engine that runs the bundle but cannot
+   parse the rule after it. :where() needs Chrome 88 and :focus-visible needs
+   Safari 15.4, while the bundle itself parses from Chrome 80 and Safari 13.1,
+   so those in-between versions dropped the overlay's ONLY focus indicator and
+   kept all three outline:none declarations: keyboard use with nothing to see.
+   First line gives every engine a ring; second takes it back for the mouse on
+   engines that can tell the two apart, and is itself discarded as invalid by
+   the engines that cannot. */
+button:focus, input:focus, textarea:focus, [tabindex]:focus {
+  outline: 2px solid var(--gm-accent);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+button:focus:not(:focus-visible), input:focus:not(:focus-visible),
+textarea:focus:not(:focus-visible), [tabindex]:focus:not(:focus-visible) {
+  outline: none;
+}
 :where(button, input, textarea, [tabindex]):focus-visible {
   outline: 2px solid var(--gm-accent);
   outline-offset: 2px;

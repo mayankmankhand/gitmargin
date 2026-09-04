@@ -188,10 +188,32 @@ export function reviewedHtml() {
   return stripped.slice(0, at) + block + stripped.slice(at);
 }
 
-/** `wizard.html` -> `wizard.reviewed.html`. */
+/**
+ * `wizard.html` -> `wizard.reviewed.html`, or `wizard.reviewed.priya.html`.
+ *
+ * Two reviewers sent the same prototype both download a file named for that
+ * prototype, so without the name they arrive identical: one lands in the
+ * author's downloads as "(1)", and `sources[].input` - the only thing tying a
+ * comment back to a person when the name field is left blank - points at two
+ * files that cannot be told apart. Folding the name in costs nothing and is
+ * skipped entirely when there is no name, so a single reviewer sees no change.
+ */
 export function reviewedFileName() {
   const base = (stamp.file || '').replace(/\.x?html?$/i, '');
-  return `${base || 'prototype'}.reviewed.html`;
+  // Split the accents off their letters and drop them, so "José Ríos" becomes
+  // "jose-rios" rather than "jos-r-os". A name in a script with no Latin form
+  // at all slugs to nothing and the file keeps its plain name: the batch still
+  // carries the name itself in `sources[].reviewer`, so nothing is lost but the
+  // convenience of telling two downloads apart by sight.
+  const who = String(reviewer() || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 24)
+    .replace(/-+$/, '');
+  return `${base || 'prototype'}.reviewed${who ? `.${who}` : ''}.html`;
 }
 
 /** Hand the file to the browser's downloader. Works from a file:// page. */

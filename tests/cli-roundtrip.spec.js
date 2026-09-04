@@ -222,3 +222,84 @@ test('a reviewed file can be attached again for a second round', async ({ page }
   expect(html.match(/<script[^>]*\bid="gitmargin-overlay"/g)).toHaveLength(1);
   expect(html.match(/<meta name="gitmargin-version"/g)).toHaveLength(1);
 });
+
+test('two comments on one screen name the same screen, even when one is on its heading', async ({
+  page,
+}, testInfo) => {
+  // The heading fallback is reached only where the prototype tags nothing, and
+  // step 3 of the onboarding fixture is deliberately untagged.
+  //
+  // Before the fix in src/overlay/screen.js, commenting ON the step's own <h2>
+  // reported the app-level title while every other element on that step
+  // reported the step: compareDocumentPosition returns 0 for a node compared
+  // with itself, so the element's own heading never matched and an earlier one
+  // won. Two comments on one screen came back naming two different screens,
+  // which is the single thing the screen field exists to get right.
+  const { attached } = await attachFixture(testInfo);
+  await page.goto(pathToFileURL(attached).href);
+  await page.waitForFunction(() => !!window.__gitmargin);
+
+  await page.click('#step-1 .next');
+  await page.click('#step-2 .next');
+  await expect(page.locator('#step-3')).toHaveClass(/active/);
+
+  await comment(page, '#step-3 h2', 'This title does not say what happens next.');
+  await comment(page, '#step-3 .next', 'I expected this to stay disabled.');
+  await comment(page, '#step-3 p', 'This paragraph repeats the title.');
+
+  const env = await page.evaluate(() => window.__gitmargin.export());
+  const names = env.comments.map((c) => c.state.screen.name);
+  expect(new Set(names).size).toBe(1);
+  // Named for the step the reviewer was on, not for the app around it.
+  expect(names[0]).toBe(await page.locator('#step-3 h2').innerText());
+});
+
+test('a reviewer who gives a name gets it in the file name, so two reviewers do not collide', async ({
+  page,
+}, testInfo) => {
+  const { attached } = await attachFixture(testInfo);
+  await page.goto(pathToFileURL(attached).href);
+  await page.waitForFunction(() => !!window.__gitmargin);
+
+  await page.fill('#gm-reviewer', 'José Ríos');
+  await comment(page, '#step-1 h2', 'Anything.');
+
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    page.click('.gm-send .gm-btn.primary'),
+  ]);
+  // Accents are folded rather than dropped: "jos-r-os" would look broken.
+  expect(download.suggestedFilename()).toBe('onboarding.reviewed.jose-rios.html');
+});
+
+test('a browser that cannot run the overlay says so instead of looking normal', async ({
+  page,
+}, testInfo) => {
+  const { attached } = await attachFixture(testInfo);
+
+  // Stand in for any engine that parses the bundle but cannot run it. The real
+  // case this protects is older still: an engine that cannot parse the bundle
+  // at all never executes a byte of it, which is why the notice is a separate
+  // ES5 script rather than anything the overlay itself does.
+  await page.addInitScript(() => {
+    delete Element.prototype.attachShadow;
+  });
+  await page.goto(pathToFileURL(attached).href, { waitUntil: 'load' });
+
+  const notice = page.locator('#gitmargin-unsupported');
+  await expect(notice).toBeVisible();
+  await expect(notice).toContainText('too old to leave comments');
+
+  // The prototype the reviewer was sent still works: the overlay is the last
+  // element in <body> and never writes into the page, so its failure is
+  // contained. A reviewer can still read what they were asked to look at.
+  await page.click('#step-1 .next');
+  await expect(page.locator('#step-2')).toHaveClass(/active/);
+});
+
+test('the notice stays out of the way when the overlay does start', async ({ page }, testInfo) => {
+  const { attached } = await attachFixture(testInfo);
+  await page.goto(pathToFileURL(attached).href, { waitUntil: 'load' });
+  await page.waitForFunction(() => !!window.__gitmargin);
+  await expect(page.locator('#gitmargin-unsupported')).toHaveCount(0);
+});

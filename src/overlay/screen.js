@@ -20,6 +20,17 @@ function headingIn(container) {
 
 /** The nearest visible heading that comes before `el` in document order. */
 function headingAbove(el) {
+  // A comment left ON a heading is named by that heading, not by the one above
+  // it. compareDocumentPosition returns 0 for a node compared with itself, so
+  // without this the element's own heading never matches the loop below and an
+  // earlier, broader heading wins: commenting on a step's <h2> reported the
+  // app-level title while every other element on that same step reported the
+  // step. Two comments on one screen came back naming different screens, which
+  // is the one thing the screen field exists to get right. `closest` also
+  // covers an element nested inside a heading, such as a <span> in an <h2>.
+  const own = el && el.closest ? el.closest(HEADINGS) : null;
+  if (isVisible(own)) return collapse(own.textContent);
+
   const headings = Array.from(document.querySelectorAll(HEADINGS)).filter(isVisible);
   let best = '';
   for (const h of headings) {

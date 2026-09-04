@@ -684,3 +684,44 @@ test('the built overlay is safe to inline today', () => {
   execFileSync('node', [CLI, 'help'], { cwd: ROOT, stdio: 'ignore' });
   assert.doesNotThrow(() => assertBundleSafe(readBundle()));
 });
+
+test('attach injects the unsupported-browser notice above the overlay', () => {
+  const out = attachToHtml(PAGE, { bundle: 'B', versionId: 'v1-abc123', originalName: 'p.html' });
+
+  const nojsAt = out.indexOf('id="gitmargin-nojs"');
+  const noticeAt = out.indexOf('id="gitmargin-fallback"');
+  const overlayAt = out.indexOf('id="gitmargin-overlay"');
+  assert.ok(nojsAt > -1, 'a page with no JavaScript at all must say so');
+  assert.ok(noticeAt > -1, 'a browser that cannot run the overlay must say so');
+
+  // Above the overlay, because src/overlay/snapshot.js captures the document at
+  // the moment the overlay's script runs: a notice placed after it would be
+  // missing from the file the reviewer sends back.
+  assert.ok(noticeAt < overlayAt, 'the notice must come before the overlay');
+
+  // ES5 only. It exists to run in the browsers the bundle cannot parse, so any
+  // modern syntax in it would fail in exactly the case it is written for.
+  const script = out.slice(noticeAt, overlayAt);
+  for (const modern of ['=>', '`', 'let ', 'const ', '} catch {', '??']) {
+    assert.equal(script.includes(modern), false, `notice must not use ${modern}`);
+  }
+});
+
+test('re-attaching replaces the notice rather than stacking a second copy', () => {
+  const once = attachToHtml(PAGE, { bundle: 'B1', versionId: 'v1-aaa111', originalName: 'p.html' });
+  const twice = attachToHtml(once, { bundle: 'B2', versionId: 'v2-bbb222', originalName: 'p.html' });
+
+  const count = (haystack, needle) => haystack.split(needle).length - 1;
+  assert.equal(count(twice, 'id="gitmargin-fallback"'), 1);
+  assert.equal(count(twice, 'id="gitmargin-nojs"'), 1);
+  assert.equal(count(twice, 'id="gitmargin-overlay"'), 1);
+});
+
+test('stripPrevious removes the notice as well as the overlay', () => {
+  const out = attachToHtml(PAGE, { bundle: 'B', versionId: 'v1-abc123', originalName: 'p.html' });
+  const bare = stripPrevious(out);
+  for (const id of ['gitmargin-fallback', 'gitmargin-nojs', 'gitmargin-overlay', 'gitmargin-version']) {
+    assert.equal(bare.includes(id), false, `${id} must not survive stripPrevious`);
+  }
+  assert.match(bare, /<p>hi<\/p>/, 'the prototype itself must survive untouched');
+});
