@@ -92,6 +92,19 @@ After completing each step, update the plan file:
 - Change 🟨 to 🟩 when completing a task
 - Update the overall progress percentage at the top
 - After all steps are complete, fill in the plan's `## Outcomes` section with what changed, deviations, and key decisions made during execution
+
+**Re-render the plan's HTML view** whenever you update the markdown status (issue #161). Rebuild the same payload `/create-plan` built, carrying each step's current `status` (`todo` | `doing` | `done`) and the real `progress`, and run the helper with the same stable name:
+
+```bash
+node .claude/scripts/render-html.js --shell plan --name PLAN-<basename> \
+     --out-dir plans --stable --data /tmp/plan-data.json
+```
+
+`--stable` replaces the file in place, so the page keeps its URL. The markdown stays the source of truth; this page mirrors it. Batch the re-render at step boundaries rather than after every subtask, so a long step does not spend its time re-rendering.
+
+The re-render rewrites the local file only, so republish it too: look the page up with `node .claude/scripts/render-html.js --index-url --name PLAN-<basename>`, publish the re-rendered file to that URL when one comes back (a new page when none does), and record the publish with `--index-add`, exactly as `/create-plan` does under "Viewing the Artifact" in `.claude/rules/html-outputs.md`. Without the publish the hosted page stays at the state it was created in, which is the frozen page this step exists to prevent (v6.3.0 review, R22). A session that cannot publish stops at the local re-render.
+
+This exists because the page used to be frozen at creation: a plan page sat beside a markdown file recording 62 completed checkboxes while showing every step as not started. A stable URL whose content is permanently false is worse than no page.
 </procedure>
 
 ---

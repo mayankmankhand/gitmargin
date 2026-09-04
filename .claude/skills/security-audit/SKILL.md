@@ -69,7 +69,7 @@ Across the sensitive paths, apply the same vulnerability-class hunt `/review-sec
 
 ### 7. Lead with the headline
 
-Because an audit can surface many findings, structure the report so the reader gets the verdict and the worst risks first (see Output Format): the **Overall Verdict** line, then a ranked **Top issues** list, then the full findings. Every finding still carries a concrete source-to-sink exploit scenario in its `Example` field (the receipt rule applies - prove reachability, do not pattern-match).
+Because an audit can surface many findings, structure the report so the reader gets the verdict and the worst risks first (see Output Format): the **Overall Verdict** line, then a ranked **Top issues** list, then the full findings. Every finding still carries a concrete source-to-sink exploit scenario (the receipt rule applies - prove reachability, do not pattern-match).
 
 </procedure>
 
@@ -95,7 +95,7 @@ On a direct run of this skill you are M2's **runner**: audit your findings per M
 
 !`cat .claude/skills/shared/output-template.md`
 
-For audit findings, use the standard 4 fields with the `Example` field carrying the source-to-sink exploit scenario. The Overall Verdict and the readability backstop (lead with the top findings when there are many) matter most here, because an audit naturally produces a longer list than a single-change review.
+Audit findings use that shape unchanged: the exploit scenario is sentence two, answering when it fires (who is hit belongs in the receipt's demonstrated path, never in a third sentence), or it is the receipt itself when the path can be demonstrated rather than described. The Overall Verdict and the readability backstop (lead with the top findings when there are many) matter most here, because an audit naturally produces a longer list than a single-change review.
 
 ## HTML Companion (when gate fires)
 
@@ -103,7 +103,7 @@ After writing the markdown report, evaluate whether to also generate an HTML vie
 
 !`cat .claude/skills/shared/html-render-review.md`
 
-For direct calls to this skill, pass `--name security-audit` to the helper and omit the `chips` array (single-specialist context).
+For direct calls to this skill, pass `--name review --stable` to the helper (the standing page, per the fragment above), set `lenses` to `["security-audit"]` and each finding's `specialist` to `security-audit`, and omit the `chips` array (single-specialist context). The audit has its own lens token on purpose: sharing `security` with the change-scoped review would let the next small code change report every unfixed audit finding as resolved without re-examining it (review of the #162 cycle, R4).
 
 ### Security Architect Check
 
