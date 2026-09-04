@@ -20,18 +20,24 @@ says what they expected, and the comments come back as the file with them embedd
 text block. Each comment records where they were (anchor, click trail, screen name, viewport) and
 why they stopped. **`gitmargin attach` and `pull` are built and tested** (issue #5): run from the repo as
 `node bin/gitmargin.js <command>`, not published to npm. What remains in part 1: a dogfood round with two
-reviewers (issue #6). **Part 2** (parked) = sign-in via OpenID Connect, the
+reviewers (issue #6), which is scoped and ready to run: a designer and an engineer, on the Sony onboarding
+fixture, with the file to send at `fixtures/onboarding.gitmargin.html`. The one gap found by using it, that
+comment mode does not show what a click will attach to, is issue #10 and is deliberately not fixed yet.
+A reviewer needs Chrome or Edge 88, Firefox 85, or Safari 15.4; anything older now says so on the page
+rather than failing silently (`docs/v0-split.md` section 5). **Part 2** (parked) = sign-in via OpenID Connect, the
 server on Vercel + Neon, the Slack and GitLab mirrors, publish to GitLab Pages, the phone mode, and
 the four spikes. The split and the reasons: `docs/v0-split.md`; the original decision and the
 out-of-scope list: `docs/v0-decision.md`; the batch an agent reads: `docs/batch-format.md` (v0.3).
 
 ## Working on the overlay
 
-`npm run build` bundles `src/overlay/` into one self-contained `dist/gitmargin.js`. `npm test` builds
-and then runs the Playwright suite, which opens the fixtures from `file://` because that is how a
-reviewer receives a prototype. Chromium is required; Firefox and WebKit run when they can start on
-this machine (`tests/README.md` has the detail, including why WebKit is untested here). `npm run
-serve` is only for design screenshots, since the toolkit's browser script cannot open a local file.
+`npm run build` bundles `src/overlay/` into one self-contained `dist/gitmargin.js`, pinned to
+`--target=es2020`: without a target the minifier picks the browser floor itself, and it did. `npm test`
+builds, then runs the `node --test` suite in `tests/*.test.js` (the CLI, no browser), then the Playwright
+suite in `tests/*.spec.js`, which opens the fixtures from `file://` because that is how a reviewer
+receives a prototype. Chromium is required; Firefox and WebKit run when they can start on this machine
+(`tests/README.md` has the detail, including why WebKit is untested here). `npm run serve` is only for
+design screenshots, since the toolkit's browser script cannot open a local file.
 
 ## Who I Am
 <!-- Describe yourself or your team: experience level, how you like to work -->
