@@ -120,6 +120,34 @@ Two measured limits found while building it, both standing as known gaps for the
   paragraphs. Covering those needs a roving cursor that walks the page element by element, which is a feature rather
   than a fix, so it is written down here rather than half-built.
 
+A third gap was found by using it: **in comment mode nothing shows which element a click will attach to**, so a
+reviewer has to guess what they are pointing at. The commenting works; the affordance does not read. Tracked as
+[issue #10](https://github.com/mayankmankhand/gitmargin/issues/10) rather than fixed in a hurry before a round.
+
+### What a reviewer's browser has to be
+
+Measured on 2026-09-04, from the built bundle and the styles it carries, not from a promise:
+
+| | Chrome / Edge | Firefox | Safari |
+|---|---|---|---|
+| Overlay runs at all | 80 | 72 | 13.1 |
+| Everything renders as designed | 88 | 85 | 15.4 |
+
+Below the first row the bundle cannot be parsed, so none of it runs. That used to be silent: the reviewer saw an
+ordinary prototype with no commenting and no explanation, which an author cannot tell apart from a reviewer who had
+nothing to say. `attach` now writes a small notice, deliberately in the older syntax the bundle cannot use, so any
+browser that cannot run the overlay says so instead. A page with JavaScript switched off says so too.
+
+Two things follow that are easy to get wrong. **Internet Explorer is not on the table**: it was retired in 2022 and
+parses none of this, and a prototype an AI generates will usually not run in it either, so the reviewer would blame
+the file rather than the browser. And **the floor is a decision now, not an accident**: the build pins its target,
+because with none set the minifier rewrote a null check into newer syntax and moved the floor to Chrome 80 on its
+own.
+
+Safari is the one engine never actually exercised: WebKit does not start on the machine the suite runs on
+([issue #7](https://github.com/mayankmankhand/gitmargin/issues/7)). The numbers above are read from the code, and
+for Safari they are the only evidence there is.
+
 ## 6. The success test
 
 Send a generated prototype as a file to two reviewers. Get their comments back. Drop the batch into Claude Code.

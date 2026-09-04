@@ -51,6 +51,8 @@ node bin/gitmargin.js pull reviewed.html      # prints the batch as JSON
 
 `npm run attach -- prototype.html` and `npm run pull -- reviewed.html` do the same thing. Only the author runs these; a reviewer only ever opens an HTML file, with nothing installed.
 
+Your reviewer needs a current Chrome, Edge, Firefox or Safari; the measured floor is Chrome and Edge 88, Firefox 85, Safari 15.4, and the [split doc](docs/v0-split.md#what-a-reviewers-browser-has-to-be) says what each row means. Anything older says so on the page rather than quietly showing a prototype with no commenting on it. Internet Explorer is not supported and cannot be.
+
 ## Design principles
 
 - **Feedback for an AI needs where and why, not just what.** "Make this bigger" is useless to an agent that cannot tell which of four screens "this" is on. Part 1 exists for this principle.

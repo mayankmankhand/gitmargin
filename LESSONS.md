@@ -62,6 +62,12 @@
 - **"Is it installed" must be a launch probe, not a file check.**
 - **A guard that blocks a rebuild must not also block the render that opens the thing being guarded.**
 
+### gitmargin: dogfood prep for issue #6 (2026-09-04)
+- **One real person's first click beat a nine-combination automated matrix.**
+- **A minifier will choose your browser support floor if you do not.**
+- **`compareDocumentPosition` returns 0 for a node compared with itself, so "the nearest X above me" silently skips my own X.**
+- **A silent failure is indistinguishable from no feedback at all.**
+
 ## Mistakes to Avoid
 
 - **Fill a plan's Outcomes by replacing the template placeholder, not inserting above it.**
