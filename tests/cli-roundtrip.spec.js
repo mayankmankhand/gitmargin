@@ -303,3 +303,52 @@ test('the notice stays out of the way when the overlay does start', async ({ pag
   await page.waitForFunction(() => !!window.__gitmargin);
   await expect(page.locator('#gitmargin-unsupported')).toHaveCount(0);
 });
+
+test('a click on page furniture is not a step in the trail', async ({ page }, testInfo) => {
+  // From the first real run: four of fifteen entries were clicks that landed on
+  // <body>, and each carried the whole page truncated to 40 characters, so the
+  // trail an agent reads was mostly the same sentence repeated. The trail is
+  // meant to BE the state of a multi-step prototype.
+  const { attached } = await attachFixture(testInfo);
+  await page.goto(pathToFileURL(attached).href);
+  await page.waitForFunction(() => !!window.__gitmargin);
+
+  await page.click('#step-1 .next');
+  await page.evaluate(() => document.body.click());
+  await page.evaluate(() => document.body.click());
+  await page.click('#step-2 .next');
+
+  const trail = await page.evaluate(() => window.__gitmargin.trail());
+  expect(trail.map((t) => t.text)).toEqual(['Next', 'Next']);
+  expect(trail.every((t) => t.selector !== 'body' && t.selector !== 'html')).toBe(true);
+});
+
+test('a form field is named by its label, not left blank', async ({ page }, testInfo) => {
+  const { attached } = await attachFixture(testInfo);
+  await page.goto(pathToFileURL(attached).href);
+  await page.waitForFunction(() => !!window.__gitmargin);
+
+  await page.click('#step-1 .next');
+  await page.click('#email');
+
+  const trail = await page.evaluate(() => window.__gitmargin.trail());
+  const field = trail.find((t) => t.selector === '#email');
+  expect(field).toBeTruthy();
+  expect(field.text).toBeTruthy();
+});
+
+test('clicking a label records one step, not the label and its control', async ({
+  page,
+}, testInfo) => {
+  // The browser forwards a click on a <label> to the control it names, so one
+  // press arrives twice. The label is the half with words on it.
+  const { attached } = await attachFixture(testInfo);
+  await page.goto(pathToFileURL(attached).href);
+  await page.waitForFunction(() => !!window.__gitmargin);
+
+  await page.click('#step-1 > label:nth-of-type(2)');
+
+  const trail = await page.evaluate(() => window.__gitmargin.trail());
+  expect(trail).toHaveLength(1);
+  expect(trail[0].text).toBe('They are within a metre of this phone');
+});

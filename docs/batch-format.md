@@ -19,7 +19,7 @@ The same data travels in three carriers:
 
 | Carrier | Made by | Format | Lossless? |
 |---|---|---|---|
-| Embedded in the reviewed HTML, as a JSON script block just before the closing body tag: `<script type="application/json" id="gitmargin-comments">` | the overlay's "Send to author" button, which downloads the file as `<name>.reviewed.html` | JSON, section 2 | yes: every field of every comment, and the full trail |
+| Embedded in the reviewed HTML, as a JSON script block just before the closing body tag: `<script type="application/json" id="gitmargin-comments">` | the overlay's "Send to author" button, which downloads the file as `<name>.reviewed.html`, or `<name>.reviewed.<reviewer>.html` when the reviewer gave a name, so two reviewers' files do not arrive under one name | JSON, section 2 | yes: every field of every comment, and the full trail |
 | A text block on the clipboard | the overlay's "Copy for author" button | markdown, section 5, with a first line the pull command recognises: `gitmargin batch v0.1 \| <file> \| <version id>` | no: the trail is summarised and the anchor detail is dropped |
 | The pull output | `node bin/gitmargin.js pull <reviewed file or pasted block>` | JSON on stdout by default, section 5a; `--markdown` prints the human rendering instead | as lossless as its input |
 
@@ -157,9 +157,15 @@ threads later is not a format change.
 
 ## 4. How "where" is captured
 
-The trail is the cheap and robust part: the overlay keeps a rolling log of the last 20 clicks (selector plus the
-element's visible text), and copies it into each new comment. It records what was clicked, never what was typed
-into a field.
+The trail is the cheap and robust part: the overlay keeps a rolling log of the last 20 clicks and copies it into
+each new comment. Each entry is the selector of the control that was clicked, plus what to call it: the element's
+visible text, or the text of its own `<label>` when it is a field with none of its own. It records what was
+clicked, never what was typed into a field.
+
+Two things are deliberately not entries. A click that lands on page furniture rather than on a control is not a
+step, because the first real run recorded four clicks on `<body>` whose text was the whole page truncated to 40
+characters, and a trail that repeats the same sentence says nothing about where the reviewer was. And a click on a
+`<label>`, which the browser forwards to the control the label names, is one entry rather than two.
 
 The screen name has two sources:
 
