@@ -68,6 +68,11 @@
 - **`compareDocumentPosition` returns 0 for a node compared with itself, so "the nearest X above me" silently skips my own X.**
 - **A silent failure is indistinguishable from no feedback at all.**
 
+### gitmargin: toolkit upgrade to 6.3.2 (issue #11, 2026-09-04)
+- **Count a list with the tool, not your eye; and when a gate trips on the count, ask whether the world changed or your record did.**
+- **Before deleting a backup, check which of its files version control cannot restore.**
+- **A feature whose state is derived from its own previous output must be smoke-tested in an isolated directory.**
+
 ## Mistakes to Avoid
 
 - **Fill a plan's Outcomes by replacing the template placeholder, not inserting above it.**
