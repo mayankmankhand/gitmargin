@@ -122,9 +122,12 @@ Two measured limits found while building it, both standing as known gaps for the
 
 ## 6. The success test
 
-Generate a four-step wizard prototype. Send the file to two people. Get their comments back. Drop the batch into
-Claude Code. It makes the right edits without the author explaining where anything was. Part 1 is done when that
-works twice.
+Send a generated prototype as a file to two reviewers. Get their comments back. Drop the batch into Claude Code.
+It makes the right edits without the author explaining where anything was. Part 1 is done when that round works.
+
+A second round is run only if the first one forces a change to the overlay or the batch format, rather than on a
+fixed count. Each round spends two colleagues' time, so it has to be buying an answer the last one did not
+already give.
 
 ## 7. Part 2: what is parked, and what unparks it
 
