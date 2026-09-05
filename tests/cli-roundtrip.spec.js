@@ -397,11 +397,13 @@ test('an element quote reads the way the page renders it, not as one long word',
 test('a comment on a hidden panel is found by its quote, not lost to whitespace', async ({
   page,
 }, testInfo) => {
-  // The case that decided the fix. `innerText` returns the glued text whenever
-  // an element is not being rendered, so a quote captured while the panel was
-  // open would stop matching the moment the reviewer changed tabs. Here the
-  // panel is hidden AND the selector is destroyed, which leaves the quote as
-  // the only pointer left - the exact situation the anchor exists for.
+  // The panel is hidden AND the selector is destroyed, which leaves the quote
+  // as the only pointer left - the exact situation the anchor exists for.
+  //
+  // What this guards is the pairing: reading the quote as rendered text while
+  // still matching it against raw text. It passes against the code as it was
+  // before issue #8, because both sides were glued there and agreed with each
+  // other. It fails when only the reading half is changed.
   const { attached } = await attachFixture(testInfo);
   await page.goto(pathToFileURL(attached).href);
   await page.waitForFunction(() => !!window.__gitmargin);

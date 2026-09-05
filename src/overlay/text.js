@@ -52,13 +52,17 @@ function walk(node, parts) {
 /**
  * An element's text the way a person reads it off the screen.
  *
- * Not `innerText`, which the browser makes fall back to `textContent` whenever
- * the element is not being rendered. Comments survive on a wizard step that is
- * currently hidden (`resolve` in anchor.js returns `status: 'hidden'` for
- * them), so a helper that answers differently depending on whether the step is
- * on screen would break resolution the moment the reviewer moved on. Computed
- * display is stable across that: a display:none subtree still reports the real
- * display of everything inside it. Measured on both fixtures, issue #8.
+ * Not `innerText`. Two measured reasons, neither of them about resolution -
+ * matching ignores whitespace (see byQuote in anchor.js), so a quote finds its
+ * element either way. First, the browser makes `innerText` fall back to
+ * `textContent` whenever an element is not being rendered, so the quote stored
+ * for a wizard step would read as words or as one long run depending on which
+ * screen the reviewer happened to be on. Second, it does not separate
+ * blockified flex items at all: the fixture's spec row comes back glued even
+ * when it is on screen, which is the case this fix exists for.
+ *
+ * Computed display has neither problem: a display:none subtree still reports
+ * the real display of everything inside it. Measured on both fixtures, #8.
  */
 export function renderedText(el) {
   if (!el || el.nodeType !== 1) return '';
