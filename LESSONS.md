@@ -68,6 +68,12 @@
 - **`compareDocumentPosition` returns 0 for a node compared with itself, so "the nearest X above me" silently skips my own X.**
 - **A silent failure is indistinguishable from no feedback at all.**
 
+### gitmargin: element quotes read as rendered text (issue #8c, 2026-09-05)
+- **A helper that reads text may add whitespace, but must never drop a character.**
+- **A comment naming what a test guards is a claim; trace the test, never trust the comment.**
+- **A claim lives in as many copies as the pipeline has stages, and fixing the source fixes one of them.**
+- **"Unreachable today" and "safe to leave" are different verdicts, and only the first is what an audit measures.**
+
 ### gitmargin: toolkit upgrade to 6.3.2 (issue #11, 2026-09-04)
 - **Count a list with the tool, not your eye; and when a gate trips on the count, ask whether the world changed or your record did.**
 - **Before deleting a backup, check which of its files version control cannot restore.**
