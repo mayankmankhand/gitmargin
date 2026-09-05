@@ -29,7 +29,18 @@ function breaksLine(el, display) {
   return el.localName === 'br' || !(display === 'contents' || display === '' || display.startsWith('inline'));
 }
 
-/** Append `node`'s rendered text to `parts`, a space at every visual break. */
+/**
+ * Append `node`'s rendered text to `parts`, a space at every visual break.
+ *
+ * INVARIANT: this only ever ADDS whitespace. It never drops a character, so
+ * stripping all whitespace from this result and from the same element's raw
+ * `textContent` gives the identical string. `byQuote` in anchor.js matches on
+ * exactly that, which is what lets a quote read as words and still be found by
+ * a scan that stays on plain `textContent`. Anything that skips a subtree here
+ * breaks the match instead of tidying it: an earlier version of this walker
+ * skipped `display: none` children, and a quote whose window straddled a
+ * hidden sibling could then never match its own element (review R1).
+ */
 function walk(node, parts) {
   for (const child of node.childNodes) {
     if (child.nodeType === 3) {
@@ -37,12 +48,7 @@ function walk(node, parts) {
       continue;
     }
     if (child.nodeType !== 1) continue;
-    const display = getComputedStyle(child).display;
-    // Not rendered, so not read. Skipping it keeps the quote to what the
-    // reviewer could actually see - the other four steps of a wizard are not
-    // part of the text of the container holding them.
-    if (display === 'none') continue;
-    const breaks = breaksLine(child, display);
+    const breaks = breaksLine(child, getComputedStyle(child).display);
     if (breaks) parts.push(' ');
     walk(child, parts);
     if (breaks) parts.push(' ');

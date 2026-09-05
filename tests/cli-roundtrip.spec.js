@@ -428,3 +428,37 @@ test('a comment on a hidden panel is found by its quote, not lost to whitespace'
   await expect(page.locator('.gm-card')).toHaveCount(1);
   expect(await page.evaluate(() => window.__gitmargin.markdown())).not.toContain('[orphaned:');
 });
+
+test('a quote still finds its element when hidden text sits in the middle of it', async ({
+  page,
+}, testInfo) => {
+  // The invariant the whitespace-insensitive match rests on: reading an
+  // element's text may add spaces but must never drop characters, so the same
+  // element's raw text always still contains the quote. A walker that skipped
+  // unrendered children broke it - the quote came out as the two visible words
+  // with nothing between them, which appears nowhere in the raw text.
+  const { attached } = await attachFixture(testInfo);
+  await page.goto(pathToFileURL(attached).href);
+  await page.waitForFunction(() => !!window.__gitmargin);
+
+  await page.evaluate(() => {
+    const probe = document.createElement('div');
+    probe.id = 'inv-probe';
+    probe.innerHTML = 'Alpha<span style="display:none">HIDDEN</span>Omega';
+    document.querySelector('.step.active').appendChild(probe);
+  });
+
+  await comment(page, '#inv-probe', 'Does this still find itself?', 'question');
+
+  // Destroy the selector, leaving the quote as the only pointer.
+  await page.evaluate(() => {
+    document.querySelector('#inv-probe').id = 'inv-probe-regenerated';
+  });
+
+  // Found exactly, by the quote: a pin, and no flag at all. An "on another
+  // screen" or "nearby" flag here would mean the quote missed and the third
+  // pointer picked up the container instead.
+  await expect(page.locator('.gm-pin')).toHaveCount(1);
+  await expect(page.locator('.gm-flag')).toHaveCount(0);
+  expect(await page.evaluate(() => window.__gitmargin.markdown())).not.toContain('[orphaned:');
+});
