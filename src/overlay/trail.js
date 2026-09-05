@@ -11,7 +11,7 @@
 //      reviewer talking to the overlay, not walking through the prototype.
 
 import { selectorFor } from './selector.js';
-import { collapse, visibleText, short } from './text.js';
+import { collapse, renderedText, visibleText, short } from './text.js';
 
 /** Batch format section 4: a rolling log of the last 20 clicks. */
 const MAX_ENTRIES = 20;
@@ -81,7 +81,7 @@ function nameFor(el) {
   const own = visibleText(el);
   if (own) return own;
   if (el.labels && el.labels.length) {
-    const labelled = collapse(Array.from(el.labels, (l) => l.textContent).join(' '));
+    const labelled = collapse(Array.from(el.labels, (l) => renderedText(l)).join(' '));
     if (labelled) return labelled;
   }
   return collapse(el.getAttribute('placeholder') || el.getAttribute('name') || '');

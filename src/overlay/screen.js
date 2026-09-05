@@ -6,7 +6,7 @@
 // tab panel and dialog in an element with data-gm-screen set to its name") makes
 // every name exact.
 
-import { collapse, visibleText } from './text.js';
+import { collapse, renderedText, visibleText } from './text.js';
 
 const HEADINGS = 'h1, h2, h3, h4, h5, h6';
 
@@ -15,7 +15,7 @@ const isVisible = (el) => !!el && el.nodeType === 1 && el.getClientRects().lengt
 /** The first heading inside a container, if it has one. */
 function headingIn(container) {
   const h = container.querySelector(HEADINGS);
-  return h ? collapse(h.textContent) : '';
+  return h ? renderedText(h) : '';
 }
 
 /** The nearest visible heading that comes before `el` in document order. */
@@ -29,7 +29,7 @@ function headingAbove(el) {
   // is the one thing the screen field exists to get right. `closest` also
   // covers an element nested inside a heading, such as a <span> in an <h2>.
   const own = el && el.closest ? el.closest(HEADINGS) : null;
-  if (isVisible(own)) return collapse(own.textContent);
+  if (isVisible(own)) return renderedText(own);
 
   const headings = Array.from(document.querySelectorAll(HEADINGS)).filter(isVisible);
   let best = '';
@@ -37,7 +37,7 @@ function headingAbove(el) {
     const position = h.compareDocumentPosition(el);
     const isBefore = position & Node.DOCUMENT_POSITION_FOLLOWING;
     const contains = position & Node.DOCUMENT_POSITION_CONTAINED_BY;
-    if (isBefore || contains) best = collapse(h.textContent);
+    if (isBefore || contains) best = renderedText(h);
   }
   return best;
 }

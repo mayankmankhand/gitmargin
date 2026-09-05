@@ -7,7 +7,7 @@
 // a comment that matches none of them is orphaned - a normal state, not a loss.
 
 import { selectorFor } from './selector.js';
-import { collapse, visibleText } from './text.js';
+import { collapse, renderedText, visibleText } from './text.js';
 
 /** Characters of context kept either side of the quote. */
 const CONTEXT = 32;
@@ -18,10 +18,17 @@ const elementOf = (node) => (!node ? null : node.nodeType === 1 ? node : node.pa
 
 const isVisible = (el) => !!el && el.nodeType === 1 && el.getClientRects().length > 0;
 
+/** Every whitespace character removed: the form quotes are MATCHED in. */
+const squeeze = (value) => String(value == null ? '' : value).replace(/\s+/g, '');
+
 /** Build prefix/exact/suffix by finding `exact` inside its container's text. */
 function quoteAround(container, exact) {
   if (!exact) return { prefix: '', exact: '', suffix: '' };
-  const hay = collapse(container ? container.textContent : '');
+  // The same rendered text the quote itself was read from. Reading the
+  // haystack any other way makes this indexOf miss as soon as the quote
+  // carries a break the raw text does not, and prefix/suffix go silently
+  // empty rather than wrong - the worst kind of failure to notice.
+  const hay = renderedText(container);
   const at = hay.indexOf(exact);
   if (at < 0) return { prefix: '', exact, suffix: '' };
   return {
@@ -78,14 +85,29 @@ export function anchorFromSelection(selection) {
  */
 function byQuote(exact) {
   if (!exact) return [];
+  // Whitespace decides nothing here. The stored quote carries the breaks the
+  // page RENDERS (text.js), while an element's textContent carries only the
+  // breaks its markup happens to have, so the two are different strings even
+  // when they are the same words. Comparing with whitespace removed makes a
+  // quote find its element either way, and it survives the page being
+  // regenerated with different formatting - the case this anchor exists for.
+  // The cost is slightly looser matching ("a man" would match "aman").
+  //
+  // This is where the comparison is fixed rather than in the walker, because
+  // this scan reads every element in the page and runs once per comment on
+  // every frame of a scroll (see resolve below); it stays on plain textContent.
+  const wanted = squeeze(exact);
+  if (!wanted) return [];
+  const textOf = (el) => squeeze(el.textContent);
+
   const matches = Array.from(document.querySelectorAll('body *')).filter(
-    (el) => !el.closest('#gitmargin-root') && collapse(el.textContent).includes(exact)
+    (el) => !el.closest('#gitmargin-root') && textOf(el).includes(wanted)
   );
   // Whether this element's text IS the quote, or merely contains it. A
   // containment match is how a highlighted fragment is found again, but a short
   // quote can also land on unrelated copy that happens to include those words,
   // so the two are not equally trustworthy and the caller marks them apart.
-  const isExact = (el) => collapse(el.textContent) === exact;
+  const isExact = (el) => textOf(el) === wanted;
   // Keep only the tightest containers: an element whose descendant also matches
   // is just an ancestor of the real one. Without this, <body> matches every
   // quote on the page - including one whose element is on a hidden step, which

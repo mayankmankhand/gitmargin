@@ -37,10 +37,15 @@ async function attachFixture(testInfo, fixture = 'fixtures/onboarding.html') {
   return { attached, versionId };
 }
 
-/** Leave one comment. Same shape as the helper in roundtrip.spec.js. */
-async function comment(page, selector, text, tag) {
+/**
+ * Leave one comment. Same shape as the helper in roundtrip.spec.js.
+ *
+ * `click` is passed through to Playwright, so a test can aim at a container's
+ * own padding instead of its centre, where a child would take the click.
+ */
+async function comment(page, selector, text, tag, click) {
   await page.click('.gm-switch');
-  await page.click(selector);
+  await page.click(selector, click);
   await expect(page.locator('.gm-box')).toBeVisible();
   await page.fill('.gm-box textarea', text);
   if (tag) await page.click(`.gm-chip[data-tag="${tag}"]`);
@@ -351,4 +356,73 @@ test('clicking a label records one step, not the label and its control', async (
   const trail = await page.evaluate(() => window.__gitmargin.trail());
   expect(trail).toHaveLength(1);
   expect(trail[0].text).toBe('They are within a metre of this phone');
+});
+
+test('an element quote reads the way the page renders it, not as one long word', async ({
+  page,
+}, testInfo) => {
+  // `textContent` glues children together with nothing in between, and both of
+  // these containers separate their children with CSS rather than with
+  // whitespace in the markup: `display: block` on the tile's <strong>, and
+  // flex-item blockification on the spec row's two <span>s. Neither is visible
+  // to a tag-name rule - strong, small and span are all inline by default -
+  // so the quote is read from the computed display instead (issue #8).
+  const { attached } = await attachFixture(testInfo);
+  await page.goto(pathToFileURL(attached).href);
+  await page.waitForFunction(() => !!window.__gitmargin);
+
+  await page.click('#step-1 .next');
+  await page.click('#step-2 .next');
+  await expect(page.locator('#step-3')).toHaveClass(/active/);
+  // Aimed into the label's own 14px padding, so the click lands on the tile and
+  // not on one of the children whose separation is the thing under test.
+  await comment(page, '#step-3 .tile:nth-child(1)', 'These read as one option to me.', 'question', {
+    position: { x: 5, y: 5 },
+  });
+
+  await page.click('#step-3 .next');
+  await page.click('#tab-about');
+  await comment(page, '#panel-about .line:nth-child(1)', 'I expected the model name first.', 'question');
+
+  const env = await page.evaluate(() => window.__gitmargin.export());
+  expect(env.comments.map((c) => c.anchor.quote.exact)).toEqual([
+    'Commuting Trains, buses, walking',
+    'Model WH-1000XM5',
+  ]);
+  // The context either side is read the same way, so it does not go silently
+  // empty the moment the quote carries a break the raw text does not.
+  expect(env.comments[1].anchor.quote.suffix).toContain('Firmware');
+});
+
+test('a comment on a hidden panel is found by its quote, not lost to whitespace', async ({
+  page,
+}, testInfo) => {
+  // The case that decided the fix. `innerText` returns the glued text whenever
+  // an element is not being rendered, so a quote captured while the panel was
+  // open would stop matching the moment the reviewer changed tabs. Here the
+  // panel is hidden AND the selector is destroyed, which leaves the quote as
+  // the only pointer left - the exact situation the anchor exists for.
+  const { attached } = await attachFixture(testInfo);
+  await page.goto(pathToFileURL(attached).href);
+  await page.waitForFunction(() => !!window.__gitmargin);
+
+  await page.click('#step-1 .next');
+  await page.click('#step-2 .next');
+  await page.click('#step-3 .next');
+  await page.click('#tab-about');
+  await comment(page, '#panel-about .line:nth-child(1)', 'Is this the firmware we ship?', 'question');
+  await expect(page.locator('.gm-pin')).toHaveCount(1);
+
+  // Change tabs (the panel is hidden) and rename its container (the selector
+  // no longer matches anything).
+  await page.click('#tab-sound');
+  await page.evaluate(() => {
+    document.querySelector('#panel-about').id = 'panel-about-regenerated';
+  });
+
+  // Found anyway, on a screen the reviewer is not looking at. Not orphaned,
+  // and not "nearby": the quote matched one element exactly.
+  await expect(page.locator('.gm-flag')).toHaveText(['on another screen']);
+  await expect(page.locator('.gm-card')).toHaveCount(1);
+  expect(await page.evaluate(() => window.__gitmargin.markdown())).not.toContain('[orphaned:');
 });
