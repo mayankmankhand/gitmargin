@@ -127,13 +127,16 @@ here?". `tag` is optional: `change`, `bug`, `question`, or `like`.
 
 **anchor**, the spot: `selector` is a CSS selector for the element; `quote` is the text quote with a few words
 either side, in the W3C Web Annotation model's prefix, exact, suffix form; `point` is where inside the element's box
-the reviewer clicked, as fractions. Three ways to find the same spot on purpose: an AI-regenerated page changes
+the reviewer clicked, as fractions. An element's quote is its text *as the page renders it*: one space wherever the
+browser puts a visual break, decided by the computed display rather than by the tag, so a row of cells or a card
+built from a heading and a caption reads as words rather than as one long run. Three ways to find the same spot on purpose: an AI-regenerated page changes
 shape. They are tried in that order:
 
 1. **The selector.** A visible match wins immediately.
 2. **The quote.** The tightest element whose text *contains* the quote. Containment rather than equality, because a
    highlighted quote is a fragment of a longer paragraph and an element quote is truncated at 160 characters, so
-   equality could never rescue either.
+   equality could never rescue either. Whitespace is ignored on both sides of this comparison, so a quote finds its
+   element whether the page formats it with spaces or not.
 3. **The nearest surviving ancestor** named by the selector, found by dropping its trailing segments. This is the
    only pointer left when a regenerated page has changed both the class names and the copy. A comment resolved this
    way is marked approximate, because the container was found and the element was not.
