@@ -79,6 +79,11 @@
 - **Before deleting a backup, check which of its files version control cannot restore.**
 - **A feature whose state is derived from its own previous output must be smoke-tested in an isolated directory.**
 
+### gitmargin: comment-mode target preview (issue #10, 2026-09-09)
+- **A file carved out of a delegated sweep becomes your own sweep, not a token edit.**
+- **A preview must read every input the action reads, or it promises what the action will not do.**
+- **Write a receipt's expectation from the check's real output, or a true finding dies on its own proof.**
+
 ## Mistakes to Avoid
 
 - **Fill a plan's Outcomes by replacing the template placeholder, not inserting above it.**
