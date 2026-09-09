@@ -53,6 +53,33 @@ human-review for the batch the agent reads; Agentation for the tag list. Link-en
 The full shape is in [docs/v0-split.md](../docs/v0-split.md) and the format in
 [docs/batch-format.md](../docs/batch-format.md).
 
+## Claude Code's hosted artifact comments
+
+Added 2026-09-09 from the product documentation only; nothing here was run. Claude Code can publish a session's output
+as an "artifact", a hosted page on claude.ai. People the page is shared with can leave comment threads on it, and the
+agent in the publishing session can read the threads and reply to or resolve them.
+
+- **Who can comment.** Only on an artifact shared within an organization, which needs a Team or Enterprise plan and
+  Claude Code 2.1.221 or later. A page shared by public link cannot take comments (the page says "Comments aren't
+  available while this Artifact is shared publicly"); a personal Pro or Max account can only share by public link, so
+  it gets no comments at all.
+- **Where identity comes from.** Viewers sign in to claude.ai as members of the publishing organization, so a comment
+  carries the commenter's real identity with no extra account. That is the identity problem solved for one platform,
+  by the platform.
+- **What a thread is.** Comments with replies and a resolve state. A person activates a thread for the agent by
+  sending a comment with "Send to Claude" or by mentioning @claude in it; the agent can reply to or resolve only an
+  activated thread, and its replies show as coming from Claude via the page's owner.
+- **What the agent receives.** Each thread's comments (text and author), whether the thread was sent to it, and
+  whether it is resolved.
+- **Not documented publicly.** What the page shows before a comment is placed, and what location a thread carries (a
+  text quote, an element, a position). The nearest published hint is Claude Code's plan-mode sidebar, whose prompt
+  reads "Select any text to leave a comment for Claude", which suggests text-selection anchoring. That is an
+  inference, not something the artifact documentation says.
+
+The same shape as Vercel's preview comments in the [landscape report](prior-art-landscape.md): solved on one
+platform, for teams entirely on that platform, and not portable to a prototype hosted anywhere else. It does not
+record where the reviewer was or what they were doing, which is what the fields compared above exist for.
+
 ## Sources
 
 - https://raw.githubusercontent.com/petergyang/human-review/main/src/SKILL.md, plus `src/cli.js`, `src/state.js`, `src/serialize.js` in the same repository
@@ -60,3 +87,5 @@ The full shape is in [docs/v0-split.md](../docs/v0-split.md) and the format in
 - https://github.com/backnotprop/plannotator (README); https://docs.plannotator.ai/open-source/workflows/sharing.md; https://docs.plannotator.ai/open-source/workflows/html.md; https://docs.plannotator.ai/open-source/workflows/annotations-and-feedback
 - https://raw.githubusercontent.com/reviewjs/annotate/main/annotate.js and the repository README
 - https://github.com/stagewise-io/stagewise (README only; details unverified)
+- https://code.claude.com/docs/en/artifacts ("Share session output as artifacts", Claude Code documentation; read 2026-09-09)
+- https://github.com/anthropics/claude-code/issues/49715 (anthropics/claude-code issue #49715, on plan-mode sidebar comments; read 2026-09-09)

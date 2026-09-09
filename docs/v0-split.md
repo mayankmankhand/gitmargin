@@ -120,9 +120,11 @@ Two measured limits found while building it, both standing as known gaps for the
   paragraphs. Covering those needs a roving cursor that walks the page element by element, which is a feature rather
   than a fix, so it is written down here rather than half-built.
 
-A third gap was found by using it: **in comment mode nothing shows which element a click will attach to**, so a
-reviewer has to guess what they are pointing at. The commenting works; the affordance does not read. Tracked as
-[issue #10](https://github.com/mayankmankhand/gitmargin/issues/10) rather than fixed in a hurry before a round.
+A third gap was found by using it on 2026-09-04 and tracked as
+[issue #10](https://github.com/mayankmankhand/gitmargin/issues/10): in comment mode nothing showed which element a
+click would attach to. It is closed: **a one-pixel frame follows the pointer and shows the element a click will attach
+to**, snapped to the nearest control or named block (button, link, field, heading, paragraph, list item, image) rather
+than to the innermost node under the pointer, so the frame shows exactly what the comment will anchor.
 
 ### What a reviewer's browser has to be
 

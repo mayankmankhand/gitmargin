@@ -1,13 +1,15 @@
 # The batch: what the overlay hands to a coding agent
 
-**Status: v0.3, 2026-09-03.** Draft v0.1 was written before any code existed; v0.2 followed the part-1 overlay
+**Status: v0.4, 2026-09-09.** Draft v0.1 was written before any code existed; v0.2 followed the part-1 overlay
 build, answering the open points in section 8; v0.3 follows the `attach` and `pull` commands (issue #5) and records
-what they settled. The shape it belongs to is in [v0-split.md](v0-split.md).
+what they settled; v0.4 records which element a click anchors (issue #10). The shape it belongs to is in
+[v0-split.md](v0-split.md).
 
-The **document** revision is v0.3. The **wire format** stays `0.1`, in the envelope's `gitmargin` field and in the
-first line of the markdown block, because nothing the overlay writes has changed. What v0.3 adds is on the reading
-side: how `pull` prints a batch (section 1), what it adds when it merges several (section 5a), and where the agent
-rules now travel (section 6). The two version numbers are deliberately not the same thing.
+The **document** revision is v0.4. The **wire format** stays `0.1`, in the envelope's `gitmargin` field and in the
+first line of the markdown block, because the shape of what the overlay writes has not changed. What v0.3 added is on
+the reading side: how `pull` prints a batch (section 1), what it adds when it merges several (section 5a), and where
+the agent rules now travel (section 6). What v0.4 adds is one rule in section 3: which element a click anchors. The
+two version numbers are deliberately not the same thing.
 
 The batch is the whole point of part 1. A reviewer leaves comments on a prototype; the author gets them back; a
 coding agent reads them and makes the edits. For the agent to do that without the author explaining anything, each
@@ -127,10 +129,13 @@ here?". `tag` is optional: `change`, `bug`, `question`, or `like`.
 
 **anchor**, the spot: `selector` is a CSS selector for the element; `quote` is the text quote with a few words
 either side, in the W3C Web Annotation model's prefix, exact, suffix form; `point` is where inside the element's box
-the reviewer clicked, as fractions. An element's quote is its text *as the page renders it*: one space wherever the
-browser puts a visual break, decided by the computed display rather than by the tag, so a row of cells or a card
-built from a heading and a caption reads as words rather than as one long run. Three ways to find the same spot on purpose: an AI-regenerated page changes
-shape. They are tried in that order:
+the reviewer clicked, as fractions. A click on a control's label or icon anchors the control, and a click on a word
+inside a paragraph or heading anchors the paragraph or heading, so the selector an agent reads names the thing the
+reviewer meant rather than the innermost node the pointer landed on. A highlighted text selection is unchanged: the
+selection is its own anchor. An element's quote is its text *as the page renders it*: one space wherever the browser
+puts a visual break, decided by the computed display rather than by the tag, so a row of cells or a card built from a
+heading and a caption reads as words rather than as one long run. Three ways to find the same spot on purpose: an
+AI-regenerated page changes shape. They are tried in that order:
 
 1. **The selector.** A visible match wins immediately.
 2. **The quote.** The tightest element whose text *contains* the quote. Containment rather than equality, because a
