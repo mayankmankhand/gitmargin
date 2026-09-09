@@ -12,32 +12,13 @@
 
 import { selectorFor } from './selector.js';
 import { collapse, renderedText, visibleText, short } from './text.js';
+import { controlFor } from './target.js';
 
 /** Batch format section 4: a rolling log of the last 20 clicks. */
 const MAX_ENTRIES = 20;
 
 /** The longest text an entry can carry, matching `short`'s own truncation. */
 const LABEL_MAX = 40;
-
-/** Things a reviewer clicks on purpose. */
-const CONTROLS = [
-  'button',
-  'a[href]',
-  'input',
-  'select',
-  'textarea',
-  'label',
-  'summary',
-  '[role="button"]',
-  '[role="tab"]',
-  '[role="link"]',
-  '[role="menuitem"]',
-  '[role="option"]',
-  '[role="checkbox"]',
-  '[role="radio"]',
-  '[role="switch"]',
-  '[tabindex]',
-].join(',');
 
 const entries = [];
 let recording = true;
@@ -65,8 +46,12 @@ export function setRecording(on) {
  * that step would be worse than the noise this removes.
  */
 function stepFor(target) {
-  const control = target.closest ? target.closest(CONTROLS) : null;
-  if (control && control.localName !== 'body' && control.localName !== 'html') return control;
+  // The control step is shared with the comment target (target.js). The rest
+  // of this rule is the trail's own: the comment target keeps a raw element
+  // because it must frame and anchor something, while a step that is not a
+  // control and not a label is noise in a trail and is dropped.
+  const control = controlFor(target);
+  if (control) return control;
   if (target.localName === 'body' || target.localName === 'html') return null;
   const text = collapse(visibleText(target));
   return text && text.length <= LABEL_MAX ? target : null;
