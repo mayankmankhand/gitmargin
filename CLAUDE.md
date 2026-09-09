@@ -22,7 +22,9 @@ why they stopped. **`gitmargin attach` and `pull` are built and tested** (issue 
 `node bin/gitmargin.js <command>`, not published to npm. What remains in part 1: a dogfood round with two
 reviewers (issue #6), which is scoped and ready to run: a designer and an engineer, on the Sony onboarding
 fixture, with the file to send at `fixtures/onboarding.gitmargin.html`. The one gap found by using it, that
-comment mode does not show what a click will attach to, is issue #10 and is deliberately not fixed yet.
+comment mode did not show what a click would attach to, was issue #10 and is closed: a one-pixel frame follows
+the pointer and shows the element a click will anchor, snapped to the nearest control or named block
+(`docs/v0-split.md` section 2).
 A reviewer needs Chrome or Edge 88, Firefox 85, or Safari 15.4; anything older now says so on the page
 rather than failing silently (`docs/v0-split.md` section 5). **Part 2** (parked) = sign-in via OpenID Connect, the
 server on Vercel + Neon, the Slack and GitLab mirrors, publish to GitLab Pages, the phone mode, and

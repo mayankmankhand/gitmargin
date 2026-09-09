@@ -50,7 +50,10 @@ Three pieces:
 
 1. **The overlay.** One script inside the HTML. On a laptop you click an element or highlight text and a comment
    box opens: one text field with the placeholder "What did you expect here?" and an optional tag (change, bug,
-   question, like). A small numbered pin marks the element; a slim panel on the right lists every thread.
+   question, like). In comment mode a one-pixel frame follows the pointer and shows the element a click will
+   attach to, snapped to the nearest control or named block: a click on the word inside a button means the button,
+   and a click on a bold word inside a paragraph means the paragraph. A small numbered pin marks the element; a
+   slim panel on the right lists every thread.
 2. **Attach and pull.** `gitmargin attach prototype.html` writes a copy of the file next to the original with
    the overlay inside, and stamps a version id into that copy. The original is untouched; the copy is what you
    send. `gitmargin pull reviewed.html` reads the comments back out, from the returned file or from a pasted
@@ -120,11 +123,9 @@ Two measured limits found while building it, both standing as known gaps for the
   paragraphs. Covering those needs a roving cursor that walks the page element by element, which is a feature rather
   than a fix, so it is written down here rather than half-built.
 
-A third gap was found by using it on 2026-09-04 and tracked as
-[issue #10](https://github.com/mayankmankhand/gitmargin/issues/10): in comment mode nothing showed which element a
-click would attach to. It is closed: **a one-pixel frame follows the pointer and shows the element a click will attach
-to**, snapped to the nearest control or named block (button, link, field, heading, paragraph, list item, image) rather
-than to the innermost node under the pointer, so the frame shows exactly what the comment will anchor.
+A third gap, found by using it on 2026-09-04 and tracked as
+[issue #10](https://github.com/mayankmankhand/gitmargin/issues/10), was that nothing showed which element a click
+would attach to. It is closed, and the frame that closed it is described with the overlay in section 2.
 
 ### What a reviewer's browser has to be
 

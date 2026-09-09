@@ -1,5 +1,9 @@
 # The batch: what the overlay hands to a coding agent
 
+The batch is the whole point of part 1. A reviewer leaves comments on a prototype; the author gets them back; a
+coding agent reads them and makes the edits. For the agent to do that without the author explaining anything, each
+comment has to say **where** the reviewer was and **why** they stopped, in a form the agent can act on.
+
 **Status: v0.4, 2026-09-09.** Draft v0.1 was written before any code existed; v0.2 followed the part-1 overlay
 build, answering the open points in section 8; v0.3 follows the `attach` and `pull` commands (issue #5) and records
 what they settled; v0.4 records which element a click anchors (issue #10). The shape it belongs to is in
@@ -10,10 +14,6 @@ first line of the markdown block, because the shape of what the overlay writes h
 the reading side: how `pull` prints a batch (section 1), what it adds when it merges several (section 5a), and where
 the agent rules now travel (section 6). What v0.4 adds is one rule in section 3: which element a click anchors. The
 two version numbers are deliberately not the same thing.
-
-The batch is the whole point of part 1. A reviewer leaves comments on a prototype; the author gets them back; a
-coding agent reads them and makes the edits. For the agent to do that without the author explaining anything, each
-comment has to say **where** the reviewer was and **why** they stopped, in a form the agent can act on.
 
 ## 1. Where the batch lives
 

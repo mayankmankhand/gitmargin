@@ -59,6 +59,10 @@ Added 2026-09-09 from the product documentation only; nothing here was run. Clau
 as an "artifact", a hosted page on claude.ai. People the page is shared with can leave comment threads on it, and the
 agent in the publishing session can read the threads and reply to or resolve them.
 
+The same shape as Vercel's preview comments in the [landscape report](prior-art-landscape.md): solved on one
+platform, for teams entirely on that platform, and not portable to a prototype hosted anywhere else. It does not
+record where the reviewer was or what they were doing, which is what the fields compared in the table above exist for.
+
 - **Who can comment.** Only on an artifact shared within an organization, which needs a Team or Enterprise plan and
   Claude Code 2.1.221 or later. A page shared by public link cannot take comments (the page says "Comments aren't
   available while this Artifact is shared publicly"); a personal Pro or Max account can only share by public link, so
@@ -75,10 +79,6 @@ agent in the publishing session can read the threads and reply to or resolve the
   text quote, an element, a position). The nearest published hint is Claude Code's plan-mode sidebar, whose prompt
   reads "Select any text to leave a comment for Claude", which suggests text-selection anchoring. That is an
   inference, not something the artifact documentation says.
-
-The same shape as Vercel's preview comments in the [landscape report](prior-art-landscape.md): solved on one
-platform, for teams entirely on that platform, and not portable to a prototype hosted anywhere else. It does not
-record where the reviewer was or what they were doing, which is what the fields compared above exist for.
 
 ## Sources
 
