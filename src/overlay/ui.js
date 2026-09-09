@@ -48,7 +48,7 @@ function rangeForQuote(root, exact) {
 }
 
 export function mountUi(deps) {
-  const { store, batch, createComment, anchorFromElement, anchorFromSelection, resolve, setRecording } = deps;
+  const { store, batch, createComment, anchorFromElement, anchorFromSelection, resolve, setRecording, targetFor } = deps;
 
   // ---- host + shadow root -------------------------------------------------
   const host = el('div', { id: ROOT_ID, popover: 'manual' });
@@ -73,6 +73,11 @@ export function mountUi(deps) {
   const pinLayer = el('div');
   const lineLayer = el('div');
   shadow.append(pinLayer, lineLayer);
+  // The target preview: the element a click would attach a comment to, framed
+  // before the click. One persistent element rather than a child of lineLayer,
+  // which renderPins empties on every frame (issue #10).
+  const targetFrame = el('div', { class: 'gm-frame gm-target', hidden: 'hidden' });
+  shadow.appendChild(targetFrame);
 
   // ---- state --------------------------------------------------------------
   let commentMode = false;
@@ -80,6 +85,8 @@ export function mountUi(deps) {
   let editingId = null;
   let draft = null; // { anchor, element, x, y, tag }
   let stashedSelection = null;
+  let framed = null; // the element the target preview is on, or null
+  let pointerDown = false; // a drag in progress may be a text selection
 
   // ---- panel --------------------------------------------------------------
   const rail = el('button', {
@@ -151,6 +158,7 @@ export function mountUi(deps) {
     // on exactly the buttons a reviewer tries to click (review R14).
     host.classList.toggle('gm-armed', commentMode);
     switchBtn.setAttribute('aria-checked', commentMode ? 'true' : 'false');
+    if (!commentMode) hideTarget();
     if (commentMode) openPanel();
     // Leaving the mode governs what a click does; it is not a reason to throw
     // away a comment in progress. An empty box closes, a written one stays open
@@ -233,6 +241,7 @@ export function mountUi(deps) {
   function closeBox() {
     box.hidden = true;
     draft = null;
+    hideTarget(); // the next pointer move frames whatever is under it again
     chips.forEach((c) => {
       c.classList.remove('is-on');
       c.setAttribute('aria-pressed', 'false');
@@ -275,9 +284,14 @@ export function mountUi(deps) {
     return label ? `the "${label}" ${noun}` : `the ${noun}`;
   }
 
-  function openBox({ anchor, element, x, y }) {
+  function openBox({ anchor, element, x, y, framed: keep = null }) {
     draft = { anchor, element, tag: null };
     boxWhere.textContent = describe(anchor, element);
+    // While the box is open the frame stays on the thing being commented on,
+    // so "what am I commenting on" has an answer the whole time the reviewer
+    // is typing. A highlight has no frame: the selection itself is the mark.
+    if (keep) showTarget(keep);
+    else hideTarget();
     boxText.value = '';
     box.hidden = false;
     // Place it near the spot, then keep it inside the viewport. A keyboard
@@ -338,6 +352,100 @@ export function mountUi(deps) {
     }
   });
 
+  // ---- target preview (issue #10) -----------------------------------------
+  // In comment mode nothing used to show what a click would attach to, and the
+  // answer was the innermost node under the pointer: a word's <span>, an icon,
+  // a wrapper. Now the pointer is followed by a frame around targetFor(node),
+  // and the click handler below calls the same function, so the frame can only
+  // ever show the element the click will pick.
+
+  /** Put the frame where `framed` is now, or hide it if it has gone. */
+  function placeTarget() {
+    if (!framed) return;
+    const rect = framed.isConnected ? framed.getBoundingClientRect() : null;
+    if (!rect || (!rect.width && !rect.height)) {
+      hideTarget();
+      return;
+    }
+    targetFrame.style.left = `${rect.left - 3}px`;
+    targetFrame.style.top = `${rect.top - 3}px`;
+    targetFrame.style.width = `${rect.width + 6}px`;
+    targetFrame.style.height = `${rect.height + 6}px`;
+    targetFrame.hidden = false;
+  }
+
+  function showTarget(element) {
+    framed = element;
+    placeTarget();
+  }
+
+  function hideTarget() {
+    framed = null;
+    targetFrame.hidden = true;
+  }
+
+  /** A drag that is selecting text: the selection is its own preview. */
+  function selecting() {
+    if (!pointerDown) return false;
+    const sel = window.getSelection();
+    return !!(sel && !sel.isCollapsed && sel.toString().trim());
+  }
+
+  /** Frame what `raw` resolves to, or nothing when it resolves to nothing. */
+  function followPointer(raw) {
+    if (!commentMode || !box.hidden) return; // an open box owns the frame
+    if (selecting()) {
+      hideTarget();
+      return;
+    }
+    const target = targetFor(raw);
+    if (target) showTarget(target);
+    else hideTarget();
+  }
+
+  // One update per animation frame, however fast the pointer moves. Capture
+  // phase, like every other listener here, so a prototype that stops
+  // propagation cannot hide the preview. Over the overlay's own panel the
+  // event target is the host, which targetFor rejects, so the frame goes away.
+  let lastPointerTarget = null;
+  let pointerScheduled = false;
+  document.addEventListener(
+    'pointermove',
+    (event) => {
+      if (!commentMode) return;
+      lastPointerTarget = event.target;
+      if (pointerScheduled) return;
+      pointerScheduled = true;
+      requestAnimationFrame(() => {
+        pointerScheduled = false;
+        followPointer(lastPointerTarget);
+      });
+    },
+    true
+  );
+  document.addEventListener('pointerdown', () => { pointerDown = true; }, true);
+  document.addEventListener('pointerup', () => { pointerDown = false; }, true);
+  document.addEventListener('pointercancel', () => { pointerDown = false; }, true);
+  // Leaving the window: pointerleave does not bubble, so a listener on the
+  // document element fires for the window edge and nothing else.
+  document.documentElement.addEventListener('pointerleave', () => {
+    if (commentMode && box.hidden) hideTarget();
+  });
+
+  // The keyboard route sees the same preview: Tab onto a control and the frame
+  // is on what C will comment on. Focus landing in the overlay resolves to
+  // nothing and clears it.
+  document.addEventListener(
+    'focusin',
+    (event) => {
+      if (!commentMode || !box.hidden) return;
+      const target = targetFor(event.target);
+      if (target) showTarget(target);
+      else hideTarget();
+    },
+    true
+  );
+
   // ---- picking a spot -----------------------------------------------------
   // Capture phase, so a click never reaches the prototype while comment mode is
   // on. The trail's own listener sits on the same node and is gated by
@@ -356,8 +464,8 @@ export function mountUi(deps) {
     'click',
     (event) => {
       if (!commentMode) return;
-      const target = event.target;
-      if (!target || target.nodeType !== 1 || target.closest(`#${ROOT_ID}`)) return;
+      const raw = event.target;
+      if (!raw || raw.nodeType !== 1 || raw.closest(`#${ROOT_ID}`)) return;
 
       event.preventDefault();
       event.stopPropagation();
@@ -366,16 +474,24 @@ export function mountUi(deps) {
       if (!box.hidden && !closeBoxGuarded()) return;
 
       let anchor;
-      let element = target;
+      let element;
+      let keep = null;
       if (stashedSelection) {
         anchor = anchorFromSelection(stashedSelection);
         element = stashedSelection.getRangeAt(0).commonAncestorContainer;
         element = element.nodeType === 1 ? element : element.parentElement;
         stashedSelection = null;
       } else {
+        // The rule the frame used, so the box opens on the element the
+        // reviewer was shown (issue #10). Page furniture resolves to nothing:
+        // comment mode still swallows the click, and nothing opens.
+        const target = targetFor(raw);
+        if (!target) return;
         anchor = anchorFromElement(target, event);
+        element = target;
+        keep = target;
       }
-      openBox({ anchor, element, x: event.clientX, y: event.clientY });
+      openBox({ anchor, element, x: event.clientX, y: event.clientY, framed: keep });
     },
     true
   );
@@ -408,18 +524,19 @@ export function mountUi(deps) {
     // A selection in the page is the intent regardless of what holds focus:
     // turning comment mode on with the mouse leaves focus inside the overlay.
     if (!hasText && active && active.closest && active.closest(`#${ROOT_ID}`)) return;
+    // The same rule as a click (issue #10): body, html and the overlay resolve
+    // to nothing, and a focused control that is not a control's own element
+    // resolves to the control.
     const element = hasText
       ? (selection.getRangeAt(0).commonAncestorContainer.nodeType === 1
           ? selection.getRangeAt(0).commonAncestorContainer
           : selection.getRangeAt(0).commonAncestorContainer.parentElement)
-      : active && active !== document.body
-        ? active
-        : null;
+      : targetFor(active);
     if (!element) return;
 
     event.preventDefault();
     const anchor = hasText ? anchorFromSelection(selection) : anchorFromElement(element, null);
-    openBox({ anchor, element });
+    openBox({ anchor, element, framed: hasText ? null : element });
   });
 
   // ---- rendering ----------------------------------------------------------
@@ -655,6 +772,7 @@ export function mountUi(deps) {
     });
     renderPanel(resolved, force);
     renderPins(resolved);
+    placeTarget(); // scroll, resize and page changes move the framed element too
   }
 
   // One re-layout per frame, however many things changed.
@@ -694,6 +812,9 @@ export function mountUi(deps) {
     openPanel,
     render,
     isBoxOpen: () => !box.hidden,
+    // Read by the test suite: the element the target preview is on, so a test
+    // can compare it by identity with what a click then anchors (issue #10).
+    target: () => framed,
     shadow,
   };
 }

@@ -10,6 +10,7 @@ import { originalHtml, stamp } from './snapshot.js';
 import { anchorFromElement, anchorFromSelection, resolve } from './anchor.js';
 import { screenFor } from './screen.js';
 import { startTrail, trailFor, setRecording } from './trail.js';
+import { targetFor } from './target.js';
 import * as store from './store.js';
 import * as batch from './export.js';
 import { mountUi } from './ui.js';
@@ -62,6 +63,7 @@ function start() {
     anchorFromSelection,
     resolve,
     setRecording,
+    targetFor,
   });
 
   // The only global the overlay adds: a handle for the tests, and the seam the

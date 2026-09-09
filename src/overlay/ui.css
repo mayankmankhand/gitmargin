@@ -113,6 +113,10 @@ input, textarea { font: inherit; color: inherit; }
   border-radius: 3px;
   pointer-events: none;
 }
+/* The same frame, drawn BEFORE the click around what the click would attach
+   to (issue #10). Same stroke, same offset, so the preview and the selected
+   comment's frame are one mark at two moments. Hidden between targets. */
+.gm-target[hidden] { display: none; }
 
 .gm-leader {
   position: fixed;
