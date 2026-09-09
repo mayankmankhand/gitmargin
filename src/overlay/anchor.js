@@ -7,6 +7,7 @@
 // a comment that matches none of them is orphaned - a normal state, not a loss.
 
 import { selectorFor } from './selector.js';
+import { ROOT } from './root.js';
 import { collapse, renderedText, visibleText } from './text.js';
 
 /** Characters of context kept either side of the quote. */
@@ -101,7 +102,7 @@ function byQuote(exact) {
   const textOf = (el) => squeeze(el.textContent);
 
   const matches = Array.from(document.querySelectorAll('body *')).filter(
-    (el) => !el.closest('#gitmargin-root') && textOf(el).includes(wanted)
+    (el) => !el.closest(ROOT) && textOf(el).includes(wanted)
   );
   // Whether this element's text IS the quote, or merely contains it. A
   // containment match is how a highlighted fragment is found again, but a short
@@ -138,7 +139,7 @@ function ancestorFor(selector) {
   for (let take = parts.length - 1; take > 0; take -= 1) {
     try {
       const found = document.querySelector(parts.slice(0, take).join(' > '));
-      if (found && !found.closest('#gitmargin-root')) return found;
+      if (found && !found.closest(ROOT)) return found;
     } catch {
       /* a selector from another version of the page may not parse */
     }
@@ -168,7 +169,7 @@ export function resolve(anchor) {
   if (anchor.selector) {
     try {
       for (const el of document.querySelectorAll(anchor.selector)) {
-        if (el && !el.closest('#gitmargin-root')) selectorHits.push(el);
+        if (el && !el.closest(ROOT)) selectorHits.push(el);
       }
     } catch {
       /* a selector from another version of the page may not even parse */

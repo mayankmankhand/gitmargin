@@ -16,7 +16,7 @@
 // Both start with the same first step, a control wins, and that step lives here
 // once. A rule that lives in two files drifts.
 
-const ROOT = '#gitmargin-root';
+import { ROOT } from './root.js';
 
 /**
  * Things a reviewer clicks on purpose.

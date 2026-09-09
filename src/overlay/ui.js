@@ -7,9 +7,9 @@
 // sends back is the page they were given.
 
 import css from './ui.css';
+import { ROOT_ID } from './root.js';
 
 const TAGS = ['change', 'bug', 'question', 'like'];
-const ROOT_ID = 'gitmargin-root';
 
 /** Small DOM helper: el('div', { class: 'x' }, [children]). */
 function el(tag, props = {}, children = []) {
@@ -87,6 +87,8 @@ export function mountUi(deps) {
   let stashedSelection = null;
   let framed = null; // the element the target preview is on, or null
   let pointerDown = false; // a drag in progress may be a text selection
+  let selectionMoved = false; // did the selection change during this gesture?
+  let selectionAtDown = ''; // the selection's text when the pointer went down
 
   // ---- panel --------------------------------------------------------------
   const rail = el('button', {
@@ -359,6 +361,15 @@ export function mountUi(deps) {
   // and the click handler below calls the same function, so the frame can only
   // ever show the element the click will pick.
 
+  /**
+   * The stroke never leaves the window. A wrapper wider than the viewport used
+   * to get a frame with all four edges offscreen, which looked exactly like
+   * "nothing to comment on" while a click still opened a box on it (review R7,
+   * #10 cycle). Four pixels in, so the line sits inside the armed border with
+   * a gap rather than on top of it.
+   */
+  const INSET = 4;
+
   /** Put the frame where `framed` is now, or hide it if it has gone. */
   function placeTarget() {
     if (!framed) return;
@@ -367,10 +378,18 @@ export function mountUi(deps) {
       hideTarget();
       return;
     }
-    targetFrame.style.left = `${rect.left - 3}px`;
-    targetFrame.style.top = `${rect.top - 3}px`;
-    targetFrame.style.width = `${rect.width + 6}px`;
-    targetFrame.style.height = `${rect.height + 6}px`;
+    const left = Math.max(rect.left - 3, INSET);
+    const top = Math.max(rect.top - 3, INSET);
+    const right = Math.min(rect.right + 3, window.innerWidth - INSET);
+    const bottom = Math.min(rect.bottom + 3, window.innerHeight - INSET);
+    if (right <= left || bottom <= top) {
+      targetFrame.hidden = true; // scrolled out of view: still the target, nothing to draw
+      return;
+    }
+    targetFrame.style.left = `${left}px`;
+    targetFrame.style.top = `${top}px`;
+    targetFrame.style.width = `${right - left}px`;
+    targetFrame.style.height = `${bottom - top}px`;
     targetFrame.hidden = false;
   }
 
@@ -384,11 +403,26 @@ export function mountUi(deps) {
     targetFrame.hidden = true;
   }
 
+  /**
+   * The selection this pointer gesture made, or null.
+   *
+   * A selection left over from before comment mode was turned on, or made with
+   * the keyboard, survives a click on a button in both engines. Stashing
+   * whatever selection existed at mouseup then anchored the old quote while the
+   * frame sat on the button (review R1, #10 cycle; measured in Chromium and
+   * Firefox). A selection is the click's intent only when the gesture changed
+   * it: the change flag catches the ordinary drag, and the text comparison
+   * catches an engine that reports the change late.
+   */
+  function freshSelection() {
+    const sel = window.getSelection();
+    if (!sel || sel.isCollapsed || !sel.toString().trim()) return null;
+    return selectionMoved || sel.toString() !== selectionAtDown ? sel : null;
+  }
+
   /** A drag that is selecting text: the selection is its own preview. */
   function selecting() {
-    if (!pointerDown) return false;
-    const sel = window.getSelection();
-    return !!(sel && !sel.isCollapsed && sel.toString().trim());
+    return pointerDown && !!freshSelection();
   }
 
   /** Frame what `raw` resolves to, or nothing when it resolves to nothing. */
@@ -423,7 +457,18 @@ export function mountUi(deps) {
     },
     true
   );
-  document.addEventListener('pointerdown', () => { pointerDown = true; }, true);
+  document.addEventListener(
+    'pointerdown',
+    () => {
+      pointerDown = true;
+      selectionMoved = false;
+      selectionAtDown = String(window.getSelection() || '');
+    },
+    true
+  );
+  document.addEventListener('selectionchange', () => {
+    if (pointerDown) selectionMoved = true;
+  });
   document.addEventListener('pointerup', () => { pointerDown = false; }, true);
   document.addEventListener('pointercancel', () => { pointerDown = false; }, true);
   // Leaving the window: pointerleave does not bubble, so a listener on the
@@ -454,8 +499,7 @@ export function mountUi(deps) {
     'mouseup',
     () => {
       if (!commentMode) return;
-      const sel = window.getSelection();
-      stashedSelection = sel && !sel.isCollapsed && sel.toString().trim() ? sel : null;
+      stashedSelection = freshSelection();
     },
     true
   );
@@ -524,14 +568,16 @@ export function mountUi(deps) {
     // A selection in the page is the intent regardless of what holds focus:
     // turning comment mode on with the mouse leaves focus inside the overlay.
     if (!hasText && active && active.closest && active.closest(`#${ROOT_ID}`)) return;
-    // The same rule as a click (issue #10): body, html and the overlay resolve
-    // to nothing, and a focused control that is not a control's own element
-    // resolves to the control.
+    // The frame is the promise, so C opens on the framed element when there is
+    // one. After Tab and then a nudge of the trackpad, focus and frame disagree
+    // and the reviewer is looking at the frame (review R9, #10 cycle). With no
+    // frame, the same rule as a click: body, html and the overlay resolve to
+    // nothing, and a focused element inside a control resolves to the control.
     const element = hasText
       ? (selection.getRangeAt(0).commonAncestorContainer.nodeType === 1
           ? selection.getRangeAt(0).commonAncestorContainer
           : selection.getRangeAt(0).commonAncestorContainer.parentElement)
-      : targetFor(active);
+      : framed || targetFor(active);
     if (!element) return;
 
     event.preventDefault();

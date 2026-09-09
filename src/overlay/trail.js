@@ -13,6 +13,7 @@
 import { selectorFor } from './selector.js';
 import { collapse, renderedText, visibleText, short } from './text.js';
 import { controlFor } from './target.js';
+import { ROOT } from './root.js';
 
 /** Batch format section 4: a rolling log of the last 20 clicks. */
 const MAX_ENTRIES = 20;
@@ -77,7 +78,7 @@ function onClick(event) {
   const target = event.target;
   if (!target || target.nodeType !== 1) return;
   // Never log the overlay's own UI.
-  if (target.closest('#gitmargin-root')) return;
+  if (target.closest(ROOT)) return;
 
   const step = stepFor(target);
   if (!step) return;

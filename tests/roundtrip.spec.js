@@ -950,3 +950,86 @@ test('no frame with comment mode off, none over the panel, and page furniture op
   await page.keyboard.press('Escape'); // leaves comment mode
   expect(await frameHidden(page)).toBe(true);
 });
+
+// ---- issue #10 review fixes ------------------------------------------------
+
+test('a selection left over from before comment mode does not hijack a click on a button', async ({ page }) => {
+  await openFixture(page);
+  // Select words with comment mode OFF, the way a reviewer reading the page might.
+  const box = await page.evaluate(() => {
+    const node = document.querySelector('#step-1 p').firstChild;
+    const range = document.createRange();
+    range.setStart(node, 4);
+    range.setEnd(node, 17);
+    const r = range.getBoundingClientRect();
+    return { x1: r.left + 1, x2: r.right - 1, y: r.top + r.height / 2 };
+  });
+  await page.mouse.move(box.x1, box.y);
+  await page.mouse.down();
+  await page.mouse.move(box.x2, box.y, { steps: 8 });
+  await page.mouse.up();
+  expect(await page.evaluate(() => String(getSelection()))).toBe('standard plan');
+
+  await page.click('.gm-switch');
+  await page.hover('#step-1 .next');
+  await settle(page);
+  expect(await framedIs(page, '#step-1 .next')).toBe(true);
+  await page.click('#step-1 .next');
+  await expect(page.locator('.gm-box')).toBeVisible();
+  // The frame promised the button; the comment lands on the button.
+  expect(await page.locator('.gm-box .where').textContent()).toBe('"Next"');
+  await page.fill('.gm-box textarea', 'Next reads as a submit.');
+  await page.click('.gm-box-actions .gm-btn.primary');
+  const c = (await page.evaluate(() => window.__gitmargin.export())).comments[0];
+  expect(c.anchor.tag).toBe('button');
+  expect(c.anchor.quote.exact).toBe('Next');
+});
+
+test('C opens on the framed element when focus and frame disagree', async ({ page }) => {
+  await openFixture(page);
+  await page.click('.gm-switch');
+  await page.focus('#step-1 .next');
+  await settle(page);
+  expect(await framedIs(page, '#step-1 .next')).toBe(true);
+  // A nudge of the trackpad moves the frame; focus stays on the button.
+  await page.hover('#step-1 .fine strong');
+  await settle(page);
+  expect(await framedIs(page, '#step-1 .fine p')).toBe(true);
+  await page.keyboard.press('c');
+  await expect(page.locator('.gm-box')).toBeVisible();
+  await page.fill('.gm-box textarea', 'Which order is the first?');
+  await page.keyboard.press('Control+Enter');
+  const c = (await page.evaluate(() => window.__gitmargin.export())).comments[0];
+  expect(c.anchor.tag).toBe('p');
+  expect(c.anchor.quote.exact).toBe('Delivery is free on your first order.');
+});
+
+test('a wrapper larger than the window still gets a frame inside the window', async ({ page }) => {
+  await openFixture(page);
+  // A screen-filling shell, the shape an AI prototype often has: fixed, overflowing every edge.
+  await page.evaluate(() => {
+    const wall = document.createElement('div');
+    wall.id = 'wall';
+    wall.textContent = 'App shell';
+    wall.style.cssText = 'position:fixed;inset:-40px;background:#111;color:#eee;';
+    document.body.appendChild(wall);
+  });
+  await page.click('.gm-switch');
+  await page.mouse.move(200, 500);
+  await settle(page);
+  expect(await framedIs(page, '#wall')).toBe(true);
+  const frame = await page.evaluate(() => {
+    const f = document.getElementById('gitmargin-root').shadowRoot.querySelector('.gm-target');
+    const r = f.getBoundingClientRect();
+    const cs = getComputedStyle(f);
+    return { hidden: f.hidden, left: r.left, top: r.top, right: r.right, bottom: r.bottom, outline: cs.outlineWidth };
+  });
+  const size = page.viewportSize();
+  expect(frame.hidden).toBe(false);
+  expect(frame.left).toBeGreaterThanOrEqual(0);
+  expect(frame.top).toBeGreaterThanOrEqual(0);
+  expect(frame.right).toBeLessThanOrEqual(size.width);
+  expect(frame.bottom).toBeLessThanOrEqual(size.height);
+  // The ground-coloured hairline outside the stroke, so the frame reads on this dark shell.
+  expect(frame.outline).toBe('1px');
+});
