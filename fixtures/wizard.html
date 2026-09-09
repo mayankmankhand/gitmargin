@@ -62,6 +62,17 @@
     <div class="actions">
       <button class="next" data-to="2">Next</button>
     </div>
+    <!-- Issue #10: the two shapes the click-target rule exists for. A label
+         inside a button (a control wins) and a bold word inside a paragraph
+         (the named block wins). Wrapped so the selectors of the elements above
+         stay unique: the first <p> is still the only <p> child of the section,
+         and .actions still holds the section's only direct div > button. -->
+    <div class="fine">
+      <p>Delivery is <strong>free</strong> on your first order.</p>
+    </div>
+    <aside class="promo">
+      <button id="promo" type="button"><span class="ico" aria-hidden="true">%</span><span class="label">Add a promo code</span></button>
+    </aside>
   </section>
 
   <section class="step" id="step-2" data-gm-screen="Shipping address">

@@ -788,3 +788,165 @@ test('the keyboard route is stated where a reviewer can read it', async ({ page 
   await openFixture(page);
   await expect(page.locator('.gm-empty')).toContainText('press C');
 });
+
+// ---- issue #10: the target preview -----------------------------------------
+// In comment mode a frame follows the pointer and shows the element a click
+// will attach a comment to, and that element is snapped up from the raw node
+// under the pointer. The frame and the click call one function; the first test
+// below compares the two by identity, which is the whole promise.
+
+/** True when the preview is on the element `selector` finds, compared by identity. */
+const framedIs = (page, selector) =>
+  page.evaluate((s) => window.__gitmargin.ui.target() === document.querySelector(s), selector);
+const frameHidden = (page) =>
+  page.evaluate(() => document.getElementById('gitmargin-root').shadowRoot.querySelector('.gm-target').hidden);
+/** Two animation frames: the pointer handler updates once per frame. */
+const settle = (page) => page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+
+test('the frame shows the element a click will anchor: a label inside a button means the button', async ({ page }) => {
+  await openFixture(page);
+  await page.click('.gm-switch');
+
+  await page.hover('#promo .label');
+  await settle(page);
+  expect(await framedIs(page, '#promo')).toBe(true);
+  // The frame is drawn 3px outside the element's box, like the selected-comment frame.
+  const [frame, target] = await page.evaluate(() => {
+    const f = document.getElementById('gitmargin-root').shadowRoot.querySelector('.gm-target').getBoundingClientRect();
+    const t = document.querySelector('#promo').getBoundingClientRect();
+    return [f, t];
+  });
+  expect(Math.abs(frame.left - (target.left - 3))).toBeLessThan(1);
+  expect(Math.abs(frame.width - (target.width + 6))).toBeLessThan(1);
+
+  // The click picks the framed element: the same node, not merely the same shape.
+  await page.click('#promo .label');
+  await expect(page.locator('.gm-box')).toBeVisible();
+  expect(await framedIs(page, '#promo')).toBe(true);
+  await page.fill('.gm-box textarea', 'Promo codes belong at checkout, not here.');
+  await page.click('.gm-box-actions .gm-btn.primary');
+
+  const c = (await page.evaluate(() => window.__gitmargin.export())).comments[0];
+  expect(c.anchor.tag).toBe('button');
+  expect(await page.evaluate((sel) => document.querySelector(sel) === document.querySelector('#promo'), c.anchor.selector)).toBe(true);
+  // The quote is what the page renders: the icon glyph and the label are two
+  // inline spans with nothing between them, so they read as one word.
+  expect(c.anchor.quote.exact).toBe('%Add a promo code');
+});
+
+test('a word inside a paragraph frames and anchors the paragraph', async ({ page }) => {
+  await openFixture(page);
+  await page.click('.gm-switch');
+
+  await page.hover('#step-1 .fine strong');
+  await settle(page);
+  expect(await framedIs(page, '#step-1 .fine p')).toBe(true);
+
+  await page.click('#step-1 .fine strong');
+  await page.fill('.gm-box textarea', 'Say which order counts as the first.');
+  await page.click('.gm-box-actions .gm-btn.primary');
+  const c = (await page.evaluate(() => window.__gitmargin.export())).comments[0];
+  expect(c.anchor.tag).toBe('p');
+  expect(c.anchor.quote.exact).toBe('Delivery is free on your first order.');
+});
+
+test('the frame hides while text is being dragged, and the highlight still anchors its quote', async ({ page }) => {
+  await openFixture(page);
+  await page.click('.gm-switch');
+
+  const box = await page.evaluate(() => {
+    const node = document.querySelector('#step-1 p').firstChild;
+    const range = document.createRange();
+    range.setStart(node, 4);
+    range.setEnd(node, 17);
+    const r = range.getBoundingClientRect();
+    return { x1: r.left + 1, x2: r.right - 1, y: r.top + r.height / 2 };
+  });
+  await page.mouse.move(box.x1, box.y);
+  await settle(page);
+  expect(await framedIs(page, '#step-1 p')).toBe(true); // resting on the paragraph
+  await page.mouse.down();
+  await page.mouse.move(box.x2, box.y, { steps: 8 });
+  await settle(page);
+  expect(await page.evaluate(() => String(getSelection()).length)).toBeGreaterThan(0);
+  expect(await frameHidden(page)).toBe(true); // the selection is its own preview
+  await page.mouse.up();
+
+  await expect(page.locator('.gm-box')).toBeVisible();
+  expect(await frameHidden(page)).toBe(true); // a highlight draft has no frame
+  await page.fill('.gm-box textarea', 'Still anchored to the words.');
+  await page.click('.gm-box-actions .gm-btn.primary');
+  const c = (await page.evaluate(() => window.__gitmargin.export())).comments[0];
+  expect(c.anchor.quote.exact).toBe('standard plan');
+});
+
+test('focus moving onto a control frames it, and C comments on it', async ({ page }) => {
+  await openFixture(page);
+  await page.click('.gm-switch');
+
+  await page.focus('#plan');
+  await settle(page);
+  expect(await framedIs(page, '#plan')).toBe(true);
+
+  // C is left alone on a field the reviewer may be typing into (a select picks
+  // an option by letter), so the comment half of this promise uses a button.
+  await page.focus('#step-1 .next');
+  await settle(page);
+  expect(await framedIs(page, '#step-1 .next')).toBe(true);
+  await page.keyboard.press('c');
+  await expect(page.locator('.gm-box')).toBeVisible();
+  expect(await framedIs(page, '#step-1 .next')).toBe(true);
+  expect(await page.locator('.gm-box .where').textContent()).toBe('"Next"');
+  await page.fill('.gm-box textarea', 'Next reads as a submit.');
+  await page.keyboard.press('Control+Enter');
+  const c = (await page.evaluate(() => window.__gitmargin.export())).comments[0];
+  expect(c.anchor.tag).toBe('button');
+  expect(await page.evaluate((sel) => document.querySelector(sel) === document.querySelector('#step-1 .next'), c.anchor.selector)).toBe(true);
+});
+
+test('the frame stays on the element while the box is open, then follows the pointer again', async ({ page }) => {
+  await openFixture(page);
+  await page.click('.gm-switch');
+
+  await page.hover('#step-1 .next');
+  await settle(page);
+  await page.click('#step-1 .next');
+  await expect(page.locator('.gm-box')).toBeVisible();
+  await page.hover('#step-1 h2');
+  await settle(page);
+  expect(await framedIs(page, '#step-1 .next')).toBe(true); // the open box owns the frame
+
+  await page.fill('.gm-box textarea', 'Next reads as a submit.');
+  await page.click('.gm-box-actions .gm-btn.primary');
+  expect(await frameHidden(page)).toBe(true); // nothing framed until the pointer moves
+  await page.hover('#step-1 h2');
+  await settle(page);
+  expect(await framedIs(page, '#step-1 h2')).toBe(true);
+});
+
+test('no frame with comment mode off, none over the panel, and page furniture opens nothing', async ({ page }) => {
+  await openFixture(page);
+
+  await page.hover('#step-1 .next');
+  await settle(page);
+  expect(await frameHidden(page)).toBe(true);
+
+  await page.click('.gm-switch');
+  await page.hover('#step-1 .next');
+  await settle(page);
+  expect(await frameHidden(page)).toBe(false);
+  await page.hover('.gm-panel');
+  await settle(page);
+  expect(await frameHidden(page)).toBe(true);
+
+  // The page margin resolves to nothing: no frame, and a click there opens no box.
+  await page.mouse.move(4, 4);
+  await settle(page);
+  expect(await page.evaluate(() => document.elementFromPoint(4, 4).localName)).toBe('body');
+  expect(await frameHidden(page)).toBe(true);
+  await page.mouse.click(4, 4);
+  await expect(page.locator('.gm-box')).toBeHidden();
+
+  await page.keyboard.press('Escape'); // leaves comment mode
+  expect(await frameHidden(page)).toBe(true);
+});
