@@ -1,5 +1,5 @@
 // Tiny static server for the fixture, used only by the design-critic loop:
-// .claude/scripts/browse.js navigates http(s) URLs only, so a screenshot of the
+// the toolkit's browse.js navigates http(s) URLs only, so a screenshot of the
 // overlay needs the fixture served rather than opened from disk. The tests do
 // NOT use this - they open the file directly, which is how a reviewer gets it.
 //

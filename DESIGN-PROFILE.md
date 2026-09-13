@@ -3,10 +3,10 @@
 
   Both installers copy this file to <project>/DESIGN-PROFILE.md ONCE, on a fresh
   install, and never overwrite it afterwards: the seeded copy is user-owned, like
-  CLAUDE.md and LESSONS.md. /explore reads it before any design work and offers to
-  create it from this template when it is missing. /explore and /document write it;
-  /execute only reads it. The rules that use these sections live in
-  .claude/skills/shared/design-rules.md.
+  CLAUDE.md and LESSONS.md. /tk:explore reads it before any design work and offers to
+  create it from this template when it is missing. /tk:explore and /tk:document write it;
+  /tk:execute only reads it. The rules that use these sections live in the toolkit's
+  design-rules skill (tk:design-rules).
 
   This template ships through the shared-fragment glob, so it is present in every
   install. It is a template, not this repository's own profile: keep every value
@@ -36,14 +36,14 @@ and never overwrites a design system you already have. Edit it freely.
 
 ## Taste notes
 
-<!-- Reactions captured while reacting to idea lists in /explore: what felt right,
+<!-- Reactions captured while reacting to idea lists in /tk:explore: what felt right,
      what felt tacky, what to avoid. One line each, newest last. -->
 - 2026-09-02, issue #3 overlay: shown seven one-line looks (margin notes, sticky notes, inspector, Docs literal, red pen, ghost, wayfinding) and answered "you decide"; no per-idea reactions. Standing constraint accepted: the overlay sits on someone else's prototype and must read over any page without competing with it.
 
 ## Directions tried
 
 <!-- One line per direction: name, seed, best critic score, kept or dropped. Written
-     by /document at the end of a cycle. -->
+     by /tk:document at the end of a cycle. -->
 - **Hairline** - seed `8EJlC5cKVf9RE/8H/9oDT8iVvVw/IqTL` - best critic score 5/10 over the full 5 rounds (4, 5, 5, 5, 5) - **kept**, and it is now the design system above. The score never reached the 9/10 bar; see the retry list below for why that is not the whole story. Receipt: the Design run section of `plans/PLAN-issue-3.md`.
 - **Red pen** - no seed drawn - dropped at pick.
 - **Wayfinding** - no seed drawn - dropped at pick. Both were dropped because the owner answered "you decide" to the idea list, so one direction was proposed and confirmed rather than three built.
