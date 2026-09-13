@@ -84,6 +84,9 @@
 - **A preview must read every input the action reads, or it promises what the action will not do.**
 - **Write a receipt's expectation from the check's real output, or a true finding dies on its own proof.**
 
+### gitmargin: toolkit move to the tk plugin (issue #12, 2026-09-13)
+- **A migration's clean audit covers its own file list; grep the whole repo for every removed path, including files the migration itself just wrote.**
+
 ## Mistakes to Avoid
 
 - **Fill a plan's Outcomes by replacing the template placeholder, not inserting above it.**
