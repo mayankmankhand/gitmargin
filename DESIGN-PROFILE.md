@@ -1,16 +1,9 @@
 <!--
-  design-profile-template.md - the seed for DESIGN-PROFILE.md (issue #160).
-
-  Both installers copy this file to <project>/DESIGN-PROFILE.md ONCE, on a fresh
-  install, and never overwrite it afterwards: the seeded copy is user-owned, like
-  CLAUDE.md and LESSONS.md. /tk:explore reads it before any design work and offers to
-  create it from this template when it is missing. /tk:explore and /tk:document write it;
+  This repository's design profile, seeded once by the toolkit and owned by this repo
+  from then on: the toolkit never overwrites it, like CLAUDE.md and LESSONS.md.
+  /tk:explore reads it before any design work; /tk:explore and /tk:document write it;
   /tk:execute only reads it. The rules that use these sections live in the toolkit's
-  design-rules skill (tk:design-rules).
-
-  This template ships through the shared-fragment glob, so it is present in every
-  install. It is a template, not this repository's own profile: keep every value
-  below blank here.
+  design-rules skill (tk:design-rules). The values below are this repo's real answers.
 -->
 # Design Profile
 

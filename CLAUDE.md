@@ -2,7 +2,6 @@
 
 <!-- This file is YOURS. Add your project-specific info below. -->
 <!-- Toolkit rules live in .claude/rules/toolkit.md (managed by the toolkit, auto-discovered by Claude). -->
-<!-- See README.md > "How It Works" for details on how these files connect. -->
 
 ## About This Project
 <!-- Describe your project: what it is, what it does, what tech stack it uses -->
