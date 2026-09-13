@@ -1,0 +1,13 @@
+{
+  "extraKnownMarketplaces": {
+    "llm-peer-review": {
+      "source": {
+        "source": "github",
+        "repo": "mayankmankhand/llm-peer-review"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "tk@llm-peer-review": true
+  }
+}
