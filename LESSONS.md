@@ -87,6 +87,11 @@
 ### gitmargin: toolkit move to the tk plugin (issue #12, 2026-09-13)
 - **A migration's clean audit covers its own file list; grep the whole repo for every removed path, including files the migration itself just wrote.**
 
+### gitmargin: toolkit upgrade to 7.3.0 (issue #14, 2026-09-16)
+- **A runbook issue written for one release is stale by the next; rerun the read-only audit and trust its counts over the issue's.**
+- **Renaming a lesson's one-liner means renaming its write-up's bold lead too, even when the upgrade audit leaves the detail file out.**
+- **Updating a standing page from a new session needs one fetch of the live version first; resending unchanged after the refusal is refused again.**
+
 ## Mistakes to Avoid
 
 - **Fill a plan's Outcomes by replacing the template placeholder, not inserting above it.**
