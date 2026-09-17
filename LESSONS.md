@@ -5,7 +5,7 @@
      relevant to the task at hand, open the matching entry in LESSONS-detail.md for the detail.
      To add a lesson: put the one-liner here under the right section, and the full write-up in
      LESSONS-detail.md with the SAME bold lead so the two stay linked. Keep this file short -
-     it is the always-read surface. For deep dives into why a concept works, use /learning-opportunity. -->
+     it is the always-read surface. For deep dives into why a concept works, use /tk:learning-opportunity. -->
 
 ## What I Learned
 
@@ -28,7 +28,7 @@
 - **Reasoning models share their token budget between reasoning and output.**
 - **Silent empty bodies need active detection, not just happy-path returns.**
 - **Per-session temp file paths solve concurrent-tab collisions; session-ID recovery needs to handle the multi-tab case.**
-- **Run /ask-gpt and /ask-gemini in parallel when the change is worth real scrutiny; convergence between independent reviewers is signal.**
+- **Run /tk:ask-gpt and /tk:ask-gemini in parallel when the change is worth real scrutiny; convergence between independent reviewers is signal.**
 - **Cross-platform mirrors can hide pre-existing gaps; audit before assuming a small change stays small.**
 - **Define a judgement gate once, in countable terms, consistent with its governing rule.**
 - **A gate must be countable against the output the model actually produces.**

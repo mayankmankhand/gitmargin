@@ -5,4 +5,3 @@
 # Prevents CRLF on Windows clones from breaking bash execution and Node shebangs
 *.sh text eol=lf
 scripts/** text eol=lf
-.claude/scripts/** text eol=lf

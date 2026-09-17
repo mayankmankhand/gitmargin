@@ -91,7 +91,6 @@ reports/
 .cursor/
 .claude/worktrees/
 CODEBASE_MAP.md
-.claude/.toolkit-manifest.json
 .toolkit-backup-*/
 artifacts/html/
 correction-ledger.jsonl
@@ -105,3 +104,6 @@ fixtures/.tmp-*
 # Both are rebuilt from the source prototype, so neither belongs in git.
 *.gitmargin.html
 *.reviewed.html
+
+# Added by the LLM Peer Review toolkit (/tk:setup)
+.claude/.toolkit-migration.json
