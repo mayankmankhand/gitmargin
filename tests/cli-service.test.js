@@ -93,7 +93,8 @@ test('a later attach needs only --service: same prototype, same version while un
   assert.match(s.tag('version'), /^v2-/);
   assert.equal(await s.prototypes(), 1);
   const html = readFileSync(s.copy, 'utf8');
-  assert.equal(html.split('gitmargin-key').length - 1, 1, 're-attach replaces the tags rather than stacking them');
+  // Count the tag, not the words: the overlay's own source names the tag it reads.
+  assert.equal(html.split('<meta name="gitmargin-key"').length - 1, 1, 're-attach replaces the tags rather than stacking them');
 });
 
 test('--key finds the prototype from a fresh checkout, and the service\'s round beats the local counter', async (t) => {

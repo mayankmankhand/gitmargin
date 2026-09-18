@@ -65,4 +65,8 @@ function meta(name) {
 export const stamp = {
   versionId: meta('gitmargin-version'),
   file: meta('gitmargin-file'),
+  // Written only by `attach --service` (issue #15). Both absent is the normal
+  // case, and then nothing in the overlay ever touches the network.
+  service: meta('gitmargin-service'),
+  key: meta('gitmargin-key'),
 };

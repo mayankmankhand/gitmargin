@@ -153,3 +153,22 @@ export function remove(id) {
   touched();
   return true;
 }
+
+/**
+ * Take what the comment service says (issue #15, src/overlay/sync.js).
+ *
+ * `upsert` replaces a comment by id or adds it; `drop` removes ids. The list is
+ * then ordered by when each comment was written, with the id as tie-break, so
+ * everyone looking at the page sees the same comment as "3". Announces without
+ * `touched()`: someone else's comment arriving is not unexported work of mine.
+ */
+export function applyRemote({ upsert = [], drop = [] }) {
+  if (!upsert.length && !drop.length) return;
+  const gone = new Set(drop);
+  const byId = new Map(state.comments.filter((c) => !gone.has(c.id)).map((c) => [c.id, c]));
+  upsert.forEach((c) => byId.set(c.id, c));
+  state.comments = [...byId.values()].sort(
+    (a, b) => String(a.time || '').localeCompare(String(b.time || '')) || String(a.id).localeCompare(String(b.id))
+  );
+  announce();
+}
