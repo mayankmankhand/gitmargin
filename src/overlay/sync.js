@@ -385,6 +385,20 @@ export function startSync({
     view: () => ({ ...view, unsent: ops.length, isLatest: !view.latest || view.latest === stamp.versionId }),
     isMine: (id) => mine.has(id),
     isUnshared: (id) => Boolean(rejected[id]) || hasPending(id, 'add'),
+    versionId: stamp.versionId,
+    /**
+     * An older version's comments, for the read-only list under the Version
+     * accordion. Never enters the store: those comments are about another page.
+     * Resolves to null when the service cannot be reached.
+     */
+    async loadVersion(versionId) {
+      try {
+        const listed = await request('GET', `${base}?version=${encodeURIComponent(versionId)}`);
+        return listed.ok ? (listed.answer.comments || []).filter((c) => c && !c.deleted) : null;
+      } catch {
+        return null;
+      }
+    },
     /** Where a stored copy of a version lives (plan step 6). */
     pageUrl: (versionId) => `${new URL(stamp.service).origin}/p/${encodeURIComponent(stamp.key)}/${encodeURIComponent(versionId)}`,
 
@@ -451,6 +465,8 @@ export function startSync({
       return true;
     },
 
+    /** Check in with the service now rather than at the next tick. */
+    checkNow: () => kick(),
     /** Test seam: the pacing the next poll would use, and the queue. */
     debug: () => ({ delay: delay(), ops: ops.map((o) => ({ ...o })), since, token }),
     stop() {
