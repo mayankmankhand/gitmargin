@@ -50,6 +50,10 @@ async function client(w, { storage = new Map(), stamp, seed = [] } = {}) {
       net.calls.push(`${method} ${u.pathname}${u.search}`);
       const broken = net.fail && net.fail(method, u);
       if (broken === 'before') throw new TypeError('network down');
+      // A refusal happens INSTEAD of the request, not after it. This once ran the
+      // request first, so a 'refused' edit had in fact reached the service and the
+      // test below could not fail (found by mutation testing, plan step 8).
+      if (typeof broken === 'object' && broken) return { ok: false, status: broken.status, json: async () => ({ error: broken.error }) };
       const headers = Object.fromEntries(Object.entries(init.headers || {}).map(([k, v]) => [k.toLowerCase(), v]));
       const answer = await route(
         { method, path: u.pathname, query: Object.fromEntries(u.searchParams), headers, body: init.body ? JSON.parse(init.body) : null },
@@ -57,7 +61,6 @@ async function client(w, { storage = new Map(), stamp, seed = [] } = {}) {
       );
       // The request landed and the answer was lost on the way back: a timeout.
       if (broken === 'after') throw new TypeError('timed out');
-      if (typeof broken === 'object' && broken) return { ok: false, status: broken.status, json: async () => ({ error: broken.error }) };
       return { ok: answer.status < 400, status: answer.status, json: async () => JSON.parse(answer.body) };
     } finally {
       net.inflight -= 1;
@@ -220,6 +223,7 @@ test('an edit the service has not accepted yet survives a poll, and is sent afte
   a.sync.update('c_00000f', { intent: { text: 'Second wording.', tag: null } });
   await a.idle();
   await a.tick(); // a poll arrives carrying the service's older text
+  assert.equal((await w.held())[0].body.intent.text, 'First wording.', 'the service really has not got it yet');
   assert.equal(a.store.comments()[0].intent.text, 'Second wording.', 'the unsent edit is not overwritten');
   assert.match(a.sync.view().problem, /shared in a minute/);
 

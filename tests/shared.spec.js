@@ -305,10 +305,17 @@ test('a reply being typed is not wiped when someone else\'s comment arrives', as
     await samCard.hover();
     await samCard.getByRole('button', { name: 'Reply' }).click();
     await t.sam.locator('.gm-reply-field').pressSequentially('Half a thou');
+    // Mark the element itself. The draft text is restored after a rebuild, so
+    // the text alone cannot tell whether the field was torn down mid-keystroke;
+    // the caret and anything typed during the rebuild would be the casualties.
+    await t.sam.locator('.gm-reply-field').evaluate((field) => {
+      field.dataset.sameElement = 'yes';
+    });
 
     await comment(t.priya, '#step-1 h2', 'A second comment, arriving while Sam types.');
     await t.sam.waitForTimeout(7000); // at least one check-in
     await expect(t.sam.locator('.gm-reply-field')).toHaveValue('Half a thou');
+    expect(await t.sam.locator('.gm-reply-field').getAttribute('data-same-element')).toBe('yes');
     await t.sam.locator('.gm-reply-field').pressSequentially('ght.');
     await t.sam.locator('.gm-reply-field').press('Enter');
     await t.sam.fill('#gm-reviewer', 'Sam');
