@@ -52,7 +52,8 @@ Body `{ "hash": "8f2c1a", "file": "onboarding.html", "html": "<!doctype html>...
 hash `attach` already computes; `html` is optional.
 
 The service owns the round number. When `hash` equals the newest version's hash the page has not changed and that
-version is returned (`created: false`). Otherwise the round is the newest round plus one. A fresh checkout or a second
+version is returned (`created: false`); an `html` sent with it still replaces the stored page, which is how `attach`
+sends the finished page after learning its version id. Otherwise the round is the newest round plus one. A fresh checkout or a second
 machine therefore cannot disagree with the service about which version is v3.
 
 Answers `{ "version_id": "v3-8f2c1a", "round": 3, "created": true, "page_stored": true }`.
@@ -134,4 +135,17 @@ appearing: no reply tombstone crosses the wire.
    while this client was away: drop it.
 
 ## Stored pages
-`GET /p/<key>/<version_id>` and `GET /p/<key>/latest`: added in plan step 6.
+`GET /p/<key>/<version_id>` and `GET /p/<key>/latest` answer the page `attach --service` uploaded, as `text/html`,
+with:
+
+- `Content-Security-Policy: sandbox allow-scripts allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox
+  allow-downloads`, and never `allow-same-origin`. The page gets an opaque origin: it behaves like a file opened from
+  disk and cannot read anything this service's address holds.
+- `Referrer-Policy: no-referrer`, because the key is in the address.
+
+Inside a stored page browser storage is unavailable, so a commenter's name, edit token and unsent comments last for
+that tab only. An unknown key, an unknown version, and a version with no stored page (over 4 MB, or older than the
+newest 10) are all `404 not_found`.
+
+The key is the only gate. A stored copy of a page that sits behind a password elsewhere is not behind that password
+here.

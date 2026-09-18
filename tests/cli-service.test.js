@@ -233,3 +233,25 @@ test('status and remove: the author\'s, refused without the secret, and clear ab
   assert.deepEqual(JSON.parse((await run(['pull', s.copy, '--live'])).out).comments, []);
   assert.equal((await run(['remove', s.copy, 'c_00000e'], s.env)).code, 2, 'already gone');
 });
+
+test('attach --service stores a copy of the finished page, and says so when a page is too large to store', async (t) => {
+  const s = await setup(t);
+  const r = await run(['attach', s.source, '--service', s.service.url], s.env);
+  assert.equal(r.code, 0, r.err);
+  const address = `${s.service.url}/p/${s.tag('key')}/${s.tag('version')}`;
+  assert.ok(r.err.includes(address), 'the author is told where the copy lives');
+  const page = await fetch(address);
+  assert.equal(page.status, 200);
+  assert.equal(await page.text(), readFileSync(s.copy, 'utf8'), 'the stored copy is the file that was written, byte for byte');
+  assert.match(page.headers.get('content-security-policy'), /^sandbox /);
+
+  // Over the cap: the version is still registered and shared; only the copy is skipped.
+  writeFileSync(s.source, PAGE.replace('hi', `<!-- ${'x'.repeat(4_500_000)} -->`));
+  const big = await run(['attach', s.source, '--service'], s.env);
+  assert.equal(big.code, 0, big.err);
+  assert.match(s.tag('version'), /^v2-/);
+  assert.match(big.err, /too large to store a copy/);
+  assert.equal((await fetch(`${s.service.url}/p/${s.tag('key')}/${s.tag('version')}`)).status, 404);
+  const list = await (await fetch(`${s.service.url}/api/p/${s.tag('key')}/comments`)).json();
+  assert.deepEqual(list.versions.map((v) => [v.round, v.has_page]), [[2, false], [1, true]]);
+});

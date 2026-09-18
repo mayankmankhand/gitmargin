@@ -286,3 +286,36 @@ test('a database failure is a plain 503, never the raw error', async () => {
   const ping = await s.call('GET', '/api/ping');
   assert.deepEqual([ping.status, ping.json], [503, { error: 'service_unavailable' }]);
 });
+
+test('a stored page is served sandboxed, never with same-origin rights, and unknowns are one 404', async () => {
+  const s = await fresh();
+  const html = '<!doctype html><title>v1</title><p>stored</p>';
+  await s.call('POST', `/api/prototypes/${s.key}/versions`, { secret: SECRET, body: { hash: 'aaaaaa', html } });
+
+  const raw = (path) => route({ method: 'GET', path, headers: {} }, { query: s.database.query, now: s.clock.now, secret: SECRET });
+  for (const which of [s.version, 'latest']) {
+    const page = await raw(`/p/${s.key}/${which}`);
+    assert.equal(page.status, 200);
+    assert.equal(page.body, html);
+    assert.match(page.headers['content-type'], /^text\/html/);
+    const csp = page.headers['content-security-policy'];
+    assert.match(csp, /^sandbox /);
+    assert.ok(!csp.includes('allow-same-origin'), 'the one flag that would undo the sandbox');
+    for (const needed of ['allow-scripts', 'allow-downloads', 'allow-popups']) assert.ok(csp.includes(needed), needed);
+    assert.equal(page.headers['referrer-policy'], 'no-referrer');
+    assert.equal(page.headers['access-control-allow-origin'], undefined, 'a page is not an API answer');
+  }
+
+  // A newer version with no page: /latest has nothing to serve, the older one still does.
+  await s.call('POST', `/api/prototypes/${s.key}/versions`, { secret: SECRET, body: { hash: 'bbbbbb' } });
+  const answers = await Promise.all(
+    [`/p/${s.key}/latest`, `/p/${s.key}/v2-bbbbbb`, `/p/${s.key}/v9-ffffff`, '/p/gm_doesnotexist0000/latest', `/p/${s.key}/../secrets`].map(raw)
+  );
+  for (const a of answers) assert.deepEqual([a.status, JSON.parse(a.body)], [404, { error: 'not_found' }]);
+  assert.equal((await raw(`/p/${s.key}/${s.version}`)).status, 200);
+
+  // Re-attaching unchanged content replaces the page: a stored copy must not keep an old overlay.
+  await s.call('POST', `/api/prototypes/${s.key}/versions`, { secret: SECRET, body: { hash: 'bbbbbb', html: '<p>first</p>' } });
+  await s.call('POST', `/api/prototypes/${s.key}/versions`, { secret: SECRET, body: { hash: 'bbbbbb', html: '<p>second</p>' } });
+  assert.equal((await raw(`/p/${s.key}/latest`)).body, '<p>second</p>');
+});

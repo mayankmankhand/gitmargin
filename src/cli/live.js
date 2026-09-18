@@ -19,6 +19,8 @@ import { attachToHtml, hashOf, prepareAttach, readStamp } from './attach.js';
 import { pull } from './pull.js';
 
 const STATUSES = ['open', 'accepted', 'rejected', 'applied'];
+/** Under Vercel's 4.5 MB request limit, with room for headers. */
+const MAX_UPLOAD_BYTES = 4_400_000;
 
 /** The author secret comes from the environment and from nowhere else. */
 function secret() {
@@ -170,6 +172,17 @@ export async function attachLive(args) {
     originalName,
     service: { address, key },
   });
+  // The finished page goes to the service too, so an older version can still be
+  // opened with its comments in place after this address moves on. It can only
+  // be sent now: the page carries its version id, and the service chose that.
+  // Vercel takes about 4.5 MB per request, so a page near the service's 4 MB cap
+  // is measured as the request it would be, and skipped rather than refused.
+  const upload = { hash: hashOf(bytes), file: originalName, html: out };
+  let pageStored = false;
+  if (Buffer.byteLength(JSON.stringify(upload), 'utf8') <= MAX_UPLOAD_BYTES) {
+    pageStored = (await call(address, 'POST', `/api/prototypes/${key}/versions`, { auth, body: upload })).page_stored === true;
+  }
+
   // Only now, with every service call answered, is anything written.
   writeFileSync(outPath, out, 'utf8');
 
@@ -178,6 +191,10 @@ export async function attachLive(args) {
     `Attached the overlay to ${originalName} as version ${version.version_id}` +
       `${version.created ? '' : ' (unchanged since the last attach)'}.\n` +
       `Comments are shared through ${address}.\n` +
+      (pageStored
+        ? `A copy of this version is stored at ${address}/p/${key}/${version.version_id}\n`
+        : 'This page is too large to store a copy of (over 4 MB). Its comments are shared as usual; once a newer\n' +
+          'version exists, people will read this version\'s comments as a list rather than on the page.\n') +
       `Send or publish ${path.basename(outPath)}. ${path.basename(source)} is untouched.\n`
   );
   if (createdNow) {
@@ -185,8 +202,9 @@ export async function attachLive(args) {
       `\nPrototype key: ${key}\n` +
         'Keep it: it is how a fresh checkout or another machine finds this prototype again (--key).\n' +
         'The key is inside the page, and it is the only gate. Anyone who can open the page can read and\n' +
-        'write its comments. If the page is public, so are they. If the page sits behind a password,\n' +
-        'the key still works from anywhere for whoever has seen the page.\n'
+        'write its comments, and open the stored copies of it. If the page is public, so are they. If the\n' +
+        'page sits behind a password, the key and the stored copies still work from anywhere, for whoever\n' +
+        'has seen the page: the stored copy is not behind that password.\n'
     );
   }
   return EXIT_OK;

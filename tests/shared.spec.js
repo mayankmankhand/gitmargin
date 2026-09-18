@@ -6,7 +6,8 @@
 // carries a service address and a page key, and neither is ever committed.
 import { test, expect } from '@playwright/test';
 import { execFile } from 'node:child_process';
-import { copyFile, mkdir } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
+import http from 'node:http';
 import { pathToFileURL } from 'node:url';
 import { resolve, join } from 'node:path';
 import { startService } from './helpers/service-server.js';
@@ -319,7 +320,7 @@ test('a reply being typed is not wiped when someone else\'s comment arrives', as
   }
 });
 
-test('a new version opens clean, and the accordion reads the older version\'s comments', async ({ browser }, testInfo) => {
+test('a new version opens clean, and an older version with no stored page is read as a list', async ({ browser }, testInfo) => {
   const service = await startService();
   try {
     const v1 = await attachShared(testInfo, service);
@@ -331,9 +332,12 @@ test('a new version opens clean, and the accordion reads the older version\'s co
     await expect(onV1.locator('.gm-version')).toHaveText('Version 1 (current)', SLOW);
 
     // The author changes the prototype and attaches again: version two.
-    const { readFile, writeFile } = await import('node:fs/promises');
     await writeFile(v1.source, (await readFile(v1.source, 'utf8')).replace('</h2>', ' (revised)</h2>'));
     await gitmargin(['attach', v1.source, '--service'], { GITMARGIN_SECRET: service.secret });
+
+    // Version one's page is not kept: what pruning beyond the newest ten, or a
+    // page over 4 MB, leaves behind. Its comments are, which is the point.
+    await service.query('update versions set html = null where round = 1');
 
     const onV2 = await (await browser.newContext()).newPage();
     await open(onV2, v1.url);
@@ -355,6 +359,94 @@ test('a new version opens clean, and the accordion reads the older version\'s co
     // And whoever is still on version one is told.
     await expect(onV1.locator('.gm-newer')).toContainText('A newer version exists (Version 2).', SLOW);
     await expect(onV1.locator('.gm-version')).toHaveText('Version 1', SLOW);
+  } finally {
+    await service.close();
+  }
+});
+
+/** The attached file on an ordinary web address: a real origin, unlike a disk page or a stored page. */
+async function serveFile(file) {
+  const server = http.createServer(async (req, res) => {
+    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+    res.end(await readFile(file));
+  });
+  await new Promise((done) => server.listen(0, '127.0.0.1', done));
+  return { url: 'http://127.0.0.1:' + server.address().port + '/', close: () => new Promise((done) => server.close(done)) };
+}
+
+test('from a file, from the stored page, and from a web address: three people, one conversation', async ({ browser }, testInfo) => {
+  const service = await startService();
+  const shared = await attachShared(testInfo, service);
+  const hosted = await serveFile(shared.attached);
+  try {
+    const onDisk = await (await browser.newContext()).newPage();
+    const onStored = await (await browser.newContext({ acceptDownloads: true })).newPage();
+    const onWeb = await (await browser.newContext()).newPage();
+    await open(onDisk, shared.url);
+    const stamp = await onDisk.evaluate(() => ({
+      key: document.querySelector('meta[name="gitmargin-key"]').content,
+      version: document.querySelector('meta[name="gitmargin-version"]').content,
+    }));
+    const errors = [
+      ...(await open(onStored, service.url + '/p/' + stamp.key + '/' + stamp.version)),
+      ...(await open(onWeb, hosted.url)),
+    ];
+
+    // The stored page really is sandboxed: no origin of its own, and no storage.
+    expect(await onStored.evaluate(() => self.origin)).toBe('null');
+    expect(await onStored.evaluate(() => { try { return typeof localStorage.length; } catch (e) { return e.name; } })).toBe('SecurityError');
+    expect(await onWeb.evaluate(() => self.origin)).toBe(hosted.url.slice(0, -1));
+
+    await comment(onDisk, '#step-1 .next', 'From the file.', 'Priya');
+    await comment(onStored, '#step-1 h2', 'From the stored page.', 'Sam');
+    await comment(onWeb, '#step-1 p', 'From the web address.', 'Dana');
+    for (const page of [onDisk, onStored, onWeb]) {
+      await expect(page.locator('.gm-card')).toHaveCount(3, SLOW);
+      await expect(page.locator('.gm-keep')).toHaveText('Shared. Everyone with this page sees these comments.', SLOW);
+    }
+
+    // Inside the sandbox the two ways out still work: the file, and the clipboard or its fallback.
+    const [download] = await Promise.all([onStored.waitForEvent('download'), onStored.click('.gm-send .gm-btn.primary')]);
+    expect(download.suggestedFilename()).toMatch(/\.reviewed.*\.html$/);
+    await onStored.click('.gm-send .gm-btn.ghost');
+    await expect(onStored.locator('.gm-said')).toHaveText(/Copied\. Paste it anywhere\.|Could not reach the clipboard\. Use Send to author instead\./);
+    expect(errors).toEqual([]);
+  } finally {
+    await hosted.close();
+    await service.close();
+  }
+});
+
+test('the accordion opens an older version\'s stored page, with its comments pinned in place', async ({ browser }, testInfo) => {
+  const service = await startService();
+  try {
+    const v1 = await attachShared(testInfo, service);
+    const first = await (await browser.newContext()).newPage();
+    await open(first, v1.url);
+    await comment(first, '#step-1 .next', 'Pinned on version one.', 'Priya');
+    await expect(first.locator('.gm-keep')).toHaveText('Shared. Everyone with this page sees these comments.', SLOW);
+    await first.close();
+
+    await writeFile(v1.source, (await readFile(v1.source, 'utf8')).replace('</h2>', ' (revised)</h2>'));
+    await gitmargin(['attach', v1.source, '--service'], { GITMARGIN_SECRET: service.secret });
+
+    const context = await browser.newContext();
+    const onV2 = await context.newPage();
+    await open(onV2, v1.url);
+    await expect(onV2.locator('.gm-version')).toHaveText('Version 2 (current)', SLOW);
+    await onV2.click('.gm-version');
+    const row = onV2.locator('a.gm-vrow', { hasText: 'Version 1' });
+    await expect(row).toContainText('open');
+    expect(await row.getAttribute('rel')).toBe('noopener');
+
+    const [older] = await Promise.all([context.waitForEvent('page'), row.click()]);
+    await older.waitForFunction(() => !!window.__gitmargin);
+    expect(new URL(older.url()).pathname).toMatch(/^\/p\/gm_[A-Za-z0-9_-]+\/v1-[0-9a-f]{6}$/);
+    await expect(older.locator('.gm-card')).toHaveCount(1, SLOW);
+    await expect(older.locator('.gm-pin')).toHaveCount(1);
+    await expect(older.locator('.gm-card .gm-text')).toHaveText('Pinned on version one.');
+    await expect(older.locator('.gm-newer')).toContainText('A newer version exists (Version 2).');
+    await expect(older.locator('.gm-newer a')).toHaveText('Open it');
   } finally {
     await service.close();
   }

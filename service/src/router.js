@@ -333,9 +333,11 @@ async function registerVersion({ query, now }, key, body) {
   );
   const newest = versions[0];
   if (newest && newest.hash === body.hash) {
-    // Unchanged content is the same version. A page that arrives late (the
-    // first attempt was too large, or predates stored pages) is still kept.
-    if (html && !newest.has_page) {
+    // Unchanged content is the same version, but the page is still replaced:
+    // `attach` registers first to learn the version id, then sends the finished
+    // page, and a re-attach after an overlay fix must not leave the stored copy
+    // running the old overlay.
+    if (html) {
       await query('update versions set html = $3 where prototype_key = $1 and version_id = $2', [key, newest.version_id, html]);
     }
     return json(200, {
@@ -373,6 +375,37 @@ async function setStatus({ query, now }, key, id, body) {
   return json(200, await oneComment(query, key, id));
 }
 
+// ---- stored pages ---------------------------------------------------------
+
+/**
+ * A stored page runs the prototype's own scripts, on this service's address.
+ * `sandbox` without `allow-same-origin` gives it an opaque origin, so it behaves
+ * like a file opened from disk (the case the overlay is tested against) and can
+ * never read anything this origin holds. There is nothing to read today; the
+ * header is here from day one so that sign-in (issues #17, #18) does not
+ * inherit a hole. Measured in plan step 1: fetch, downloads and new-tab links
+ * work inside it; browser storage does not.
+ */
+const PAGE_HEADERS = {
+  'content-type': 'text/html; charset=utf-8',
+  'content-security-policy': 'sandbox allow-scripts allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-downloads',
+  // The key is in the address. It must not travel to whatever the prototype links to.
+  'referrer-policy': 'no-referrer',
+  'x-content-type-options': 'nosniff',
+  'cache-control': 'no-store',
+};
+
+async function servePage({ query }, key, which) {
+  const rows =
+    which === 'latest'
+      ? await query('select html from versions where prototype_key = $1 order by round desc limit 1', [key])
+      : await query('select html from versions where prototype_key = $1 and version_id = $2', [key, which]);
+  // No such key, no such version, or a version whose page was too large or has
+  // been pruned: one answer for all of them.
+  if (!rows[0] || !rows[0].html) return refuse(404, 'not_found');
+  return { status: 200, headers: PAGE_HEADERS, body: rows[0].html };
+}
+
 // ---- dispatch -------------------------------------------------------------
 
 const KEY = '(gm_[A-Za-z0-9_-]{10,40})';
@@ -382,6 +415,7 @@ const COMMENTS = new RegExp(`^/api/p/${KEY}/comments$`);
 const COMMENT = new RegExp(`^/api/p/${KEY}/comments/([^/]+)$`);
 const REPLIES = new RegExp(`^/api/p/${KEY}/comments/([^/]+)/replies$`);
 const REPLY = new RegExp(`^/api/p/${KEY}/comments/([^/]+)/replies/([^/]+)$`);
+const PAGE = new RegExp(`^/p/${KEY}/(latest|v\\d{1,4}-[0-9a-f]{6})$`);
 
 async function findPrototype(query, key) {
   const rows = await query('select key, name from prototypes where key = $1', [key]);
@@ -399,6 +433,11 @@ async function dispatch(request, deps) {
   if (method === 'GET' && path === '/api/ping') {
     const rows = await query('select 1 as ok');
     return json(200, { ok: rows[0] && rows[0].ok === 1, time: deps.now().toISOString() });
+  }
+
+  if (method === 'GET' && (m = PAGE.exec(path))) {
+    await ensureSchema(query);
+    return servePage(deps, m[1], m[2]);
   }
 
   // Author routes. The secret is checked before anything is looked up, so a
