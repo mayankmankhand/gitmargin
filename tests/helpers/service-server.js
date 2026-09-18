@@ -64,7 +64,10 @@ export async function startService(options = {}) {
     url: `http://127.0.0.1:${server.address().port}`,
     secret,
     query: database.query,
+    // Safe to call twice: a test may take the service away on purpose and the
+    // cleanup hook will still call this afterwards.
     close: async () => {
+      if (!server.listening) return;
       await new Promise((resolve) => server.close(resolve));
       server.closeAllConnections?.();
       await database.close();

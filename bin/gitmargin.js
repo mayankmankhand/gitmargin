@@ -14,6 +14,7 @@
 
 import { attach } from '../src/cli/attach.js';
 import { pull } from '../src/cli/pull.js';
+import { attachLive, pullLive, removeComment, setStatus } from '../src/cli/live.js';
 import { CliError, EXIT_OK, EXIT_USAGE } from '../src/cli/errors.js';
 
 const USAGE = `gitmargin - comments on one HTML prototype, in a form an agent can act on
@@ -41,6 +42,20 @@ pull
 
     --markdown   print the human rendering instead of JSON
 
+Shared comments (optional; needs a comment service you deployed, see service/README.md)
+  node bin/gitmargin.js attach <prototype.html> --service <address>
+      Registers the prototype and this version with your service and writes the
+      address and a page key into the copy, so everyone who opens it sees the
+      same comments. Later attaches need only --service. --key <key> reuses a
+      prototype from another machine. Needs GITMARGIN_SECRET in the environment.
+  node bin/gitmargin.js pull <prototype.gitmargin.html> --live
+      Reads the comments for that copy's version from the service. --version
+      <id> or --all for other versions. More files after it merge in as usual.
+  node bin/gitmargin.js status <prototype.gitmargin.html> <comment-id> <status>
+      open, accepted, rejected or applied. Reviewers see it on their page.
+  node bin/gitmargin.js remove <prototype.gitmargin.html> <comment-id>
+      Removes anyone's comment. Both need GITMARGIN_SECRET.
+
 Exit codes
   0  success
   1  usage error
@@ -49,11 +64,18 @@ Exit codes
 async function main(argv) {
   const [command, ...rest] = argv;
 
+  // The commands that reach a comment service live in src/cli/live.js and are
+  // chosen by an explicit flag. Without the flag, `attach` and `pull` run the
+  // same code they always did and never touch the network.
   switch (command) {
     case 'attach':
-      return attach(rest);
+      return rest.includes('--service') || rest.includes('--key') ? attachLive(rest) : attach(rest);
     case 'pull':
-      return pull(rest);
+      return rest.includes('--live') ? pullLive(rest) : pull(rest);
+    case 'status':
+      return setStatus(rest);
+    case 'remove':
+      return removeComment(rest);
     case 'help':
     case '--help':
     case '-h':
