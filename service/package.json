@@ -1,0 +1,14 @@
+{
+  "name": "gitmargin-comment-service",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The comment service an author deploys to their own Vercel account. gitmargin hosts nothing.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "^1.0.0"
+  }
+}
