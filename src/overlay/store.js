@@ -4,6 +4,10 @@
 // best-effort copy in localStorage keyed by the version id. Best-effort is
 // deliberate: a browser that refuses storage to a file:// page still works for
 // one sitting, and losing a saved draft is better than an overlay that throws.
+//
+// A page attached with `--service` shares its comments (issue #15). This file
+// does not know: src/overlay/sync.js sits beside it, saves here first exactly as
+// above, and hands in what other people wrote through `applyRemote`.
 
 const PREFIX = 'gitmargin:';
 

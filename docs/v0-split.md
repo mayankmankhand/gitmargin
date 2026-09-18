@@ -108,7 +108,7 @@ collide).
 ## 5. What part 1 deliberately leaves out
 
 No server. No hosting. No Slack. No sign-in: a reviewer can type a name, and that is all the identity there is.
-No phone mode: part 1 is laptop-first. No sync between reviewers: each one sends their own file or block back.
+No phone mode: part 1 is laptop-first. No sync between reviewers: each one sends their own file or block back. (Sharing is now an option on top of part 1, not a change to it: see the amendment at the head of section 7.)
 Comments are not encrypted in the file: whoever holds the file can read them, exactly as they can read the
 prototype.
 
@@ -162,6 +162,15 @@ already give.
 
 ## 7. Part 2: what is parked, and what unparks it
 
+**Amended 2026-09-18 ([issue #13](https://github.com/mayankmankhand/gitmargin/issues/13), built in [issue #15](https://github.com/mayankmankhand/gitmargin/issues/15)).** One piece of this list left the parking lot, in a smaller shape than the one below. Shared, live comments no longer wait for sign-in:
+
+- **What was built:** a comment service each author deploys to their own Vercel account with Neon Postgres. A page attached with `--service` carries the service's address and a page key, and everyone who opens it shares one set of comments, with replies and statuses. Comments belong to a version of the page; the service keeps a sandboxed copy of each version so an older one can still be opened with its comments in place. `service/README.md` and `service/API.md` describe it.
+- **What it deliberately is not:** signed in. The key in the page is the only gate, and names are typed. That is the honest price of needing no company infrastructure to build or test.
+- **Decisions that changed the list below:** gitmargin does not run a server for anyone (each author owns the box and the data); comments are shown on the page rather than mirrored into a GitLab issue, so the GitLab-issue mirror is retired; sign-in becomes a choice made per prototype and is split into [#17](https://github.com/mayankmankhand/gitmargin/issues/17) (GitHub) and [#18](https://github.com/mayankmankhand/gitmargin/issues/18) (GitLab through the company login); publishing becomes a plugin, [#16](https://github.com/mayankmankhand/gitmargin/issues/16); the Slack mirror stays parked.
+- **Part 1 is untouched by it.** A page attached without `--service` never reaches the network, and comes back as a file or a text block exactly as sections 2 to 4 describe.
+
+What follows is the original list, kept as decided. Read it with the amendment above in mind.
+
 Parked, in the order it was decided in [the v0 decision](v0-decision.md):
 
 - Sign-in through the company's own provider via OpenID Connect, GitLab first (section 3).
@@ -186,7 +195,7 @@ of the decision still stands once that is true.
 
 ## 8. What stays the same
 
-- **gitmargin never hosts the prototype.** Part 1 goes further: it never serves anything at all.
+- **gitmargin never hosts the prototype.** Part 1 goes further: it never serves anything at all. With shared comments the author's own service keeps a copy of each version, in the author's own account; gitmargin still runs and holds nothing.
 - **The comment model.** An anchor, a thread, a version pointer, and a status (open, accepted, rejected, applied);
   orphaned is a normal state. Part 1 adds the state block and the intent block to it, and part 2 inherits both.
 - **The sockets picture.** The v0 decision describes one core and three sockets: serve, identify, store. Part 1
@@ -208,6 +217,8 @@ does. That is the honest line for the README.
 |---|---|---|---|
 | [#2](https://github.com/mayankmankhand/gitmargin/issues/2) | Spikes before building: Slack in-app sign-in, GitLab consent, publish timing, corporate MFA | Part 2 (parked): sign-in spikes, GitLab Pages, Slack, server | 2 |
 | [#3](https://github.com/mayankmankhand/gitmargin/issues/3) | Comment overlay: anchors, pins, threads, phone tap mode | Part 1: comment overlay on one HTML file: anchors, pins, threads, state capture, send back | 1 |
-| [#4](https://github.com/mayankmankhand/gitmargin/issues/4) | gitmargin server on Vercel + Neon: sign-in, record, mirrors, batch API | Part 2 (parked): the same, marked parked | 2 |
+| [#4](https://github.com/mayankmankhand/gitmargin/issues/4) | gitmargin server on Vercel + Neon: sign-in, record, mirrors, batch API | Closed 2026-09-18, superseded: storage by #15, sign-in by #17 and #18; the GitLab-issue mirror is retired | 2 |
 | [#5](https://github.com/mayankmankhand/gitmargin/issues/5) | npx gitmargin publish and pull: GitLab Pages deploy, Slack link, batch for agents (CLI + MCP) | Part 1: npx gitmargin attach and pull: inject the overlay, read comments back for agents | 1 |
+| [#15](https://github.com/mayankmankhand/gitmargin/issues/15) | (new, from #13) | Shared live comments: a comment service on Vercel + Neon the author deploys; versions, stored pages, replies, statuses; no sign-in | between 1 and 2 |
+| [#16](https://github.com/mayankmankhand/gitmargin/issues/16) to [#19](https://github.com/mayankmankhand/gitmargin/issues/19) | (new, from #13) | A publishing plugin, GitHub sign-in, GitLab sign-in through the company login, Vercel same-project mode | 2 |
 | [#6](https://github.com/mayankmankhand/gitmargin/issues/6) | Dogfood round 1 on gitlab.com Pages with three real reviewers | Part 1 dogfood: a wizard prototype sent as a file to two reviewers, comments back, Claude Code applies | 1 |
