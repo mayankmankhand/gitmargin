@@ -12,10 +12,11 @@
     "build": "esbuild src/overlay/index.js --bundle --minify --format=iife --target=es2020 --loader:.css=text --outfile=dist/gitmargin.js",
     "attach": "node bin/gitmargin.js attach",
     "pull": "node bin/gitmargin.js pull",
-    "test": "npm run build && node --test tests/*.test.js && playwright test",
+    "test": "npm run build && node --test tests/*.test.js service/tests/*.test.js && playwright test",
     "serve": "node scripts/serve-fixture.js"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8",
     "@playwright/test": "^1.48.0",
     "esbuild": "^0.28.2"
   },

@@ -8,10 +8,21 @@ import { query } from '../src/db-neon.js';
 
 export default async function handler(req, res) {
   // After a rewrite `req.url` is still the address the caller asked for.
-  const { pathname } = new URL(req.url, 'http://service.local');
+  const url = new URL(req.url, 'http://service.local');
   const answer = await route(
-    { method: req.method, path: pathname, headers: req.headers, body: req.body },
-    { query, now: () => new Date(), secret: process.env.GITMARGIN_SECRET || '' },
+    {
+      method: req.method,
+      path: url.pathname,
+      query: Object.fromEntries(url.searchParams),
+      headers: req.headers,
+      body: req.body,
+    },
+    {
+      query,
+      now: () => new Date(),
+      secret: process.env.GITMARGIN_SECRET || '',
+      log: (error) => console.error(error),
+    },
   );
   res.statusCode = answer.status;
   for (const [name, value] of Object.entries(answer.headers)) res.setHeader(name, value);
