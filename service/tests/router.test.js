@@ -319,3 +319,66 @@ test('a stored page is served sandboxed, never with same-origin rights, and unkn
   await s.call('POST', `/api/prototypes/${s.key}/versions`, { secret: SECRET, body: { hash: 'bbbbbb', html: '<p>second</p>' } });
   assert.equal((await raw(`/p/${s.key}/latest`)).body, '<p>second</p>');
 });
+
+test('a removed comment keeps its row but none of its content, and old tombstones are cleared (review R2)', async () => {
+  const s = await fresh();
+  await add(s, 'c_0000a1', ALICE, 'Alice', { intent: { text: 'z'.repeat(3000) } });
+  await s.call('POST', `/api/p/${s.key}/comments/c_0000a1/replies`, { token: BOB, body: { id: 'r_0000a1', text: 'y'.repeat(3000), author: { name: 'Bob' } } });
+  await s.call('DELETE', `/api/p/${s.key}/comments/c_0000a1`, { token: ALICE });
+
+  const [row] = await s.database.query("select body::text as body, author_name from comments where id = 'c_0000a1'");
+  assert.deepEqual([row.body, row.author_name], ['{}', ''], 'a tombstone is not free storage for a key holder');
+  const [reply] = await s.database.query("select text, deleted_at from replies where id = 'r_0000a1'");
+  assert.equal(reply.text, '');
+  assert.notEqual(reply.deleted_at, null);
+
+  // Eight days on, another removal sweeps the old tombstone away.
+  s.clock.advance(8 * 24 * 3_600_000);
+  await add(s, 'c_0000a2');
+  await s.call('DELETE', `/api/p/${s.key}/comments/c_0000a2`, { token: ALICE });
+  const left = await s.database.query('select id from comments order by id');
+  assert.deepEqual(left.map((r) => r.id), ['c_0000a2']);
+});
+
+test('a parallel burst cannot beat the write limit (review R3)', async () => {
+  const s = await fresh();
+  await add(s, 'c_0000b1');
+  const path = `/api/p/${s.key}/comments/c_0000b1`;
+  const burst = await Promise.all(
+    Array.from({ length: 90 }, (_, i) => s.call('PATCH', path, { token: ALICE, body: { intent: { text: `burst ${i}` } } })),
+  );
+  const passed = burst.filter((r) => r.status === 200).length;
+  const held = burst.filter((r) => r.status === 429).length;
+  assert.equal(passed, LIMITS.writesPerMinute - 1, 'the add used one of the sixty');
+  assert.equal(held, 90 - passed);
+});
+
+test('nested values of the wrong type are never stored, since other browsers read them (review R4)', async () => {
+  const s = await fresh();
+  const r = await add(s, 'c_0000c1', ALICE, 'Alice', {
+    anchor: { selector: '#next', quote: { prefix: 1, exact: 7, suffix: ['x'], extra: 'dropped' }, point: { x: 'left', y: 0.5 } },
+    state: { screen: { name: { toString: 'x' }, source: 'heading' }, trail: [{ seconds_before: '3', selector: '#a', text: { evil: true } }, 'not a step'], scroll: { x: 0, y: Infinity }, viewport: { width: 1440, height: '900' } },
+  });
+  assert.equal(r.status, 201);
+  assert.deepEqual(r.json.anchor.quote, { prefix: null, exact: null, suffix: null });
+  assert.deepEqual(r.json.anchor.point, { x: null, y: 0.5 });
+  assert.deepEqual(r.json.state.screen, { name: null, source: 'heading' });
+  assert.deepEqual(r.json.state.trail, [{ seconds_before: null, selector: '#a', text: null }]);
+  assert.deepEqual(r.json.state.scroll, { x: 0, y: null });
+  assert.deepEqual(r.json.state.viewport, { width: 1440, height: null });
+});
+
+test('the reply cap: a hundred live replies per comment, recoverable by removing one (review R9)', async () => {
+  const s = await fresh();
+  await add(s, 'c_0000d1');
+  await s.database.query(
+    `insert into replies (prototype_key, comment_id, id, author_name, text, token_hash, created, updated)
+     select $1, 'c_0000d1', 'r_' || lpad(to_hex(g), 6, '0'), 'Seed', 'x', $2, now(), now() from generate_series(1, ${LIMITS.replies}) g`,
+    [s.key, 'not-a-real-hash'],
+  );
+  const base = `/api/p/${s.key}/comments/c_0000d1/replies`;
+  const full = await s.call('POST', base, { token: BOB, body: { id: 'r_ffffff', text: 'One too many.' } });
+  assert.deepEqual([full.status, full.json.error], [409, 'full']);
+  await s.database.query("update replies set deleted_at = now() where id = 'r_000001'");
+  assert.equal((await s.call('POST', base, { token: BOB, body: { id: 'r_ffffff', text: 'Room now.' } })).status, 201);
+});

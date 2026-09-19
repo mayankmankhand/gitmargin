@@ -31,7 +31,11 @@ const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
  * not. Best effort: a quote that spans several elements gets no underline.
  */
 function rangeForQuote(root, exact) {
-  if (!root || !exact || exact.length > 200) return null;
+  // Typed, not just truthy: on a shared page this value was written by whoever
+  // holds the page key, and a number here used to throw inside the loop that
+  // draws every pin, hiding all of them for every reviewer (review R4). The
+  // service now refuses such a value; this is the overlay not relying on that.
+  if (!root || typeof exact !== 'string' || !exact || exact.length > 200) return null;
   const pattern = new RegExp(exact.split(/\s+/).map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\s+'));
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   let node;
@@ -717,7 +721,12 @@ export function mountUi(deps) {
       }
 
       // The pencil mark under the quoted text.
-      const range = rangeForQuote(element, comment.anchor.quote && comment.anchor.quote.exact);
+      let range = null;
+      try {
+        range = rangeForQuote(element, comment.anchor.quote && comment.anchor.quote.exact);
+      } catch {
+        // One comment's underline is never worth every other comment's pin.
+      }
       if (range) {
         for (const r of range.getClientRects()) {
           if (!r.width) continue;

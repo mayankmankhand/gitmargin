@@ -158,12 +158,20 @@ async function listComments({ query, now }, prototype, params) {
 async function overWriteLimit({ query, now }, key) {
   const at = now();
   const windowStart = new Date(at.getTime() - 60_000).toISOString();
-  const [{ n }] = await query('select count(*)::int as n from writes where prototype_key = $1 and at > $2', [
-    key,
-    windowStart,
-  ]);
-  if (n >= LIMITS.writesPerMinute) return true;
-  await query('insert into writes (prototype_key, at) values ($1, $2)', [key, at.toISOString()]);
+  // Counted and recorded in ONE statement. As two, every request of a parallel
+  // burst read the same low count before any of them had recorded itself, and
+  // the limit did nothing against exactly the scripted sender it exists for
+  // (review of the #15 cycle, R3). Still a soft limit at the edge: two statements
+  // that truly overlap can each see the other's row missing, so a burst can
+  // overshoot by its own width, once, and is then held.
+  const recorded = await query(
+    `insert into writes (prototype_key, at)
+     select $1::text, $2::timestamptz
+      where (select count(*) from writes where prototype_key = $1 and at > $3::timestamptz) < $4
+     returning 1 as ok`,
+    [key, at.toISOString(), windowStart, LIMITS.writesPerMinute],
+  );
+  if (!recorded[0]) return true;
   // Housekeeping rides along with the write it follows; an hour is far outside the window.
   await query('delete from writes where prototype_key = $1 and at < $2', [
     key,
@@ -184,26 +192,24 @@ async function addComment(deps, key, token, body) {
   if (!known[0]) return refuse(400, 'unknown_version');
 
   const id = cleaned.body.id;
-  const before = await query('select token_hash from comments where prototype_key = $1 and id = $2', [key, id]);
-  if (!before[0]) {
-    const [{ n }] = await query(
-      'select count(*)::int as n from comments where prototype_key = $1 and deleted_at is null',
-      [key],
-    );
-    if (n >= LIMITS.comments) return refuse(409, 'full');
-  }
-
   const at = now().toISOString();
-  // `on conflict do nothing` rather than check-then-insert: a retry racing the
-  // request it is retrying must end as one row, not as a constraint error.
+  // One statement does three jobs. `on conflict do nothing` rather than
+  // check-then-insert: a retry racing the request it is retrying must end as
+  // one row, not as a constraint error. The cap is a condition of the insert
+  // rather than a count taken beforehand, for the reason the write limit is
+  // (review R3). Only live comments count, so the author removing one makes room:
+  // the cap is recoverable by design. What stops add-then-remove from filling the
+  // database is that a removed comment keeps no text (removeComment, review R2).
   const inserted = await query(
     `insert into comments (prototype_key, id, version_id, author_name, body, status, token_hash, created, updated)
-     values ($1, $2, $3, $4, $5::jsonb, 'open', $6, $7, $7)
+     select $1::text, $2::text, $3::text, $4::text, $5::jsonb, 'open', $6::text, $7::timestamptz, $7::timestamptz
+      where (select count(*) from comments where prototype_key = $1 and deleted_at is null) < $8
      on conflict (prototype_key, id) do nothing returning id`,
-    [key, id, body.version_id, cleanName(body.author && body.author.name), JSON.stringify(cleaned.body), sha256(token), at],
+    [key, id, body.version_id, cleanName(body.author && body.author.name), JSON.stringify(cleaned.body), sha256(token), at, LIMITS.comments],
   );
   if (!inserted[0]) {
     const held = await query('select token_hash from comments where prototype_key = $1 and id = $2', [key, id]);
+    if (!held[0]) return refuse(409, 'full'); // nothing was there to conflict with, so the cap said no
     if (held[0].token_hash !== sha256(token)) return refuse(409, 'id_taken');
   }
   return json(inserted[0] ? 201 : 200, await oneComment(query, key, id));
@@ -232,12 +238,22 @@ async function editComment({ query, now }, key, id, token, body) {
 
 async function removeComment({ query, now }, key, id) {
   const at = now().toISOString();
+  // The row stays, because other people's open panels learn of the removal from
+  // it. Its content does not: a tombstone that kept a 32 KB body was free storage
+  // for anyone with the key, since removed rows do not count toward the cap
+  // (review of the #15 cycle, R2).
   const rows = await query(
-    `update comments set deleted_at = $3, updated = $3
+    `update comments set deleted_at = $3, updated = $3, body = '{}'::jsonb, author_name = ''
       where prototype_key = $1 and id = $2 and deleted_at is null returning id`,
     [key, id, at],
   );
   if (!rows[0]) return refuse(404, 'not_found');
+  await query("update replies set deleted_at = coalesce(deleted_at, $3), updated = $3, text = '', author_name = '' where prototype_key = $1 and comment_id = $2", [key, id, at]);
+  // Every page load starts with a full list, so a tombstone only ever matters to
+  // a panel that was open when it happened. A week is far longer than that.
+  const stale = new Date(now().getTime() - 7 * 24 * 3_600_000).toISOString();
+  await query('delete from replies where prototype_key = $1 and deleted_at < $2', [key, stale]);
+  await query('delete from comments where prototype_key = $1 and deleted_at < $2', [key, stale]);
   return json(200, { id, deleted: true, updated: at });
 }
 
@@ -252,24 +268,13 @@ async function addReply({ query, now }, key, commentId, token, body) {
   const parent = await query('select deleted_at from comments where prototype_key = $1 and id = $2', [key, commentId]);
   if (!parent[0] || parent[0].deleted_at) return refuse(404, 'not_found');
 
-  const before = await query(
-    'select 1 from replies where prototype_key = $1 and comment_id = $2 and id = $3',
-    [key, commentId, body.id],
-  );
-  if (!before[0]) {
-    const [{ n }] = await query(
-      'select count(*)::int as n from replies where prototype_key = $1 and comment_id = $2 and deleted_at is null',
-      [key, commentId],
-    );
-    if (n >= LIMITS.replies) return refuse(409, 'full');
-  }
-
   const at = now().toISOString();
   const inserted = await query(
     `insert into replies (prototype_key, comment_id, id, author_name, text, token_hash, created, updated)
-     values ($1, $2, $3, $4, $5, $6, $7, $7)
+     select $1::text, $2::text, $3::text, $4::text, $5::text, $6::text, $7::timestamptz, $7::timestamptz
+      where (select count(*) from replies where prototype_key = $1 and comment_id = $2 and deleted_at is null) < $8
      on conflict (prototype_key, comment_id, id) do nothing returning id`,
-    [key, commentId, body.id, cleanName(body.author && body.author.name), text.text, sha256(token), at],
+    [key, commentId, body.id, cleanName(body.author && body.author.name), text.text, sha256(token), at, LIMITS.replies],
   );
   if (inserted[0]) {
     await touchComment(query, key, commentId, at);
@@ -278,6 +283,7 @@ async function addReply({ query, now }, key, commentId, token, body) {
       'select token_hash from replies where prototype_key = $1 and comment_id = $2 and id = $3',
       [key, commentId, body.id],
     );
+    if (!held[0]) return refuse(409, 'full'); // nothing to conflict with, so the reply cap said no
     if (held[0].token_hash !== sha256(token)) return refuse(409, 'id_taken');
   }
   return json(inserted[0] ? 201 : 200, await oneComment(query, key, commentId));
@@ -297,7 +303,7 @@ async function changeReply({ query, now }, key, commentId, replyId, token, body,
   const at = now().toISOString();
   if (remove) {
     await query(
-      'update replies set deleted_at = $4, updated = $4 where prototype_key = $1 and comment_id = $2 and id = $3',
+      "update replies set deleted_at = $4, updated = $4, text = '', author_name = '' where prototype_key = $1 and comment_id = $2 and id = $3",
       [key, commentId, replyId, at],
     );
   } else {

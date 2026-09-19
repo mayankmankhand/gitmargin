@@ -71,7 +71,8 @@ comments. The panel's Version line opens the older versions, each with its own c
 - **A stored page cannot remember you.** It is served sandboxed, so a commenter's name and unsent comments last for
   that tab only.
 - **Limits:** 4,000 characters per comment, 500 comments and 50 versions per prototype, 60 writes a minute. You can
-  remove anyone's comment, so a prototype that fills up is recoverable.
+  remove anyone's comment, so a prototype that fills up with comments is recoverable. The version limit is not: at 50
+  versions, start a new prototype by attaching from a folder with no previous copy, without `--key`.
 
 Sign-in is separate, later work. This service is the no-sign-in mode.
 

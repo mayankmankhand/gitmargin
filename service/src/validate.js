@@ -28,7 +28,30 @@ export const isVersionId = (v) => typeof v === 'string' && /^v\d{1,4}-[0-9a-f]{6
 export const isToken = (v) => typeof v === 'string' && v.length >= 16 && v.length <= 200;
 
 const str = (v) => (typeof v === 'string' ? v : null);
+const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 const obj = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v : null);
+
+/**
+ * The nested parts of a comment, leaf by leaf.
+ *
+ * These used to pass through whole, on the reasoning that the size cap bounded
+ * them. Size was never the problem: other people's browsers READ these values.
+ * A quote whose `exact` was a number reached a string method in every
+ * reviewer's pin drawing and threw, and one stored comment hid everyone's pins
+ * (review of the #15 cycle, R4). So every leaf is a string, a finite number,
+ * or null, and nothing else is kept.
+ */
+const pick = (value, shape) => {
+  const source = obj(value);
+  if (!source) return null;
+  return Object.fromEntries(Object.entries(shape).map(([key, leaf]) => [key, leaf(source[key])]));
+};
+const QUOTE = { prefix: str, exact: str, suffix: str };
+const POINT = { x: num, y: num };
+const SCREEN = { name: str, source: str };
+const STEP = { seconds_before: num, selector: str, text: str };
+const SCROLL = { x: num, y: num };
+const VIEWPORT = { width: num, height: num };
 
 /** A display name: one line, trimmed, cut rather than refused. */
 export function cleanName(value) {
@@ -73,26 +96,25 @@ export function cleanComment(raw) {
     intent: intent.intent,
     anchor: {
       selector: str(anchor.selector),
-      quote: obj(anchor.quote),
-      point: obj(anchor.point),
+      quote: pick(anchor.quote, QUOTE),
+      point: pick(anchor.point, POINT),
       tag: str(anchor.tag),
       resolution: str(anchor.resolution),
     },
     state: {
       hash: str(state.hash),
       title: str(state.title),
-      screen: obj(state.screen),
-      trail: Array.isArray(state.trail) ? state.trail.filter(obj).slice(0, 20) : [],
-      scroll: obj(state.scroll),
-      viewport: obj(state.viewport),
+      screen: pick(state.screen, SCREEN),
+      trail: Array.isArray(state.trail) ? state.trail.slice(0, 20).map((step) => pick(step, STEP)).filter(Boolean) : [],
+      scroll: pick(state.scroll, SCROLL),
+      viewport: pick(state.viewport, VIEWPORT),
       // A screenshot is a data URL of unbounded size, and no build writes one
       // yet. The slot stays in the format; the service does not store it.
       screenshot: null,
     },
   };
 
-  // The nested objects above pass through whole, as they do in `pull`, so the
-  // total size is the bound on what any one of them can carry.
+  // Every leaf is typed above; the total size bounds what the strings can carry.
   if (Buffer.byteLength(JSON.stringify(body), 'utf8') > LIMITS.commentBytes) return { error: 'too_long' };
   return { body };
 }

@@ -50,7 +50,9 @@ function cleanAddress(value) {
 const REFUSALS = {
   unauthorized: 'The comment service refused the author secret. Check GITMARGIN_SECRET against the deployment.',
   not_found: 'The comment service does not know that prototype key or comment.',
-  full: 'The comment service is at its limit for this prototype (500 comments or 50 versions).',
+  full:
+    'The comment service is at its limit for this prototype. At 500 comments, remove some (gitmargin remove). ' +
+    'At 50 versions nothing can be removed: attach from a folder with no previous copy, without --key, to start a new prototype.',
   slow_down: 'The comment service is limiting writes for this prototype. Wait a minute and try again.',
   service_unavailable: 'The comment service could not reach its database.',
   unknown_version: 'The comment service has no such version of this prototype.',

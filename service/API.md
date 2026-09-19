@@ -29,7 +29,17 @@ the origin `null` and a stored page is sandboxed, so there is no origin to allow
 | Stored pages kept per prototype | the newest 10 versions | older versions keep their comments, lose their page |
 | Writes per prototype | 60 in any 60 seconds | `429 slow_down` |
 
-The author can remove any comment, so a full prototype is recoverable.
+The author can remove any comment, so a prototype that reaches its comment limit is recoverable: only live comments
+count. **The version limit is not recoverable.** Nothing removes a version, so at 50 the way on is a new prototype
+(attach the file from a folder with no previous copy, without `--key`).
+
+Each limit is a condition of the statement that does the write, not a count taken beforehand, so a parallel burst
+cannot read one low count and all pass. They are still soft at the edge: statements that truly overlap can each miss
+the other's row, so a burst can overshoot once by its own width before it is held.
+
+A removed comment keeps its row, so open panels learn it is gone, but none of its content: its text, its author's
+name and its replies' text are emptied at removal, and tombstones older than a week are cleared. Removed rows do not
+count toward a limit, so one that kept its text would be free storage for anyone holding the key.
 
 ## Refusals
 
@@ -101,8 +111,10 @@ The part-1 comment (`id`, `time`, `intent`, `anchor`, `state`) exactly as `docs/
 }
 ```
 
-Unknown fields in a submitted comment are dropped field by field, never stored. `status` is always `open` at
-creation, whatever was sent.
+Unknown fields in a submitted comment are dropped field by field, never stored, and that goes all the way down: every
+leaf of `anchor.quote`, `anchor.point`, `state.screen`, each `state.trail` entry, `state.scroll` and `state.viewport`
+is kept only as a string or a finite number, and is `null` otherwise. Other people's browsers read these values, so a
+wrong type is not harmless. `status` is always `open` at creation, whatever was sent.
 
 ### `POST /api/p/<key>/comments`
 Body `{ "version_id": "v3-8f2c1a", "author": { "name": "Priya" }, "comment": { ...part-1 comment... } }`.
