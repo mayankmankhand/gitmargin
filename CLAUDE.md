@@ -54,7 +54,9 @@ Everything goes through `service/src/router.js`, which takes a plain request and
 tests run the same code; the database arrives as `query(sql, params)` and the clock as `now()`. Tests use an in-process
 Postgres, so they need no Neon and no network. Never commit a copy attached with `--service`: it carries a service
 address and a page key (`*.gitmargin.html` is ignored for this reason too). The author secret lives in the environment
-and in Vercel's settings, never in a file in this repo. The three part-1 test files (`tests/roundtrip.spec.js`,
+and in Vercel's settings, never in a file in this repo, and the CLI sends it only to a service address the author typed
+(`attach --service <address>`, remembered in `~/.config/gitmargin/trusted-services.json`) or named in `GITMARGIN_SERVICE`:
+never to an address that only an attached file names, since a reviewer can return a file naming any address. The three part-1 test files (`tests/roundtrip.spec.js`,
 `tests/cli-roundtrip.spec.js`, `tests/cli.test.js`) are a tripwire for the plain-file workflow: a change that needs one
 of them edited has changed part 1.
 
