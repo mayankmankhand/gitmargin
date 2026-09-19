@@ -27,7 +27,9 @@ test.describe.configure({ timeout: 90_000 });
 function gitmargin(args, env) {
   return new Promise((done, fail) => {
     // The CLI remembers the service addresses an author types; keep that list out of the real home folder.
-    const config = join(tmpdir(), 'gitmargin-test-config');
+    // One list per worker process: workers run in parallel, and two attaches writing one shared list
+    // at once can each drop the other's address (the list is read, added to, then rewritten).
+    const config = join(tmpdir(), `gitmargin-test-config-${process.pid}`);
     execFile(process.execPath, [CLI, ...args], { env: { ...process.env, GITMARGIN_CONFIG_DIR: config, ...env } }, (error, out, err) =>
       error ? fail(new Error(err || String(error))) : done(out.trim())
     );
