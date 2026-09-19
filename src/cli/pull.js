@@ -283,7 +283,31 @@ function normalise(comment, label, position) {
       screenshot: typeof state.screenshot === 'string' ? state.screenshot : null,
     },
     status: typeof comment.status === 'string' ? comment.status : 'open',
-    replies: Array.isArray(comment.replies) ? comment.replies : [],
+    replies: Array.isArray(comment.replies) ? comment.replies.map(normaliseReply).filter(Boolean) : [],
+    // Shared mode only (issue #15): who wrote this comment, and which version
+    // of the page it is about. A file from one reviewer names its reviewer once,
+    // on the envelope, so these keys are added only when the comment has them
+    // and a part-1 batch keeps exactly the shape it had.
+    ...(comment.author && typeof comment.author === 'object' && typeof comment.author.name === 'string'
+      ? { author: { name: comment.author.name } }
+      : {}),
+    ...(typeof comment.version_id === 'string' ? { version_id: comment.version_id } : {}),
+  };
+}
+
+/**
+ * One reply, field by field, or null when it has no text.
+ *
+ * Replies were passed through whole while the array was always empty. Now that
+ * other people fill it, a reply is the same untrusted input a comment is.
+ */
+function normaliseReply(reply) {
+  if (!reply || typeof reply !== 'object' || typeof reply.text !== 'string') return null;
+  return {
+    id: typeof reply.id === 'string' ? reply.id : null,
+    time: typeof reply.time === 'string' ? reply.time : null,
+    author: { name: reply.author && typeof reply.author.name === 'string' ? reply.author.name : null },
+    text: reply.text,
   };
 }
 
@@ -402,7 +426,17 @@ export function toMarkdown(batch) {
           ? ' [nearby: the exact element was not found, this is the closest match]'
           : '';
 
-    return `${i + 1}. ${tag}${bits.join(', ')}: ${target}${selector}${flag}.\n   "${oneLine(c.intent.text)}"`;
+    // Shared-mode extras, each on a line of its own and only when present, so a
+    // part-1 batch renders exactly as before. Names and replies go through
+    // `oneLine` like the comment text: they are other people's input too.
+    const extras = [];
+    if (c.author && c.author.name) extras.push(`   From ${oneLine(c.author.name)}.`);
+    if (c.status && c.status !== 'open') extras.push(`   Status: ${oneLine(c.status)}.`);
+    for (const r of c.replies || []) {
+      extras.push(`   Reply${r.author && r.author.name ? ` from ${oneLine(r.author.name)}` : ''}: "${oneLine(r.text)}"`);
+    }
+
+    return [`${i + 1}. ${tag}${bits.join(', ')}: ${target}${selector}${flag}.\n   "${oneLine(c.intent.text)}"`, ...extras].join('\n');
   });
 
   const notes = batch.sources
@@ -412,18 +446,24 @@ export function toMarkdown(batch) {
   return [preamble, header, lines.join('\n\n'), notes.join('\n')].filter(Boolean).join('\n\n');
 }
 
-export function pull(args) {
+/**
+ * @param {string[]} args
+ * @param {object[]} [fetched] Sources already read from somewhere other than a
+ *   file: `pull --live` (src/cli/live.js) hands in the comment service's answer
+ *   here, so it merges by id with files and pasted blocks like any other source.
+ */
+export function pull(args, fetched = []) {
   const wantsMarkdown = args.includes('--markdown');
   const inputs = args.filter((a) => a === '-' || !a.startsWith('-'));
 
   const unknown = args.filter((a) => a.startsWith('--') && a !== '--markdown');
   if (unknown.length) throw new CliError(`Unknown option: ${unknown[0]}`, EXIT_USAGE, 'Try: gitmargin help');
 
-  if (inputs.length === 0) {
+  if (inputs.length === 0 && fetched.length === 0) {
     throw new CliError('pull needs at least one file, or - for standard input.', EXIT_USAGE, 'Try: gitmargin pull reviewed.html');
   }
 
-  const sources = inputs.map(readSource);
+  const sources = [...fetched, ...inputs.map(readSource)];
   const { batch, duplicates, versions, malformed } = merge(sources);
 
   process.stdout.write(wantsMarkdown ? `${toMarkdown(batch)}\n` : `${JSON.stringify(batch, null, 2)}\n`);

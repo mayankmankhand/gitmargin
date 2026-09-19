@@ -2,7 +2,7 @@
 
 **Google-Docs-style comments for private HTML prototypes, using the access control your team already has.**
 
-> Early stage. v0 is being built in two parts. **Part 1, in progress:** comments on a single HTML file, with no server, that tell a coding agent where the reviewer was and what they expected. The overlay, `gitmargin attach` and `gitmargin pull` are built and tested; a dogfood round with real reviewers is what remains. **Part 2, parked:** the identity and private-hosting half of the line above. The split and the reasons are in [docs/v0-split.md](docs/v0-split.md); the original decision, with the alternatives, is in [docs/v0-decision.md](docs/v0-decision.md).
+> Early stage. v0 is being built in two parts, with one optional layer on top of the first. **Part 1, in progress:** comments on a single HTML file, with no server, that tell a coding agent where the reviewer was and what they expected. The overlay, `gitmargin attach` and `gitmargin pull` are built and tested; a dogfood round with real reviewers is what remains. **Shared comments, an optional layer on part 1, built:** a small service you deploy to your own account makes the comments live, so everyone who opens the page sees the same ones and can reply. **Part 2, parked:** signing reviewers in with the login your company already has. The split and the reasons are in [docs/v0-split.md](docs/v0-split.md); the original decision, with the alternatives, is in [docs/v0-decision.md](docs/v0-decision.md).
 
 ## The problem
 
@@ -33,7 +33,16 @@ And there is a second problem hiding inside the first. Even when a comment does 
 3. **Comes back as a file or a text block.** "Send to author" downloads the same HTML with the comments inside; "Copy for author" puts a readable block on the clipboard. No server, no account, no upload.
 4. **Speaks AI.** `gitmargin pull` turns the returned file into a batch a coding agent can apply in one pass, as JSON with the rules for applying it carried inside. Two reviewers' files merge into one batch. The format is specified in [docs/batch-format.md](docs/batch-format.md).
 
-**Part 2, the destination, parked until it can be tested.** Your host already knows who's allowed to see the page; part 2 reuses that for comments. Reviewers sign in through the provider your company already uses, by way of OpenID Connect, GitLab first, then Slack, Okta, Entra, or Google as configuration. Comments live in a small gitmargin server you run and are mirrored into the GitLab issue and the Slack thread with a link back. `npx gitmargin publish ./dist` replaces the drag-into-Slack habit: it puts the overlay in, publishes to the host your company already sanctions, and posts the link. Terms of art in this section, such as OpenID Connect, are explained in the research report's [glossary](research/prior-art-landscape.md#8-glossary).
+**Shared comments, optional: one conversation, wherever the page lives.** Attach with `--service` and the page talks to a small comment service that you deploy to your own Vercel account, with its own Neon database. gitmargin runs nothing and holds nothing.
+
+1. **Live.** Everyone who opens the page, from a file on disk or from any host, sees the same comments within a few seconds, with who wrote each one, and can reply.
+2. **Local first.** A comment is saved in the browser the way it always was, then sent. If the service is down the panel says so, nothing is lost, and the file and clipboard routes still work.
+3. **By version.** Attaching a changed prototype makes a new version, which opens with no comments. The panel's Version line opens the older versions, each with its own comments in place, from a copy the service keeps.
+4. **Closes the loop.** `gitmargin pull --live` reads the comments from the service, and `gitmargin status` marks one applied, so the reviewer sees what became of it.
+
+There is no sign-in in this mode. A key written into the page is the only gate: whoever can open the page can read and write its comments. **Attaching with `--service` also uploads a copy of the page to your service**, which is how older versions stay openable, and that copy is not behind whatever password protects the page on your host: anyone holding its link can open it. If the prototype must stay behind your host's login, use part 1 without `--service`. [service/README.md](service/README.md) has the deploy steps and says plainly what that means.
+
+**Part 2, the destination, parked until it can be tested.** Your host already knows who's allowed to see the page; part 2 reuses that for comments. Reviewers sign in through the provider your company already uses: GitHub, or GitLab through the company login, then Okta, Entra, or Google by way of OpenID Connect. Sign-in is a choice made per prototype, on top of the same comment service. A publishing command replaces the drag-into-Slack habit: it puts the overlay in, publishes to the host your company already sanctions, and hands back the link. Terms of art in this section, such as OpenID Connect, are explained in the research report's [glossary](research/prior-art-landscape.md#8-glossary).
 
 ## Running it today
 
@@ -49,6 +58,14 @@ node bin/gitmargin.js attach prototype.html   # writes prototype.gitmargin.html
 node bin/gitmargin.js pull reviewed.html      # prints the batch as JSON
 ```
 
+For shared, live comments, deploy the service once ([service/README.md](service/README.md)) and add one flag:
+
+```bash
+export GITMARGIN_SECRET=...                     # the value you gave your deployment
+node bin/gitmargin.js attach prototype.html --service https://your-service.vercel.app
+node bin/gitmargin.js pull prototype.gitmargin.html --live
+```
+
 `npm run attach -- prototype.html` and `npm run pull -- reviewed.html` do the same thing. Only the author runs these; a reviewer only ever opens an HTML file, with nothing installed.
 
 Your reviewer needs a current Chrome, Edge, Firefox or Safari; the measured floor is Chrome and Edge 88, Firefox 85, Safari 15.4, and the [split doc](docs/v0-split.md#what-a-reviewers-browser-has-to-be) says what each row means. Anything older says so on the page rather than quietly showing a prototype with no commenting on it. Internet Explorer is not supported and cannot be.
@@ -57,7 +74,8 @@ Your reviewer needs a current Chrome, Edge, Firefox or Safari; the measured floo
 
 - **Feedback for an AI needs where and why, not just what.** "Make this bigger" is useless to an agent that cannot tell which of four screens "this" is on. Part 1 exists for this principle.
 - **Comments are data, not screenshots.** Every comment is anchored to an element and stored as machine-readable data, so both humans and AI agents can act on it.
-- **Works where you already deploy.** GitLab Pages, GitHub Pages, Vercel, a bucket, a folder on a server, or a file sent by hand. gitmargin never hosts your prototype; in part 1 it never serves anything at all.
+- **Works where you already deploy.** GitLab Pages, GitHub Pages, Vercel, a bucket, a folder on a server, or a file sent by hand. gitmargin never hosts your prototype or your comments. A plain file talks to nothing at all; a shared one talks only to the service you deployed.
+- **The author owns the record.** Shared comments live in a database in the author's own account, not in one gitmargin runs. A company should not have to send its feedback to somebody else's server to get a comment thread.
 - **No account beyond the one your host already requires** (part 2). gitmargin never adds a sign-up. It can't remove the seat a host like GitLab Pages demands, and it says so.
 - **Security is inherited, not added** (part 2). The prototype's existing access control is the comment system's access control. On a host with no gate of its own, gitmargin gates the comments and the mirror, not the page bytes.
 
@@ -77,7 +95,9 @@ The unclaimed square is still **platform-agnostic, identity-aware commenting on 
 ## Planned roadmap
 
 - [ ] **v0 part 1: the file.** The overlay (anchors, pins, comments, state capture, send back), `gitmargin attach` and `pull`, and one dogfood round: a generated prototype sent as a file to two reviewers, comments back, Claude Code applies them without the author explaining where anything was.
-- [ ] **v0 part 2: identity and private hosting (parked).** Sign-in via OpenID Connect with GitLab first, the server on Vercel plus Neon, `publish` to GitLab Pages, the Slack and GitLab mirrors, an MCP server, the phone mode, and the four one-day spikes that must come first: sign-in inside Slack's in-app browser, GitLab consent behaviour, publish timing on GitLab Pages, and corporate MFA policies inside that browser. Parked until there is a gitlab.com group, a Slack workspace, and phones to test with (section 7 of the split doc).
+- [ ] **Shared live comments** ([#15](https://github.com/mayankmankhand/gitmargin/issues/15)). Built, tested against a local copy of the service, and checked on a real Vercel plus Neon deployment in Chrome and Firefox. The Deploy button is written but untested while this repository is private. A comment service on Vercel plus Neon that each author deploys, comments by version with a stored copy of each version, replies, statuses, `pull --live`. No sign-in: a key in the page is the gate.
+- [ ] **Parked, part 2:** **a publishing plugin** ([#16](https://github.com/mayankmankhand/gitmargin/issues/16)), **GitHub sign-in** ([#17](https://github.com/mayankmankhand/gitmargin/issues/17)), **GitLab sign-in through the company login** ([#18](https://github.com/mayankmankhand/gitmargin/issues/18)), **Vercel same-project mode** ([#19](https://github.com/mayankmankhand/gitmargin/issues/19)).
+- [ ] **v0 part 2, the rest (parked).** A Slack mirror, an MCP server, the phone mode, and the four one-day spikes that sign-in inside a company must pass first: sign-in inside Slack's in-app browser, GitLab consent behaviour, publish timing on GitLab Pages, and corporate MFA policies inside that browser. Parked until there is a gitlab.com group, a Slack workspace, and phones to test with (section 7 of the split doc).
 - [ ] **Publish to npm.** Deliberately not done yet: nothing is published, so part 1 runs from a clone (see [Running it today](#running-it-today)). `package.json` already carries the `bin` entry, so publishing is a single step whenever the shape stops moving.
 - [ ] **Later ports:** Vercel with Sign in with Slack, ungated hosts (S3, Firebase) with corporate SSO, a Cloudflare Access gate adapter, GitHub Pages (Enterprise Cloud), a self-hosting package, two-way Slack sync.
 
@@ -94,7 +114,7 @@ This project stands on ideas from people who solved neighbouring problems:
 
 ## Status
 
-Decision made and amended. Part 1 is built and tested end to end: `gitmargin attach` puts the overlay into a copy of a prototype, a reviewer opens it from disk, comments, and sends the comments back as the same file or as a text block, and `gitmargin pull` turns what comes back into a batch for a coding agent. A dogfood round with real reviewers comes next. See [docs/v0-split.md](docs/v0-split.md) for what part 1 is and what part 2 parks, [docs/batch-format.md](docs/batch-format.md) for what the agent gets, and [docs/v0-decision.md](docs/v0-decision.md) for the original decision. If you've hit this problem, a private prototype and no good way to collect feedback on it, I'd genuinely like to hear how you work around it today. Open an issue or reach out.
+Decision made and amended. Part 1 is built and tested end to end: `gitmargin attach` puts the overlay into a copy of a prototype, a reviewer opens it from disk, comments, and sends the comments back as the same file or as a text block, and `gitmargin pull` turns what comes back into a batch for a coding agent. Shared live comments are built on top of that and tested in Chrome and Firefox against a local copy of the comment service: two people on the same page, one from a file and one from a hosted copy, see each other's comments and replies within seconds. The same check passed on a real Vercel plus Neon deployment. A dogfood round with real reviewers comes next. See [docs/v0-split.md](docs/v0-split.md) for what part 1 is and what part 2 parks, [docs/batch-format.md](docs/batch-format.md) for what the agent gets, and [docs/v0-decision.md](docs/v0-decision.md) for the original decision. If you've hit this problem, a private prototype and no good way to collect feedback on it, I'd genuinely like to hear how you work around it today. Open an issue or reach out.
 
 ## License
 

@@ -12,6 +12,7 @@ import { screenFor } from './screen.js';
 import { startTrail, trailFor, setRecording } from './trail.js';
 import { targetFor } from './target.js';
 import * as store from './store.js';
+import { startSync } from './sync.js';
 import * as batch from './export.js';
 import { mountUi } from './ui.js';
 
@@ -55,8 +56,16 @@ function start() {
   store.seed(batch.embeddedComments(), carried.name, carried.note);
   startTrail();
 
+  // Shared comments (issue #15). Null unless `attach --service` wrote the two
+  // sharing tags into this page, and then everything below is exactly part 1.
+  // When it is on, the panel is handed the same store with its three writes
+  // routed through sync: saved locally first, then queued for the service.
+  const sync = startSync({ stamp, store });
+  const shared = sync ? { ...store, add: sync.add, update: sync.update, remove: sync.remove } : store;
+
   const ui = mountUi({
-    store,
+    store: shared,
+    sync,
     batch,
     createComment,
     anchorFromElement,
@@ -82,7 +91,10 @@ function start() {
     lastCopy: null,
     lastCopyOk: null,
     ui,
+    // Null on a page that is not shared. Read by tests/shared.spec.js.
+    sync,
   };
+  if (sync) sync.subscribe(() => ui.render());
 }
 
 if (document.readyState === 'loading') {

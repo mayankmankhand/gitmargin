@@ -92,6 +92,16 @@
 - **Renaming a lesson's one-liner means renaming its write-up's bold lead too, even when the upgrade audit leaves the detail file out.**
 - **Updating a standing page from a new session needs one fetch of the live version first; resending unchanged after the refusal is refused again.**
 
+### gitmargin: shared live comments (issue #15, 2026-09-18)
+- **A set of test files that must stay unedited catches plan errors as well as code errors.**
+- **A default argument runs before the guard in the function body.**
+- **A fake that refuses AFTER delivering cannot test a refusal.**
+- **Prove a new test fails first by putting the old file back.**
+- **Before fixing a finding, reread the decision it touches: a correct fix can still reverse an approved choice.**
+- **A secret must never follow an address that a file names.**
+- **A list that rebuilds on every change costs keyboard users their place on a live page.**
+- **Look at git status after every vendor install: an installer can write agent instruction files into your repo.**
+
 ## Mistakes to Avoid
 
 - **Fill a plan's Outcomes by replacing the template placeholder, not inserting above it.**

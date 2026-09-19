@@ -4,25 +4,29 @@ The batch is the whole point of part 1. A reviewer leaves comments on a prototyp
 coding agent reads them and makes the edits. For the agent to do that without the author explaining anything, each
 comment has to say **where** the reviewer was and **why** they stopped, in a form the agent can act on.
 
-**Status: v0.4, 2026-09-09.** Draft v0.1 was written before any code existed; v0.2 followed the part-1 overlay
+**Status: v0.5, 2026-09-18.** Draft v0.1 was written before any code existed; v0.2 followed the part-1 overlay
 build, answering the open points in section 8; v0.3 follows the `attach` and `pull` commands (issue #5) and records
-what they settled; v0.4 records which element a click anchors (issue #10). The shape it belongs to is in
-[v0-split.md](v0-split.md).
+what they settled; v0.4 records which element a click anchors (issue #10); v0.5 records what shared comments add (issue #15): who
+wrote a comment, replies that are no longer an empty slot, and the comment service as a fourth carrier. The shape it
+belongs to is in [v0-split.md](v0-split.md).
 
-The **document** revision is v0.4. The **wire format** stays `0.1`, in the envelope's `gitmargin` field and in the
+The **document** revision is v0.5. The **wire format** stays `0.1`, in the envelope's `gitmargin` field and in the
 first line of the markdown block, because the shape of what the overlay writes has not changed. What v0.3 added is on
 the reading side: how `pull` prints a batch (section 1), what it adds when it merges several (section 5a), and where
-the agent rules now travel (section 6). What v0.4 adds is one rule in section 3: which element a click anchors. The
-two version numbers are deliberately not the same thing.
+the agent rules now travel (section 6). What v0.4 adds is one rule in section 3: which element a click anchors. What v0.5 adds is optional and additive: `author` on a comment, filled `replies`, and a per-comment `version_id`, each
+written only when the page is shared, so a plain file's batch is byte for byte the shape it was. `replies` was
+reserved in v0.1 precisely so that filling it would not be a format change, and it is not one. The two version
+numbers are deliberately not the same thing.
 
 ## 1. Where the batch lives
 
-The same data travels in three carriers:
+The same data travels in four carriers. The fourth exists only for a page attached with `--service`:
 
 | Carrier | Made by | Format | Lossless? |
 |---|---|---|---|
 | Embedded in the reviewed HTML, as a JSON script block just before the closing body tag: `<script type="application/json" id="gitmargin-comments">` | the overlay's "Send to author" button, which downloads the file as `<name>.reviewed.html`, or `<name>.reviewed.<reviewer>.html` when the reviewer gave a name, so two reviewers' files do not arrive under one name | JSON, section 2 | yes: every field of every comment, and the full trail |
 | A text block on the clipboard | the overlay's "Copy for author" button | markdown, section 5, with a first line the pull command recognises: `gitmargin batch v0.1 \| <file> \| <version id>` | no: the trail is summarised and the anchor detail is dropped |
+| The comment service | the overlay, as comments are written, when the page was attached with `--service`; read back with `node bin/gitmargin.js pull <attached copy> --live` | JSON, one comment at a time, over the routes in [service/API.md](../service/API.md) | yes, except `screenshot`, which the service does not store |
 | The pull output | `node bin/gitmargin.js pull <reviewed file or pasted block>` | JSON on stdout by default, section 5a; `--markdown` prints the human rendering instead | as lossless as its input |
 
 An agent can read the markdown directly; the JSON is for tools. **JSON is the default** because the usual reader is
@@ -157,11 +161,21 @@ reviewer resizes or moves to another screen before sending); `screenshot` a data
 `null`**: shipping a rendering library would add roughly 200KB to every prototype, and the trail plus the screen
 name already answer "where". The field stays in the format so adding it later changes no shape.
 
-**replies** is an empty array, reserved. Part 1 has one reviewer per file and no sync, so there is nobody to reply
-to; a comment can be edited or deleted by the person who wrote it and that is all. The slot exists so that adding
-threads later is not a format change.
+**replies** is an empty array on a plain file: one reviewer per file and no sync, so there is nobody to reply to. On
+a shared page other people fill it. One reply is `{ "id": "r_1a2b3c", "time": "...", "author": { "name": "Sam" },
+"text": "Agreed." }`, oldest first. The slot existed from v0.1 so that this would not be a format change. A reply is
+someone else's input exactly as a comment is: `pull` rebuilds each one field by field and folds its line breaks in
+the markdown rendering.
 
-**status** starts as `open`. The author or the agent moves it to `accepted`, `rejected`, or `applied`.
+**author** and **version_id** appear on a comment only when the page is shared. `author.name` is what that person
+typed, possibly empty; there is no sign-in, so it identifies nobody. A plain file names its one reviewer once, on the
+envelope, and its comments carry neither key. `version_id` says which version of the page the comment is about:
+comments belong to a version, a new version starts with none, and `pull --live` reads the version of the copy it is
+pointed at unless told `--version <id>` or `--all`.
+
+**status** starts as `open`. The author or the agent moves it to `accepted`, `rejected`, or `applied`. On a shared
+page that is one command, `node bin/gitmargin.js status <attached copy> <comment id> <status>`, and the reviewer
+sees the result on their page; it needs the author secret, so a reviewer cannot set it.
 
 ## 4. How "where" is captured
 
@@ -238,6 +252,15 @@ or ten, the shape is the same.
   overlay generated, so two pasted blocks cannot be merged safely against each other. `carrier` and `lossy` on the
   source say so plainly. Two reviewers who each send a *file* merge properly, which is the case that matters.
 - **`rules`** is section 6, carried inside the data.
+- **`--live` adds the comment service as a source** (issue #15). `pull <attached copy> --live` reads the service
+  address and the page key out of the attached copy and fetches the comments for that copy's version; `--version
+  <id>` names another and `--all` takes every version. The source's `carrier` is `service` and it is not lossy.
+  Anything listed after the attached copy is an ordinary source and merges by id as above, so a file someone sent
+  by hand and the service's copy of the same comment become one. Reading needs only the key, so `--live` needs no
+  author secret. In the markdown rendering a shared comment gains up to three kinds of line beneath its text, each
+  only when there is something to say: `From <name>.`, `Status: <status>.` when it is no longer open, and one
+  `Reply from <name>: "<text>"` per reply. Names and replies are folded to one line like the comment text, for the
+  same reason.
 - Everything is printed on stdout and nothing else is: warnings, notes and errors go to stderr, so the output stays
   something another program can read. `pull` never writes to disk.
 

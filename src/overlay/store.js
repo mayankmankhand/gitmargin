@@ -4,6 +4,10 @@
 // best-effort copy in localStorage keyed by the version id. Best-effort is
 // deliberate: a browser that refuses storage to a file:// page still works for
 // one sitting, and losing a saved draft is better than an overlay that throws.
+//
+// A page attached with `--service` shares its comments (issue #15). This file
+// does not know: src/overlay/sync.js sits beside it, saves here first exactly as
+// above, and hands in what other people wrote through `applyRemote`.
 
 const PREFIX = 'gitmargin:';
 
@@ -152,4 +156,23 @@ export function remove(id) {
   state.comments.splice(at, 1);
   touched();
   return true;
+}
+
+/**
+ * Take what the comment service says (issue #15, src/overlay/sync.js).
+ *
+ * `upsert` replaces a comment by id or adds it; `drop` removes ids. The list is
+ * then ordered by when each comment was written, with the id as tie-break, so
+ * everyone looking at the page sees the same comment as "3". Announces without
+ * `touched()`: someone else's comment arriving is not unexported work of mine.
+ */
+export function applyRemote({ upsert = [], drop = [] }) {
+  if (!upsert.length && !drop.length) return;
+  const gone = new Set(drop);
+  const byId = new Map(state.comments.filter((c) => !gone.has(c.id)).map((c) => [c.id, c]));
+  upsert.forEach((c) => byId.set(c.id, c));
+  state.comments = [...byId.values()].sort(
+    (a, b) => String(a.time || '').localeCompare(String(b.time || '')) || String(a.id).localeCompare(String(b.id))
+  );
+  announce();
 }

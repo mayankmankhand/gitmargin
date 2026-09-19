@@ -85,8 +85,17 @@ export function envelope() {
       anchor: c.anchor,
       state: c.state,
       status: c.status || 'open',
-      // Reserved: part 1 has one reviewer and no sync, so nothing replies yet.
-      replies: [],
+      // Empty unless the page is shared (issue #15), where other people fill it.
+      // Rebuilt field by field: a reply is someone else's input, like a comment.
+      replies: (c.replies || []).map((r) => ({
+        id: r.id || null,
+        time: r.time || null,
+        author: { name: (r.author && r.author.name) || null },
+        text: String(r.text || ''),
+      })),
+      // Shared mode only: who wrote it. A plain file names its one reviewer on
+      // the envelope, so the key is absent there and the shape is unchanged.
+      ...(c.author && typeof c.author.name === 'string' ? { author: { name: c.author.name } } : {}),
     })),
   };
 }

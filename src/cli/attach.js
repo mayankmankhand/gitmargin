@@ -112,7 +112,8 @@ export function isSameFile(a, b) {
 }
 
 /** Attribute-safe: a prototype named `it"s.html` must not break the meta tag. */
-const attr = (value) => String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+const attr = (value) =>
+  String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
 /**
  * Remove what a previous attach or review round left behind.
@@ -126,7 +127,10 @@ export function stripPrevious(html) {
   // appears anywhere inside the bundle, so neither has a lookalike to confuse.
   return stripEnvelopes(
     html
-      .replace(/[ \t]*<meta\s+name=["']gitmargin-(?:version|file)["'][^>]*>[ \t]*\r?\n?/gi, '')
+      // `service` and `key` are the two sharing tags `attach --service` writes
+      // (src/cli/live.js). Stripped here so a re-attach replaces them, and so a
+      // plain attach of a once-shared prototype really is unshared.
+      .replace(/[ \t]*<meta\s+name=["']gitmargin-(?:version|file|service|key)["'][^>]*>[ \t]*\r?\n?/gi, '')
       .replace(/[ \t]*<script\b[^>]*\bid=["']gitmargin-overlay["'][^>]*>[\s\S]*?<\/script>[ \t]*\r?\n?/gi, '')
       // The unsupported-browser notice, so re-attaching replaces it rather than
       // stacking a second copy. Neither id appears inside the bundle, so like
@@ -203,12 +207,19 @@ const FALLBACK_NOTICE =
  * Exported separately from the file handling so the tests can drive it on
  * strings without touching the disk.
  */
-export function attachToHtml(html, { bundle, versionId, originalName }) {
+export function attachToHtml(html, { bundle, versionId, originalName, service = null }) {
   const stripped = stripPrevious(html);
 
+  // The two sharing tags are what switches the overlay's sync on. Without
+  // `service` they are not written and the output is byte for byte what it was
+  // before sharing existed: the page, not the code, decides (issue #15).
   const stamp =
     `<meta name="gitmargin-version" content="${attr(versionId)}">\n` +
-    `<meta name="gitmargin-file" content="${attr(originalName)}">\n`;
+    `<meta name="gitmargin-file" content="${attr(originalName)}">\n` +
+    (service
+      ? `<meta name="gitmargin-service" content="${attr(service.address)}">\n` +
+        `<meta name="gitmargin-key" content="${attr(service.key)}">\n`
+      : '');
 
   // Before </head> rather than after <head>, so a charset declaration keeps its
   // place in the first bytes of the document.
@@ -241,17 +252,30 @@ export function attachToHtml(html, { bundle, versionId, originalName }) {
   return insertBeforeLast(withNotice, /<\/body\s*>/gi, overlay, 'find </body> to place the overlay before');
 }
 
-export function attach(args) {
-  const files = args.filter((a) => !a.startsWith('-'));
-  if (files.length !== 1) {
-    throw new CliError(
-      files.length === 0 ? 'attach needs one HTML file.' : 'attach takes exactly one file.',
-      EXIT_USAGE,
-      'Try: gitmargin attach prototype.html'
-    );
-  }
+/** What an attached copy says about itself, read from its meta tags. */
+export function readStamp(html) {
+  const tag = (name) =>
+    // The value runs to the quote that OPENED it. Stopping at either kind of
+    // quote read mayank's.html back as mayank (review R21).
+    (new RegExp(`<meta\\s+name=["']gitmargin-${name}["']\\s+content=(?:"([^"]*)"|'([^']*)')`, 'i').exec(html) || []).slice(1).find((v) => v) || null;
+  const unescape = (v) =>
+    v === null ? null : v.replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&amp;/g, '&');
+  return {
+    versionId: unescape(tag('version')),
+    file: unescape(tag('file')),
+    service: unescape(tag('service')),
+    key: unescape(tag('key')),
+  };
+}
 
-  const source = files[0];
+/**
+ * Everything `attach` checks and reads before it decides a version id.
+ *
+ * Shared with `attach --service` (src/cli/live.js) so the two cannot disagree
+ * about what is safe: the bundle guard, the HTML check, and above all the rule
+ * that the original is never the file written to.
+ */
+export function prepareAttach(source) {
   if (!/\.x?html?$/i.test(source)) {
     throw new CliError(`Not an HTML file: ${source}`, EXIT_USAGE);
   }
@@ -282,19 +306,32 @@ export function attach(args) {
 
   // The previous copy is the only record of which round this is. Absent on a
   // first attach, which is what starts the counter at v1.
-  let previousId = null;
+  let previous = { versionId: null, file: null, service: null, key: null };
   try {
-    const previous = readFileSync(outPath, 'utf8');
-    previousId = (/<meta\s+name=["']gitmargin-version["']\s+content=["']([^"']+)["']/i.exec(previous) || [])[1] || null;
+    previous = readStamp(readFileSync(outPath, 'utf8'));
   } catch {
     // No previous copy. Nothing to read, nothing to report.
   }
 
-  const versionId = nextVersionId(previousId, hashOf(bytes));
-  // The overlay builds the reviewer's download name from this, as
+  // The overlay builds the reviewer's download name from `originalName`, as
   // `<stem>.reviewed.html`, so it is the name the author will recognise coming
   // back rather than the copy's.
-  const originalName = path.basename(source);
+  return { bundle, bytes, html, outPath, previous, originalName: path.basename(source) };
+}
+
+export function attach(args) {
+  const files = args.filter((a) => !a.startsWith('-'));
+  if (files.length !== 1) {
+    throw new CliError(
+      files.length === 0 ? 'attach needs one HTML file.' : 'attach takes exactly one file.',
+      EXIT_USAGE,
+      'Try: gitmargin attach prototype.html'
+    );
+  }
+
+  const source = files[0];
+  const { bundle, bytes, html, outPath, previous, originalName } = prepareAttach(source);
+  const versionId = nextVersionId(previous.versionId, hashOf(bytes));
   const out = attachToHtml(html, { bundle, versionId, originalName });
 
   writeFileSync(outPath, out, 'utf8');
@@ -304,5 +341,13 @@ export function attach(args) {
     `Attached the overlay to ${originalName} as version ${versionId}.\n` +
       `Send ${path.basename(outPath)} to your reviewer. ${path.basename(source)} is untouched.\n`
   );
+  // A plain attach never touches the network, so it cannot keep a prototype
+  // shared. Say so, or the author sends a copy nobody else's comments reach.
+  if (previous.service) {
+    process.stderr.write(
+      `Note: the previous copy shared its comments through ${previous.service}. This one does not.\n` +
+        `To keep sharing: gitmargin attach ${path.basename(source)} --service\n`
+    );
+  }
   return EXIT_OK;
 }
