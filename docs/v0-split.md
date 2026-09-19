@@ -162,6 +162,8 @@ already give.
 
 ## 7. Part 2: what is parked, and what unparks it
 
+**Amended 2026-09-19.** Part 2 now has one design, in [part-2-design.md](part-2-design.md): where the page lives, who may comment, and the author's own comment service as the constant, built in four cycles that each end in a live test on accounts one person can own. That document is the description of part 2 from here on. What follows is kept as the record of how the list got there.
+
 **Amended 2026-09-18 ([issue #13](https://github.com/mayankmankhand/gitmargin/issues/13), built in [issue #15](https://github.com/mayankmankhand/gitmargin/issues/15)).** One piece of this list left the parking lot, in a smaller shape than the one below. Shared, live comments no longer wait for sign-in:
 
 - **What was built:** a comment service each author deploys to their own Vercel account with Neon Postgres. A page attached with `--service` carries the service's address and a page key, and everyone who opens it shares one set of comments, with replies and statuses. Comments belong to a version of the page; the service keeps a sandboxed copy of each version so an older one can still be opened with its comments in place. `service/README.md` and `service/API.md` describe it.

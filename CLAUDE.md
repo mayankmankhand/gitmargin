@@ -34,7 +34,9 @@ CLI and the overlay are both written against; `service/README.md` has the deploy
 A reviewer needs Chrome or Edge 88, Firefox 85, or Safari 15.4; anything older now says so on the page
 rather than failing silently (`docs/v0-split.md` section 5). **Part 2** (parked) = sign-in (GitHub in issue #17, GitLab through the
 company login in #18), a publishing plugin (#16), Vercel same-project mode (#19), the Slack mirror, the phone mode, and
-the four spikes. The GitLab-issue mirror is retired: comments are shown on the page. The split and the reasons: `docs/v0-split.md`; the original decision and the
+the four spikes. **Part 2 has one design since 2026-09-19, in `docs/part-2-design.md`:** read it before touching sign-in or
+publishing, and do not restate it elsewhere. It is built in four cycles; cycle 1, the sign-in core plus GitLab, is issue #18.
+The GitLab-issue mirror is retired: comments are shown on the page. The split and the reasons: `docs/v0-split.md`; the original decision and the
 out-of-scope list: `docs/v0-decision.md`; the batch an agent reads: `docs/batch-format.md` (v0.5, wire 0.1).
 
 ## Working on the overlay
