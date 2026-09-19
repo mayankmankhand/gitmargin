@@ -12,7 +12,8 @@
 //
 // Node and nothing else: `fetch` is built in from Node 18.
 
-import { writeFileSync, readFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { CliError, EXIT_OK, EXIT_REFUSED, EXIT_USAGE } from './errors.js';
 import { attachToHtml, hashOf, prepareAttach, readStamp } from './attach.js';
@@ -44,6 +45,59 @@ function cleanAddress(value) {
   }
   if (!/^https?:$/.test(url.protocol)) throw new CliError(`Not a web address: ${value}`, EXIT_USAGE);
   return url.origin;
+}
+
+/**
+ * Where the author secret may go.
+ *
+ * `status`, `remove` and a bare `attach --service` learn the service's address
+ * from a FILE: the attached copy. A copy that came back from a reviewer can name
+ * any address, and the secret used to follow it there (review of the #15 cycle,
+ * R1). So the secret goes only to an address the author has typed on a command
+ * line themselves, which `attach --service <address>` remembers here, or named
+ * in GITMARGIN_SERVICE. The list lives outside the repo and holds no secret.
+ */
+const trustFile = () =>
+  path.join(process.env.GITMARGIN_CONFIG_DIR || path.join(os.homedir(), '.config', 'gitmargin'), 'trusted-services.json');
+
+function trustedAddresses() {
+  const named = process.env.GITMARGIN_SERVICE ? [cleanAddress(process.env.GITMARGIN_SERVICE)] : [];
+  try {
+    const saved = JSON.parse(readFileSync(trustFile(), 'utf8'));
+    return named.concat(Array.isArray(saved) ? saved.filter((a) => typeof a === 'string') : []);
+  } catch {
+    return named;
+  }
+}
+
+function rememberAddress(address) {
+  if (trustedAddresses().includes(address)) return;
+  try {
+    mkdirSync(path.dirname(trustFile()), { recursive: true, mode: 0o700 });
+    writeFileSync(trustFile(), `${JSON.stringify(trustedAddresses().concat(address), null, 2)}\n`, { mode: 0o600 });
+  } catch {
+    // Not being able to remember costs a retyped address later, nothing more.
+  }
+}
+
+/** Refuse to send the secret anywhere the author did not choose, or in the clear. */
+function assertSecretMayGo(address, { typed }) {
+  const { protocol, hostname } = new URL(address);
+  const loopback = ['localhost', '127.0.0.1', '[::1]'].includes(hostname);
+  if (protocol !== 'https:' && !loopback) {
+    throw new CliError(
+      `Refusing to send your author secret to ${address}: it is not https, so anyone on the network could read it.`,
+      EXIT_REFUSED,
+      'Nothing was sent.'
+    );
+  }
+  if (typed || trustedAddresses().includes(address)) return;
+  throw new CliError(
+    `Refusing to send your author secret to ${address}: that address came from the file, and you have never attached to it yourself.`,
+    EXIT_REFUSED,
+    'Nothing was sent. If a reviewer sent this file back, use your own attached copy instead.\n' +
+      `If the address is right: gitmargin attach <prototype.html> --service ${address}, or set GITMARGIN_SERVICE=${address}`
+  );
 }
 
 /** What each refusal in API.md means to the person at the terminal. */
@@ -143,6 +197,7 @@ export async function attachLive(args) {
   }
   const address = cleanAddress(given);
   const auth = secret();
+  assertSecretMayGo(address, { typed: Boolean(service.value) });
 
   // Which prototype this is. A key given by hand wins; otherwise the previous
   // copy's key, but only when it was for this same service.
@@ -159,7 +214,13 @@ export async function attachLive(args) {
     );
     key = (await call(address, 'POST', '/api/prototypes', { auth, body: { name: originalName } })).key;
     createdNow = true;
+    // Printed the moment it exists. Two more calls follow and either can fail;
+    // printed only at the end, a failure lost the key, and every retry made
+    // another prototype nobody could find again (review R20).
+    process.stderr.write(`Prototype key (the page key): ${key}\nKeep it: --key <key> is how another machine, or a retry, finds this prototype again.\n`);
   }
+  // The service took the secret, so this is the author's service: remember it.
+  if (service.value) rememberAddress(address);
 
   // The service owns the round number, so a fresh checkout cannot disagree
   // with it about which version is v3 (API.md, "versions").
@@ -201,9 +262,7 @@ export async function attachLive(args) {
   );
   if (createdNow) {
     process.stderr.write(
-      `\nPrototype key: ${key}\n` +
-        'Keep it: it is how a fresh checkout or another machine finds this prototype again (--key).\n' +
-        'The key is inside the page, and it is the only gate. Anyone who can open the page can read and\n' +
+      '\nThe key is inside the page, and it is the only gate. Anyone who can open the page can read and\n' +
         'write its comments, and open the stored copies of it. If the page is public, so are they. If the\n' +
         'page sits behind a password, the key and the stored copies still work from anywhere, for whoever\n' +
         'has seen the page: the stored copy is not behind that password.\n'
@@ -271,8 +330,10 @@ export async function setStatus(args) {
   if (!STATUSES.includes(rest[0])) {
     throw new CliError(`Not a status: ${rest[0] ?? '(nothing)'}`, EXIT_USAGE, `One of: ${STATUSES.join(', ')}`);
   }
+  const auth = secret();
+  assertSecretMayGo(stamp.service, { typed: false });
   await call(stamp.service, 'PATCH', `/api/prototypes/${stamp.key}/comments/${id}/status`, {
-    auth: secret(),
+    auth,
     body: { status: rest[0] },
   });
   process.stderr.write(`${id} is now ${rest[0]}. Reviewers see it the next time their page checks in.\n`);
@@ -281,7 +342,9 @@ export async function setStatus(args) {
 
 export async function removeComment(args) {
   const { stamp, id } = commentArgs(args, 'remove needs the attached copy and a comment id.');
-  await call(stamp.service, 'DELETE', `/api/prototypes/${stamp.key}/comments/${id}`, { auth: secret() });
+  const auth = secret();
+  assertSecretMayGo(stamp.service, { typed: false });
+  await call(stamp.service, 'DELETE', `/api/prototypes/${stamp.key}/comments/${id}`, { auth });
   process.stderr.write(`${id} is removed for everyone.\n`);
   return EXIT_OK;
 }

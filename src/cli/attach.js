@@ -112,7 +112,8 @@ export function isSameFile(a, b) {
 }
 
 /** Attribute-safe: a prototype named `it"s.html` must not break the meta tag. */
-const attr = (value) => String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+const attr = (value) =>
+  String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
 /**
  * Remove what a previous attach or review round left behind.
@@ -254,8 +255,11 @@ export function attachToHtml(html, { bundle, versionId, originalName, service = 
 /** What an attached copy says about itself, read from its meta tags. */
 export function readStamp(html) {
   const tag = (name) =>
-    (new RegExp(`<meta\\s+name=["']gitmargin-${name}["']\\s+content=["']([^"']+)["']`, 'i').exec(html) || [])[1] || null;
-  const unescape = (v) => (v === null ? null : v.replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&amp;/g, '&'));
+    // The value runs to the quote that OPENED it. Stopping at either kind of
+    // quote read mayank's.html back as mayank (review R21).
+    (new RegExp(`<meta\\s+name=["']gitmargin-${name}["']\\s+content=(?:"([^"]*)"|'([^']*)')`, 'i').exec(html) || []).slice(1).find((v) => v) || null;
+  const unescape = (v) =>
+    v === null ? null : v.replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&amp;/g, '&');
   return {
     versionId: unescape(tag('version')),
     file: unescape(tag('file')),

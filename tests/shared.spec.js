@@ -8,6 +8,7 @@ import { test, expect } from '@playwright/test';
 import { execFile } from 'node:child_process';
 import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import http from 'node:http';
+import { tmpdir } from 'node:os';
 import { pathToFileURL } from 'node:url';
 import { resolve, join } from 'node:path';
 import { startService } from './helpers/service-server.js';
@@ -25,7 +26,9 @@ test.describe.configure({ timeout: 90_000 });
  */
 function gitmargin(args, env) {
   return new Promise((done, fail) => {
-    execFile(process.execPath, [CLI, ...args], { env: { ...process.env, ...env } }, (error, out, err) =>
+    // The CLI remembers the service addresses an author types; keep that list out of the real home folder.
+    const config = join(tmpdir(), 'gitmargin-test-config');
+    execFile(process.execPath, [CLI, ...args], { env: { ...process.env, GITMARGIN_CONFIG_DIR: config, ...env } }, (error, out, err) =>
       error ? fail(new Error(err || String(error))) : done(out.trim())
     );
   });

@@ -13,12 +13,16 @@ import { mkdtempSync, readFileSync, writeFileSync, existsSync, rmSync } from 'no
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import http from 'node:http';
 import { startService } from './helpers/service-server.js';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const CLI = path.join(ROOT, 'bin', 'gitmargin.js');
 const PAGE = '<!doctype html>\n<html><head><meta charset="utf-8"><title>t</title></head>\n<body><p>hi</p>\n</body></html>\n';
 const TOKEN = 'a-reviewer-token-0123456789';
+// The CLI remembers which service addresses the author has typed. Every run here
+// keeps that list in a scratch folder, never in the real home folder.
+const CONFIG = mkdtempSync(path.join(tmpdir(), 'gitmargin-config-'));
 
 /**
  * Async on purpose. `spawnSync` would block this process, and the service the
@@ -26,7 +30,7 @@ const TOKEN = 'a-reviewer-token-0123456789';
  */
 function run(args, env = {}) {
   return new Promise((resolve) => {
-    execFile(process.execPath, [CLI, ...args], { env: { ...process.env, GITMARGIN_SECRET: '', ...env } }, (error, out, err) =>
+    execFile(process.execPath, [CLI, ...args], { env: { ...process.env, GITMARGIN_SECRET: '', GITMARGIN_SERVICE: '', GITMARGIN_CONFIG_DIR: CONFIG, ...env } }, (error, out, err) =>
       resolve({ code: error ? error.code : 0, out, err })
     );
   });
@@ -254,4 +258,74 @@ test('attach --service stores a copy of the finished page, and says so when a pa
   assert.equal((await fetch(`${s.service.url}/p/${s.tag('key')}/${s.tag('version')}`)).status, 404);
   const list = await (await fetch(`${s.service.url}/api/p/${s.tag('key')}/comments`)).json();
   assert.deepEqual(list.versions.map((v) => [v.round, v.has_page]), [[2, false], [1, true]]);
+});
+
+test('the author secret never follows an address that only a file names (review R1)', async (t) => {
+  const s = await setup(t);
+  await run(['attach', s.source, '--service', s.service.url], s.env);
+  await post(s.service, s.tag('key'), s.tag('version'), 'c_0000f1', 'A real comment.', 'Priya');
+
+  // Somewhere else, listening for a secret.
+  const seen = [];
+  const elsewhere = http.createServer((req, res) => {
+    seen.push(req.headers.authorization || '(no authorization header)');
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end('{}');
+  });
+  await new Promise((done) => elsewhere.listen(0, '127.0.0.1', done));
+  t.after(() => new Promise((done) => elsewhere.close(done)));
+  const there = `http://127.0.0.1:${elsewhere.address().port}`;
+
+  // A copy that came back from a reviewer, with the service address changed.
+  const returned = path.join(s.dir, 'proto.reviewed.html');
+  writeFileSync(returned, readFileSync(s.copy, 'utf8').replace(s.service.url, there));
+
+  for (const args of [['status', returned, 'c_0000f1', 'applied'], ['remove', returned, 'c_0000f1']]) {
+    const r = await run(args, s.env);
+    assert.equal(r.code, 2, r.err);
+    assert.match(r.err, /Refusing to send your author secret/);
+    assert.match(r.err, /came from the file/);
+  }
+  assert.deepEqual(seen, [], 'nothing reached the other address, with or without the secret');
+
+  // The author's own copy still works, and so does naming the address on purpose.
+  assert.equal((await run(['status', s.copy, 'c_0000f1', 'applied'], s.env)).code, 0);
+  const named = await run(['status', returned, 'c_0000f1', 'applied'], { ...s.env, GITMARGIN_SERVICE: there });
+  assert.equal(named.code, 0, 'GITMARGIN_SERVICE is the author choosing it');
+
+  // And never in the clear to anywhere but this machine.
+  const clear = await run(['attach', s.source, '--service', 'http://comments.example'], s.env);
+  assert.equal(clear.code, 2);
+  assert.match(clear.err, /not https/);
+});
+
+test('the key is printed the moment it exists, so a failure after that does not lose it (review R20)', async (t) => {
+  let requests = 0;
+  const service = await startService({ down: () => (requests += 1) > 1 });
+  const dir = mkdtempSync(path.join(tmpdir(), 'gitmargin-live-'));
+  t.after(async () => {
+    await service.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+  const source = path.join(dir, 'proto.html');
+  writeFileSync(source, PAGE);
+  const r = await run(['attach', source, '--service', service.url], { GITMARGIN_SECRET: service.secret });
+  assert.equal(r.code, 2, 'the second call failed, so nothing was written');
+  assert.ok(!existsSync(path.join(dir, 'proto.gitmargin.html')));
+  assert.match(r.err, /Prototype key \(the page key\): gm_[A-Za-z0-9_-]+/);
+  assert.match(r.err, /--key/);
+});
+
+test('a prototype with an apostrophe in its name keeps its whole name (review R21)', async (t) => {
+  const s = await setup(t);
+  const source = path.join(s.dir, "mayank's draft.html");
+  const copy = path.join(s.dir, "mayank's draft.gitmargin.html");
+  writeFileSync(source, PAGE);
+  assert.equal((await run(['attach', source, '--service', s.service.url], s.env)).code, 0);
+  const pulled = await run(['pull', copy, '--live']);
+  assert.equal(pulled.code, 0, pulled.err);
+  assert.equal(JSON.parse(pulled.out).file, "mayank's draft.html");
+  const again = await run(['attach', source, '--service'], s.env);
+  assert.equal(again.code, 0, again.err);
+  assert.doesNotMatch(again.err, /NEW prototype/, 'the previous copy was read back correctly, key and all');
 });
