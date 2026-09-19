@@ -310,7 +310,11 @@ export function startSync({
         else replies.push(mineNow);
       }
       merged.replies = replies;
-      if (!hasPending(remote.id, 'delete')) upsert.push(merged);
+      // Polls overlap (SINCE_OVERLAP_MS), so the same comment arrives several times
+      // running. Identical to what is held means nothing to apply: every apply
+      // redraws the panel, and a redraw costs a keyboard user their place.
+      const unchanged = local && JSON.stringify(local) === JSON.stringify(merged);
+      if (!unchanged && !hasPending(remote.id, 'delete')) upsert.push(merged);
     }
 
     if (full) {

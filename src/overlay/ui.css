@@ -413,6 +413,9 @@ a.gm-vrow:hover, button.gm-vrow:hover { color: var(--gm-accent); }
 .gm-replies { margin-top: 8px; padding-left: 10px; border-left: 1px solid var(--gm-line-strong); }
 .gm-reply + .gm-reply { margin-top: 7px; }
 .gm-reply .gm-text { margin-top: 1px; font-size: 12.5px; }
+.gm-reply-ask { margin-top: 8px; }
+.gm-reply-ask .gm-reply-field { width: 100%; }
+.gm-replies .gm-boxwarn { margin-top: 4px; }
 .gm-reply-row { display: flex; align-items: baseline; gap: 10px; margin-top: 8px; }
 .gm-reply-field {
   flex: 1; min-width: 0;
@@ -429,6 +432,9 @@ a.gm-vrow:hover, button.gm-vrow:hover { color: var(--gm-accent); }
 
 .gm-box-name { margin-top: 8px; }
 .gm-box-name-why { color: var(--gm-muted); font-size: 11px; margin-bottom: 4px; }
+/* No outline reset here. Focus is MOVED to this field by the first Save, so it
+   is the one place a ring matters most, and an outline:none at this specificity
+   ties with the overlay's input:focus ring rule and, coming later, won (review R27). */
 .gm-box-name input {
   width: 100%;
   font: inherit;
@@ -436,6 +442,5 @@ a.gm-vrow:hover, button.gm-vrow:hover { color: var(--gm-accent); }
   background: transparent;
   border: 0; border-bottom: 1px solid var(--gm-field-line);
   padding: 3px 0;
-  outline: none;
 }
 .gm-box-name input:focus { border-bottom-color: var(--gm-accent); }

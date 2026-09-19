@@ -98,6 +98,8 @@ export function mountUi(deps) {
   let replyingId = null;
   let editingReplyId = null;
   let replyDraft = '';
+  let replyDiscardArmed = false; // Escape or Cancel pressed once over a typed reply
+  let focusAfterRender = null; // a data-focus token to return keyboard focus to
   let draft = null; // { anchor, element, x, y, tag }
   let stashedSelection = null;
   let framed = null; // the element the target preview is on, or null
@@ -143,7 +145,8 @@ export function mountUi(deps) {
   // and a nudge when this is not the newest. At the top of the panel rather
   // than across the page, because a bar would cover the design under review.
   const versionBtn = el('button', { class: 'gm-version', type: 'button', 'aria-expanded': 'false' });
-  const versionList = el('div', { class: 'gm-versions', hidden: 'hidden' });
+  // Polite live region: 'Loading...' and a failure to load are otherwise silent.
+  const versionList = el('div', { class: 'gm-versions', hidden: 'hidden', 'aria-live': 'polite' });
   const newerNote = el('div', { class: 'gm-newer', role: 'status' });
   const sharedHead = el('div', { class: 'gm-shared', hidden: 'hidden' }, [versionBtn, versionList, newerNote]);
 
@@ -246,11 +249,20 @@ export function mountUi(deps) {
   // Shared mode asks for a name once, at the moment it first matters: other
   // people are about to read this comment. Blank is allowed (it shows as
   // "Someone"), so the ask can never stand between a reviewer and saving.
-  const boxName = el('input', { type: 'text', 'aria-label': 'Your name, shown with your comments', placeholder: 'Your name' });
+  // The explanation is tied to the field, so a screen reader landing there hears
+  // that the first Save did not save, not only the field's label (review R28).
+  const NAME_WHY = 'Not saved yet. Others will see this, so add your name, or press again to go without one.';
+  const boxName = el('input', { type: 'text', 'aria-label': 'Your name, shown with your comments', 'aria-describedby': 'gm-box-name-why', placeholder: 'Your name', maxlength: '80' });
   const boxNameRow = el('div', { class: 'gm-box-name', hidden: 'hidden' }, [
-    el('div', { class: 'gm-box-name-why', text: 'Others will see this comment. Add your name, or save again without one.' }),
+    el('div', { class: 'gm-box-name-why', id: 'gm-box-name-why', text: NAME_WHY }),
     boxName,
   ]);
+  /** The box was placed for the height it had. When it grows, keep Save on screen (review R10). */
+  function keepBoxInView() {
+    const rect = box.getBoundingClientRect();
+    box.style.top = `${clamp(rect.top, 8, Math.max(8, window.innerHeight - rect.height - 8))}px`;
+  }
+  let replyNameAsk = false; // the same ask, drawn beside a reply instead
   let nameAsked = false;
   /** True when the save should wait because the name row was just shown. */
   function askNameFirst(where = 'box') {
@@ -258,11 +270,14 @@ export function mountUi(deps) {
     nameAsked = true;
     if (where === 'box') {
       boxNameRow.hidden = false;
+      keepBoxInView();
       boxName.focus();
     } else {
-      // A reply is written in the panel, where the name field already is.
-      said.textContent = 'Others will see this reply. Add your name above, or send again without one.';
-      nameInput.focus();
+      // Asked beside the reply itself. It used to send focus to the name field at
+      // the top of the panel and explain itself in the footer, leaving the reply
+      // behind with no way back by keyboard (review R11).
+      replyNameAsk = true;
+      render(true);
     }
     return true;
   }
@@ -387,8 +402,10 @@ export function mountUi(deps) {
   boxText.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) saveDraft();
   });
+  // Enter that confirms an input-method candidate is not Enter that submits
+  // (review R29): Japanese, Chinese and Korean typing all pass through it.
   boxName.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') saveDraft();
+    if (e.key === 'Enter' && !e.isComposing) saveDraft();
   });
   // Still writing, so the "press again to discard" arming no longer applies.
   boxText.addEventListener('input', () => {
@@ -765,12 +782,16 @@ export function mountUi(deps) {
       if (writing && editingReplyId === r.id) return; // it is in the field below
       const mine = sync && sync.isMine(r.id);
       const row = el('div', { class: 'gm-reply' }, [
-        el('span', { class: 'gm-author', text: mine ? `${nameOf(r.author)} (you)` : nameOf(r.author) }),
+        el('div', { class: 'gm-meta' }, [
+          el('span', { class: 'gm-author', text: mine ? `${nameOf(r.author)} (you)` : nameOf(r.author) }),
+          // A reply the service refused stays here, marked, until its writer fixes it (review R12).
+          sync && sync.isUnshared(r.id) ? el('span', { class: 'gm-flag', text: 'not shared yet' }) : null,
+        ]),
         el('p', { class: 'gm-text', text: String(r.text || '') }),
       ]);
       if (mine) {
-        const edit = el('button', { type: 'button', text: 'Edit' });
-        const del = el('button', { type: 'button', class: 'gm-del', text: 'Delete' });
+        const edit = el('button', { type: 'button', text: 'Edit', 'data-focus': `redit:${r.id}` });
+        const del = el('button', { type: 'button', class: 'gm-del', text: 'Delete', 'data-focus': `rdel:${r.id}` });
         edit.addEventListener('click', () => {
           replyingId = comment.id;
           editingReplyId = r.id;
@@ -785,6 +806,7 @@ export function mountUi(deps) {
             return;
           }
           sync.removeReply(comment.id, r.id);
+          focusAfterRender = `reply:${comment.id}`;
           render(true);
         });
         row.appendChild(el('div', { class: 'gm-card-actions' }, [edit, del]));
@@ -793,48 +815,96 @@ export function mountUi(deps) {
     });
 
     if (writing) {
-      const field = el('input', { type: 'text', class: 'gm-reply-field', 'aria-label': 'Your reply', placeholder: 'Reply' });
+      const field = el('input', { type: 'text', class: 'gm-reply-field', 'aria-label': 'Your reply', placeholder: 'Reply', maxlength: '4000' });
       field.value = replyDraft;
+      const askingName = replyNameAsk && !store.reviewer().trim();
+      const nameField = el('input', { type: 'text', class: 'gm-reply-field gm-reply-name', 'aria-label': 'Your name, shown with your comments', 'aria-describedby': 'gm-reply-name-why', placeholder: 'Your name', maxlength: '80' });
+      const warn = el('div', { class: 'gm-boxwarn', role: 'status', text: replyDiscardArmed ? 'Press again to discard what you typed.' : '' });
       const send = el('button', { type: 'button', class: 'gm-reply-send', text: editingReplyId ? 'Save' : 'Send' });
       const cancel = el('button', { type: 'button', text: 'Cancel' });
       const done = () => {
         replyingId = null;
         editingReplyId = null;
         replyDraft = '';
+        replyNameAsk = false;
+        replyDiscardArmed = false;
+        // The list is rebuilt, and with it whatever had focus. Put it back on this
+        // card's Reply button, or keyboard users land on the page body (review R14).
+        focusAfterRender = `reply:${comment.id}`;
         render(true);
+      };
+      // Escape is also how people dismiss a suggestion list, and the comment box
+      // already asks twice before throwing typing away (review R15, R16 before it).
+      const cancelGuarded = () => {
+        if (field.value.trim() && !replyDiscardArmed) {
+          replyDiscardArmed = true;
+          warn.textContent = 'Press again to discard what you typed.';
+          return;
+        }
+        done();
       };
       const submit = () => {
         const text = field.value.trim();
         if (!text) return;
         if (askNameFirst('panel')) return;
+        if (askingName && nameField.value.trim()) store.setReviewer(nameField.value);
         if (editingReplyId) sync.editReply(comment.id, editingReplyId, text);
         else sync.addReply(comment.id, text);
         done();
       };
       field.addEventListener('input', () => {
         replyDraft = field.value;
+        replyDiscardArmed = false;
+        warn.textContent = '';
       });
-      field.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') submit();
+      const keys = (e) => {
+        if (e.key === 'Enter' && !e.isComposing) submit();
         if (e.key === 'Escape') {
           e.stopPropagation();
-          done();
+          cancelGuarded();
         }
-      });
+      };
+      field.addEventListener('keydown', keys);
+      nameField.addEventListener('keydown', keys);
       send.addEventListener('click', submit);
-      cancel.addEventListener('click', done);
+      cancel.addEventListener('click', cancelGuarded);
+      if (askingName) {
+        wrap.appendChild(el('div', { class: 'gm-reply-ask' }, [el('div', { class: 'gm-box-name-why', id: 'gm-reply-name-why', text: NAME_WHY }), nameField]));
+      }
       wrap.appendChild(el('div', { class: 'gm-reply-row' }, [field, send, cancel]));
-      // The list was just rebuilt, so the field is new: put the caret back.
+      wrap.appendChild(warn);
+      // The list was just rebuilt, so these are new elements: put the caret back,
+      // in the name field when that is what is being asked for.
       requestAnimationFrame(() => {
-        if (shadow.activeElement !== field && replyingId === comment.id) field.focus();
+        if (replyingId !== comment.id) return;
+        const target = askingName ? nameField : field;
+        if (shadow.activeElement !== field && shadow.activeElement !== nameField) target.focus();
       });
     }
     return wrap;
   }
 
+  /**
+   * Put keyboard focus back after a rebuild destroyed the element that had it.
+   * Only when focus really was lost: if the person has since moved somewhere
+   * else in the panel, that is where they want to be.
+   */
+  function restoreFocus() {
+    if (!focusAfterRender) return;
+    const token = focusAfterRender;
+    requestAnimationFrame(() => {
+      if (focusAfterRender !== token) return;
+      focusAfterRender = null; // spent either way, or a stale token would move focus at some later rebuild
+      if (shadow.activeElement) return;
+      const target = Array.from(shadow.querySelectorAll('[data-focus]')).find((node) => node.dataset.focus === token);
+      if (target) target.focus();
+    });
+  }
+
   // ---- shared mode: versions ---------------------------------------------
   let versionsOpen = false;
   let versionsDrawn = '';
+  let newerDrawn = null;
   const olderOpen = new Set(); // version ids whose read-only list is expanded
   const olderComments = new Map(); // version id -> comments | 'loading' | 'failed'
 
@@ -877,11 +947,21 @@ export function mountUi(deps) {
     versionList.hidden = !versionsOpen;
 
     const latest = view.versions.find((v) => v.version_id === view.latest) || null;
-    newerNote.textContent = '';
-    if (!view.isLatest && latest) {
-      newerNote.appendChild(el('span', { text: `A newer version exists (Version ${latest.round}). ` }));
-      if (latest.has_page) {
-        newerNote.appendChild(el('a', { href: sync.pageUrl(latest.version_id), target: '_blank', rel: 'noopener', text: 'Open it' }));
+    // Touched only when what it says changes. It is a live region, and clearing
+    // and refilling one on every scroll and poll is how you make a screen reader
+    // say the same sentence all afternoon (review R13).
+    const newer = !view.isLatest && latest ? `${latest.round}|${latest.has_page}` : '';
+    if (newer !== newerDrawn) {
+      newerDrawn = newer;
+      newerNote.textContent = '';
+      if (newer) {
+        newerNote.appendChild(el('span', { text: `A newer version exists (Version ${latest.round}). ` }));
+        newerNote.appendChild(
+          latest.has_page
+            ? el('a', { href: sync.pageUrl(latest.version_id), target: '_blank', rel: 'noopener', text: `Open version ${latest.round}`, 'aria-label': `Open version ${latest.round} in a new tab` })
+            // No stored copy to open, so say what to do instead of stopping there (review R31).
+            : el('span', { text: 'Ask whoever sent you this page for the new one.' })
+        );
       }
     }
 
@@ -895,14 +975,15 @@ export function mountUi(deps) {
       const label = `Version ${v.round} · ${v.comments} comment${v.comments === 1 ? '' : 's'}`;
       if (v.has_page) {
         versionList.appendChild(
-          el('a', { class: 'gm-vrow', href: sync.pageUrl(v.version_id), target: '_blank', rel: 'noopener', text: `${label} · open` })
+          el('a', { class: 'gm-vrow', href: sync.pageUrl(v.version_id), target: '_blank', rel: 'noopener', text: `${label} · open`, 'aria-label': `${label}, opens in a new tab` })
         );
         return;
       }
       // No stored copy of that page, so its comments are read here instead.
       const open = olderOpen.has(v.version_id);
-      const row = el('button', { class: 'gm-vrow', type: 'button', 'aria-expanded': open ? 'true' : 'false', text: `${label} · ${open ? 'hide' : 'read'}` });
+      const row = el('button', { class: 'gm-vrow', type: 'button', 'aria-expanded': open ? 'true' : 'false', 'data-focus': `version:${v.version_id}`, text: `${label} · ${open ? 'hide' : 'read'}` });
       row.addEventListener('click', async () => {
+        focusAfterRender = `version:${v.version_id}`; // this row is about to be rebuilt (review R14)
         if (olderOpen.has(v.version_id)) {
           olderOpen.delete(v.version_id);
         } else {
@@ -911,6 +992,7 @@ export function mountUi(deps) {
             olderComments.set(v.version_id, 'loading');
             renderShared();
             olderComments.set(v.version_id, (await sync.loadVersion(v.version_id)) || 'failed');
+            focusAfterRender = `version:${v.version_id}`; // rebuilt a second time, now with the list in it
           }
         }
         renderShared();
@@ -926,6 +1008,7 @@ export function mountUi(deps) {
         versionList.appendChild(inside);
       }
     });
+    restoreFocus();
   }
 
   /** The one line that says whether comments are reaching other people. */
@@ -986,8 +1069,8 @@ export function mountUi(deps) {
       });
       body.append(area, el('div', { class: 'gm-card-actions' }, [save, cancel]));
     } else {
-      const edit = el('button', { type: 'button', text: 'Edit' });
-      const del = el('button', { type: 'button', class: 'gm-del', text: 'Delete' });
+      const edit = el('button', { type: 'button', text: 'Edit', 'data-focus': `edit:${comment.id}` });
+      const del = el('button', { type: 'button', class: 'gm-del', text: 'Delete', 'data-focus': `del:${comment.id}` });
       edit.addEventListener('click', (e) => {
         e.stopPropagation();
         editingId = comment.id;
@@ -1006,9 +1089,16 @@ export function mountUi(deps) {
         store.remove(comment.id);
         render(true);
       });
-      const reply = el('button', { type: 'button', text: 'Reply' });
+      const reply = el('button', { type: 'button', text: 'Reply', 'data-focus': `reply:${comment.id}` });
       reply.addEventListener('click', (e) => {
         e.stopPropagation();
+        // A reply half-written on another card is work, like a comment is (review R15).
+        if (replyingId && replyingId !== comment.id && replyDraft.trim() && !replyDiscardArmed) {
+          replyDiscardArmed = true;
+          render(true);
+          return;
+        }
+        replyDiscardArmed = false;
         replyingId = comment.id;
         editingReplyId = null;
         replyDraft = '';
@@ -1042,6 +1132,13 @@ export function mountUi(deps) {
 
   /** Rebuild the comment list. Skipped while an edit is open (see renderPanel). */
   function renderList(resolved) {
+    // Whatever control in here has the keyboard is about to be destroyed. On a
+    // shared page the list is rebuilt whenever anyone comments, so without this a
+    // keyboard user lost their place every few seconds (review R14, and the
+    // broader case its test exposed). An explicit request, set by the action that
+    // caused the rebuild, wins over where focus happened to be.
+    const active = shadow.activeElement;
+    if (!focusAfterRender && active && list.contains(active) && active.dataset.focus) focusAfterRender = active.dataset.focus;
     list.textContent = '';
     cards.clear();
     if (!resolved.length) {
@@ -1059,6 +1156,7 @@ export function mountUi(deps) {
       cards.set(entry.comment.id, { row });
       list.appendChild(row);
     });
+    restoreFocus();
   }
 
   function renderPanel(resolved, force) {

@@ -208,8 +208,11 @@ test('replies, own-only controls, and a status the author sets', async ({ browse
     await samCard.getByRole('button', { name: 'Reply' }).click();
     await t.sam.fill('.gm-reply-field', 'Agreed, it needs a Back button.');
     await t.sam.keyboard.press('Enter');
-    await t.sam.fill('#gm-reviewer', 'Sam'); // the panel asked for a name
-    await t.sam.locator('.gm-reply-field').press('Enter');
+    // The name is asked for right there, beside the reply, and Enter in it sends (review R11).
+    await expect(t.sam.locator('.gm-reply-name')).toBeFocused();
+    await t.sam.locator('.gm-reply-name').fill('Sam');
+    await t.sam.locator('.gm-reply-name').press('Enter');
+    await expect(t.sam.locator('#gm-reviewer')).toHaveValue('Sam');
     await expect(samCard.locator('.gm-reply')).toHaveCount(1);
 
     const priyaCard = t.priya.locator('.gm-card');
@@ -321,8 +324,8 @@ test('a reply being typed is not wiped when someone else\'s comment arrives', as
     expect(await t.sam.locator('.gm-reply-field').getAttribute('data-same-element')).toBe('yes');
     await t.sam.locator('.gm-reply-field').pressSequentially('ght.');
     await t.sam.locator('.gm-reply-field').press('Enter');
-    await t.sam.fill('#gm-reviewer', 'Sam');
-    await t.sam.locator('.gm-reply-field').press('Enter');
+    await t.sam.locator('.gm-reply-name').fill('Sam');
+    await t.sam.locator('.gm-reply-name').press('Enter');
     await expect(t.sam.locator('.gm-card')).toHaveCount(2, SLOW); // and the list catches up after
     await expect(t.priya.locator('.gm-reply .gm-text')).toHaveText('Half a thought.', SLOW);
   } finally {
@@ -456,7 +459,105 @@ test('the accordion opens an older version\'s stored page, with its comments pin
     await expect(older.locator('.gm-pin')).toHaveCount(1);
     await expect(older.locator('.gm-card .gm-text')).toHaveText('Pinned on version one.');
     await expect(older.locator('.gm-newer')).toContainText('A newer version exists (Version 2).');
-    await expect(older.locator('.gm-newer a')).toHaveText('Open it');
+    await expect(older.locator('.gm-newer a')).toHaveText('Open version 2');
+    expect(await older.locator('.gm-newer a').getAttribute('aria-label')).toBe('Open version 2 in a new tab');
+  } finally {
+    await service.close();
+  }
+});
+
+test('the name ask keeps Save on screen, says the comment is not saved yet, and shows a focus ring (review R10, R27, R28)', async ({ browser }, testInfo) => {
+  const t = await twoPeople(browser, testInfo);
+  try {
+    await t.priya.setViewportSize({ width: 1280, height: 560 });
+    await t.priya.click('.gm-switch');
+    // As low in the window as the fixture allows, which is where the box used to overflow.
+    const box = await t.priya.locator('#step-1 .next').boundingBox();
+    await t.priya.evaluate((y) => window.scrollTo(0, Math.max(0, y - 480)), box.y);
+    await t.priya.click('#step-1 .next');
+    await t.priya.fill('.gm-box textarea', 'Low on the page.');
+    await t.priya.click('.gm-box-actions .gm-btn.primary');
+
+    const name = t.priya.locator('.gm-box-name input');
+    await expect(name).toBeFocused();
+    const save = await t.priya.locator('.gm-box-actions .gm-btn.primary').boundingBox();
+    expect(save.y + save.height).toBeLessThanOrEqual(560);
+    expect(await name.getAttribute('aria-describedby')).toBe('gm-box-name-why');
+    await expect(t.priya.locator('#gm-box-name-why')).toContainText('Not saved yet');
+    expect(await name.evaluate((node) => getComputedStyle(node).outlineStyle)).not.toBe('none');
+
+    // A mouse-only save still works from here.
+    await t.priya.click('.gm-box-actions .gm-btn.primary');
+    await expect(t.priya.locator('.gm-card')).toHaveCount(1);
+  } finally {
+    await t.service.close();
+  }
+});
+
+test('a typed reply is not thrown away by one Escape, a composing Enter does not send it, and focus comes back (review R14, R15, R29)', async ({ browser }, testInfo) => {
+  const t = await twoPeople(browser, testInfo);
+  try {
+    await comment(t.priya, '#step-1 .next', 'Reply to me.', 'Priya');
+    const card = t.priya.locator('.gm-card').first();
+    await card.hover();
+    await card.getByRole('button', { name: 'Reply' }).click();
+    const field = t.priya.locator('.gm-reply-field').first();
+    await field.pressSequentially('Half a thought');
+
+    await field.press('Escape');
+    await expect(card.locator('.gm-replies .gm-boxwarn')).toHaveText('Press again to discard what you typed.');
+    await expect(field).toHaveValue('Half a thought');
+
+    // Enter that belongs to an input method is not Enter that sends.
+    await field.evaluate((node) => node.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', isComposing: true, bubbles: true })));
+    await expect(card.locator('.gm-reply')).toHaveCount(0);
+
+    await field.press('Enter');
+    await expect(card.locator('.gm-reply')).toHaveCount(1);
+    // The list was rebuilt; the keyboard is back on this card's Reply button, not on the page body.
+    await expect(card.getByRole('button', { name: 'Reply' })).toBeFocused();
+
+    // The acknowledgement of that reply redraws the list once more. Wait for it, so the next key
+    // press is not aimed at the single frame in which focus is between the old button and the new.
+    await expect(t.priya.locator('.gm-keep')).toHaveText('Shared. Everyone with this page sees these comments.', SLOW);
+    await expect(card.getByRole('button', { name: 'Reply' })).toBeFocused();
+
+    // Twice discards, and focus comes back the same way.
+    await t.priya.keyboard.press('Enter');
+    await t.priya.locator('.gm-reply-field').first().pressSequentially('No.');
+    await t.priya.locator('.gm-reply-field').first().press('Escape');
+    await t.priya.locator('.gm-reply-field').first().press('Escape');
+    await expect(t.priya.locator('.gm-reply-field')).toHaveCount(0);
+    await expect(card.getByRole('button', { name: 'Reply' })).toBeFocused();
+  } finally {
+    await t.service.close();
+  }
+});
+
+test('the newer-version notice is drawn once, not on every poll, and says what to do when there is no copy to open (review R13, R31)', async ({ browser }, testInfo) => {
+  const service = await startService();
+  try {
+    const v1 = await attachShared(testInfo, service);
+    const old = join(testInfo.outputPath('shared'), 'wizard.v1.gitmargin.html');
+    await copyFile(v1.attached, old);
+    await writeFile(v1.source, (await readFile(v1.source, 'utf8')).replace('</h2>', ' (revised)</h2>'));
+    await gitmargin(['attach', v1.source, '--service'], { GITMARGIN_SECRET: service.secret });
+    await service.query('update versions set html = null where round = 2'); // the new version has no stored copy
+
+    const page = await (await browser.newContext()).newPage();
+    await open(page, pathToFileURL(old).href);
+    const note = page.locator('.gm-newer');
+    await expect(note).toContainText('A newer version exists (Version 2).', SLOW);
+    await expect(note).toContainText('Ask whoever sent you this page for the new one.');
+    await expect(note.locator('a')).toHaveCount(0);
+
+    // Mark what is there. A live region that is cleared and refilled is announced again each time.
+    await note.locator('span').first().evaluate((node) => {
+      node.dataset.sameElement = 'yes';
+    });
+    await page.mouse.wheel(0, 200);
+    await page.waitForTimeout(7000); // a scroll and at least one check-in
+    expect(await note.locator('span').first().getAttribute('data-same-element')).toBe('yes');
   } finally {
     await service.close();
   }
