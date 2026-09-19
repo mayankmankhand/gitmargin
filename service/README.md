@@ -11,6 +11,32 @@ What it answers, route by route, is in [API.md](API.md).
 
 ## Deploy it
 
+You need a [Vercel](https://vercel.com) account (the free plan is enough) and Node 20 or newer. Two routes. The
+command line is the one that has been run end to end.
+
+### From the command line
+
+```bash
+npm install --global vercel      # Vercel's command-line tool, once
+vercel login                     # once
+
+cd service
+vercel link --yes --project gitmargin-comments     # creates the project; pick any name that is free
+vercel integration add neon --plan free_v3 -m region=iad1 -m auth=false
+node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"   # make a secret; keep it
+vercel env add GITMARGIN_SECRET production --sensitive     # paste that secret when asked
+vercel deploy --prod
+```
+
+Vercel asks you to accept Neon's terms in the browser the first time; that step cannot be done for you. The Neon step
+also drops a few guide files for AI tools into this folder (`.agents/`, `.claude/`, `skills-lock.json`); they are
+ignored by git and by the deploy, and are safe to delete.
+
+### Or with the button
+
+> **Not tested end to end yet.** The button needs this repository to be public, and it is not. Its parameters follow
+> Vercel's deploy-button reference. Until then, use the command line above.
+
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fmayankmankhand%2Fgitmargin%2Ftree%2Fmain%2Fservice&project-name=gitmargin-comments&repository-name=gitmargin-comments&env=GITMARGIN_SECRET&envDescription=A%20long%20random%20string%20only%20you%20know.%20The%20gitmargin%20commands%20send%20it%20to%20prove%20they%20are%20you.&stores=%5B%7B%22type%22%3A%22integration%22%2C%22integrationSlug%22%3A%22neon%22%2C%22productSlug%22%3A%22neon%22%2C%22protocol%22%3A%22storage%22%7D%5D)
 
 The button copies this folder into a repository of your own, creates a Vercel project from it, adds a Neon database
@@ -19,22 +45,9 @@ from the Vercel Marketplace (so there is no separate database account to open), 
 - **`GITMARGIN_SECRET`**: a long random string only you know. It is what lets the `gitmargin` commands act as the
   author. Make one with `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`.
 
+### After either route
+
 The tables create themselves on first use. There is no migration step.
-
-> The button has not been tested end to end yet: it needs this repository to be public, and it is not. Its parameters
-> follow Vercel's deploy-button reference. The command-line route below is the one that has been run.
-
-### Or from the command line
-
-```bash
-cd service
-vercel link --yes --project gitmargin-comments     # creates the project
-vercel integration add neon --plan free_v3 -m region=iad1 -m auth=false
-vercel env add GITMARGIN_SECRET production --sensitive
-vercel deploy --prod
-```
-
-Vercel asks you to accept Neon's terms in the browser the first time; that step cannot be done for you.
 
 **Use the project's main address** (`https://<project>.vercel.app`). The longer per-deployment and per-team addresses
 sit behind Vercel's own login, so a reviewer's browser cannot reach them.
@@ -52,6 +65,12 @@ node bin/gitmargin.js pull prototype.gitmargin.html --live    # the batch for yo
 node bin/gitmargin.js status prototype.gitmargin.html c_7f3a9b applied
 node bin/gitmargin.js remove prototype.gitmargin.html c_7f3a9b
 ```
+
+**Your secret only goes where you sent it.** `status`, `remove` and a bare `attach --service` read the service's
+address from the attached copy, and a copy that came back from a reviewer could name any address. So the commands send
+your secret only to an address you have typed yourself with `attach --service <address>` (remembered in
+`~/.config/gitmargin/trusted-services.json`, which holds no secret) or named in `GITMARGIN_SERVICE`, and never over
+plain `http` except to your own machine. Anything else is refused, with the reason.
 
 The first `attach --service` prints a **prototype key**. Keep it: `--key <key>` is how another machine, or a fresh
 checkout, attaches a new version of the same prototype instead of starting a new one. Later attaches from the same

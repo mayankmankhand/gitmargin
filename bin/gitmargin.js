@@ -48,6 +48,8 @@ Shared comments (optional; needs a comment service you deployed, see service/REA
       address and a page key into the copy, so everyone who opens it sees the
       same comments. Later attaches need only --service. --key <key> reuses a
       prototype from another machine. Needs GITMARGIN_SECRET in the environment.
+      The secret is only ever sent to an address you typed here yourself, or
+      named in GITMARGIN_SERVICE: never to one that only a file names.
   node bin/gitmargin.js pull <prototype.gitmargin.html> --live
       Reads the comments for that copy's version from the service. --version
       <id> or --all for other versions. More files after it merge in as usual.
