@@ -1,2 +1,7 @@
 .vercel
 .env*
+
+# Added by the Neon Marketplace installer, uninvited: vendor guides for AI tools.
+.agents/
+.claude/
+skills-lock.json

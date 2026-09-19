@@ -1,2 +1,6 @@
 tests
 API.md
+.agents
+.claude
+skills-lock.json
+README.md
