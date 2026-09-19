@@ -23,10 +23,17 @@ const POLL_MS = 5_000;
 const QUIET_POLL_MS = 30_000;
 const QUIET_AFTER_MS = 5 * 60_000;
 const MAX_BACKOFF_MS = 60_000;
+// Each poll asks for changes since a little BEFORE the last answer's clock. A
+// write is stamped first and stored a query or two later, so a poll landing in
+// that gap got a server time later than a change it could not yet see, and
+// never asked for it again. Repeats are harmless: applying one twice changes
+// nothing (review of the #15 cycle, R8).
+const SINCE_OVERLAP_MS = 5_000;
 
 /** What a refusal means to the person looking at the panel. */
 const PROBLEMS = {
   full: 'This prototype has reached its comment limit. Your comment is saved here but not shared.',
+  replies_full: 'This comment has reached its reply limit. Your reply is saved here but not shared.',
   slow_down: 'Too many comments are arriving at once. Yours will be shared in a minute.',
   too_long: 'A comment is too long to share. It is saved here; shorten it to share it.',
   invalid: 'A comment could not be shared. It is saved here.',
@@ -213,6 +220,15 @@ export function startSync({
       return 'done';
     }
     const code = result.answer.error;
+    // The service already holds this id under someone else's token. That is
+    // what a reviewer's returned file looks like when the author opens it in a
+    // shared copy: the comments inside are other people's, already shared, and
+    // not this browser's to send or to claim (review R5).
+    if (code === 'id_taken' && (entry.op === 'add' || entry.op === 'reply-add')) {
+      synced.add(entry.id);
+      mine.delete(entry.op === 'add' ? entry.id : entry.rid);
+      return 'drop';
+    }
     // Worth another try later: the service may have room or patience by then.
     if (code === 'slow_down' || code === 'service_unavailable') {
       setView({ problem: PROBLEMS[code] || null });
@@ -220,18 +236,30 @@ export function startSync({
     }
     // Gone for everyone: a delete or an edit aimed at it has nothing to do.
     if (code === 'not_found' && entry.op !== 'add' && entry.op !== 'reply-add') return 'drop';
-    // Never going to succeed as it stands. The comment stays in the store, so
-    // it still leaves by file or clipboard; it is only not shared.
-    if (entry.op === 'add') rejected[entry.id] = code;
-    setView({ problem: PROBLEMS[code] || PROBLEMS.invalid });
+    // Never going to succeed as it stands. The text stays in the store, so it
+    // still leaves by file or clipboard; it is only not shared. Recorded for
+    // edits and replies too, not only new comments: a refused edit used to clear
+    // its own warning in the same cycle, and a refused reply vanished on the
+    // next load with no mark on it (review R12, R19).
+    if (entry.op !== 'delete' && entry.op !== 'reply-delete') rejected[entry.rid || entry.id] = code;
+    const isReply = entry.op === 'reply-add' || entry.op === 'reply-edit';
+    setView({ problem: (isReply && code === 'full' ? PROBLEMS.replies_full : PROBLEMS[code]) || PROBLEMS.invalid });
     return 'drop';
   }
 
   async function flush() {
     while (ops.length) {
-      const outcome = await send(ops[0]);
+      const entry = ops[0];
+      // From here the service may hold it, whatever answer comes back. remove()
+      // and update() read this to tell 'never sent' from 'on the wire'.
+      entry.tried = true;
+      const outcome = await send(entry);
       if (outcome === 'later') return false;
-      ops.shift();
+      // Remove THIS entry, not whatever is now first. remove() can splice the
+      // queue while the send is awaited, and a blind shift() then threw away
+      // the next change instead (review R6).
+      const at = ops.indexOf(entry);
+      if (at >= 0) ops.splice(at, 1);
       save();
     }
     return true;
@@ -256,8 +284,9 @@ export function startSync({
       synced.add(remote.id);
       const local = find(remote.id);
       const merged = { ...remote };
-      // Unsent local changes win until they are acknowledged (rule 2).
-      if (local && hasPending(remote.id, 'edit')) merged.intent = local.intent;
+      // Unsent local changes win until they are acknowledged (rule 2). A refused
+      // edit counts as unsent: the local text is the newer one, and is flagged.
+      if (local && (hasPending(remote.id, 'edit') || rejected[remote.id])) merged.intent = local.intent;
       const replies = Array.isArray(remote.replies) ? [...remote.replies] : [];
       for (const entry of pendingFor(remote.id)) {
         if (entry.op === 'reply-add' && !replies.some((r) => r.id === entry.rid)) {
@@ -273,6 +302,13 @@ export function startSync({
           if (mineNow && theirs) theirs.text = mineNow.text;
         }
       }
+      // Replies the service refused stay where their writer can see and fix them.
+      for (const mineNow of (local && local.replies) || []) {
+        if (!rejected[mineNow.id]) continue;
+        const theirs = replies.find((r) => r.id === mineNow.id);
+        if (theirs) theirs.text = mineNow.text;
+        else replies.push(mineNow);
+      }
       merged.replies = replies;
       if (!hasPending(remote.id, 'delete')) upsert.push(merged);
     }
@@ -285,11 +321,22 @@ export function startSync({
           synced.delete(local.id);
         }
       }
+      // Comments in the store that the service has never heard of: written
+      // offline in an earlier sitting, or carried in by a returned file. Queued
+      // only now, after the first full answer, so a comment the service already
+      // holds is never re-sent as if it were new (review R5).
+      for (const local of store.comments()) {
+        if (seen.has(local.id) || synced.has(local.id) || rejected[local.id] || hasPending(local.id, 'add')) continue;
+        mine.add(local.id);
+        ops.push({ op: 'add', id: local.id });
+        again = true; // send them now rather than at the next tick
+      }
     }
 
     if (upsert.length || drop.length) lastActivity = now();
     store.applyRemote({ upsert, drop });
-    since = answer.server_time || since;
+    const answered = Date.parse(answer.server_time);
+    if (!Number.isNaN(answered)) since = new Date(answered - SINCE_OVERLAP_MS).toISOString();
     save();
     setView({
       versions: Array.isArray(answer.versions) ? answer.versions : [],
@@ -364,15 +411,6 @@ export function startSync({
     }
   });
 
-  // Comments already in the store that the service never acknowledged: written
-  // offline in an earlier sitting, or carried in by a returned file. They are
-  // this browser's to send ("offline comments upload when the service is back").
-  for (const comment of store.comments()) {
-    if (!synced.has(comment.id) && !rejected[comment.id] && !hasPending(comment.id, 'add')) {
-      mine.add(comment.id);
-      ops.push({ op: 'add', id: comment.id });
-    }
-  }
   save();
   kick();
 
@@ -384,7 +422,8 @@ export function startSync({
     /** `{ state: 'connecting'|'shared'|'offline', problem, versions, latest }` */
     view: () => ({ ...view, unsent: ops.length, isLatest: !view.latest || view.latest === stamp.versionId }),
     isMine: (id) => mine.has(id),
-    isUnshared: (id) => Boolean(rejected[id]) || hasPending(id, 'add'),
+    /** A comment or reply id that other people cannot see yet, or cannot see the latest text of. */
+    isUnshared: (id) => Boolean(rejected[id]) || ops.some((o) => (o.op === 'add' && o.id === id) || (o.op === 'reply-add' && o.rid === id)),
     versionId: stamp.versionId,
     /**
      * An older version's comments, for the read-only list under the Version
@@ -411,14 +450,30 @@ export function startSync({
     },
     update(id, fields) {
       const updated = store.update(id, fields);
-      // An add still waiting will carry the new text itself.
-      if (updated && !hasPending(id, 'add')) enqueue({ op: 'edit', id });
+      if (!updated) return updated;
+      const add = ops.find((o) => o.op === 'add' && o.id === id);
+      delete rejected[id]; // the writer changed it, so it gets another chance
+      if (!add && !synced.has(id)) {
+        enqueue({ op: 'add', id }); // a refused comment, now rewritten
+      } else if (!add || add.tried) {
+        // An add that has not left yet will carry the new text itself. One that
+        // is on the wire, or was sent and never answered, will not: the service
+        // keeps the FIRST text it saw and answers a retry with it, so without an
+        // edit behind it the old text came back and replaced this one (review R7).
+        enqueue({ op: 'edit', id });
+      } else {
+        save();
+      }
       return updated;
     },
     remove(id) {
       const removed = store.remove(id);
       if (!removed) return false;
-      const neverSent = hasPending(id, 'add');
+      // 'Never sent' means the add has not left. One that is on the wire may
+      // already be stored, so it needs a delete behind it or the comment comes
+      // back on the next list (review R6).
+      const add = ops.find((o) => o.op === 'add' && o.id === id);
+      const neverSent = Boolean(add) && !add.tried;
       for (let i = ops.length - 1; i >= 0; i -= 1) if (ops[i].id === id) ops.splice(i, 1);
       delete rejected[id];
       if (neverSent) save();
@@ -442,12 +497,18 @@ export function startSync({
       const replies = (comment.replies || []).map((r) => (r.id === replyId ? { ...r, text: String(text) } : r));
       store.applyRemote({ upsert: [{ ...comment, replies }] });
       const waiting = ops.find((o) => o.op === 'reply-add' && o.rid === replyId);
-      if (waiting) {
-        waiting.reply = { ...waiting.reply, text: String(text) };
+      const refused = Boolean(rejected[replyId]);
+      delete rejected[replyId];
+      if (waiting) waiting.reply = { ...waiting.reply, text: String(text) };
+      if (waiting && !waiting.tried) {
         save();
         kick();
+      } else if (!waiting && refused) {
+        // A refused reply, rewritten: send it again as the reply it never became.
+        const reply = replies.find((r) => r.id === replyId);
+        enqueue({ op: 'reply-add', id: commentId, rid: replyId, reply: { id: replyId, text: String(text), author: reply.author }, time: reply.time });
       } else {
-        enqueue({ op: 'reply-edit', id: commentId, rid: replyId });
+        enqueue({ op: 'reply-edit', id: commentId, rid: replyId }); // same reasoning as update(), review R7
       }
       return true;
     },
@@ -456,17 +517,20 @@ export function startSync({
       if (!comment) return false;
       store.applyRemote({ upsert: [{ ...comment, replies: (comment.replies || []).filter((r) => r.id !== replyId) }] });
       const at = ops.findIndex((o) => o.op === 'reply-add' && o.rid === replyId);
-      if (at >= 0) {
+      const wasRefused = Boolean(rejected[replyId]);
+      delete rejected[replyId];
+      if (at >= 0 && !ops[at].tried) {
         ops.splice(at, 1);
         save();
+      } else if (wasRefused && at < 0) {
+        save(); // the service never took it, so there is nothing to delete there
       } else {
+        if (at >= 0) ops.splice(at, 1);
         enqueue({ op: 'reply-delete', id: commentId, rid: replyId });
       }
       return true;
     },
 
-    /** Check in with the service now rather than at the next tick. */
-    checkNow: () => kick(),
     /** Test seam: the pacing the next poll would use, and the queue. */
     debug: () => ({ delay: delay(), ops: ops.map((o) => ({ ...o })), since, token }),
     stop() {

@@ -41,7 +41,9 @@ async function client(w, { storage = new Map(), stamp, seed = [] } = {}) {
   // What this browser still holds from an earlier sitting (Node has no localStorage to keep it).
   if (seed.length) store.seed(seed, '', '');
 
-  const net = { inflight: 0, calls: [], fail: null };
+  // `hold` lets a test keep one request on the wire while it does something else,
+  // which is where the queue bugs of the #15 review lived (R6, R7).
+  const net = { inflight: 0, calls: [], fail: null, hold: null };
   const fetchImpl = async (url, init = {}) => {
     net.inflight += 1;
     try {
@@ -49,6 +51,7 @@ async function client(w, { storage = new Map(), stamp, seed = [] } = {}) {
       const method = init.method || 'GET';
       net.calls.push(`${method} ${u.pathname}${u.search}`);
       const broken = net.fail && net.fail(method, u);
+      if (net.hold) await net.hold(method, u);
       if (broken === 'before') throw new TypeError('network down');
       // A refusal happens INSTEAD of the request, not after it. This once ran the
       // request first, so a 'refused' edit had in fact reached the service and the
@@ -357,4 +360,144 @@ test('sync state never leaks into what a reviewer sends: exported comments carry
   const held = a.store.comments()[0];
   assert.ok('updated' in held && 'version_id' in held, 'the store keeps what the service sent');
   assert.ok(!Object.keys(held).some((k) => k.startsWith('_') || k === 'pending' || k === 'token'));
+});
+
+/** A gate a test opens by hand, plus a way to wait until a request is parked at it. */
+function gateOn(client, match) {
+  let open;
+  let parked;
+  const opened = new Promise((resolve) => (open = resolve));
+  const arrived = new Promise((resolve) => (parked = resolve));
+  client.net.hold = (method, u) => {
+    if (!match(method, u)) return null;
+    client.net.hold = null;
+    parked();
+    return opened;
+  };
+  return { open, arrived };
+}
+
+test('a returned file opened in a shared copy does not re-send other people\'s comments or claim them (review R5)', async (t) => {
+  const w = await world(t);
+  const priya = await client(w);
+  priya.store.setReviewer('Priya');
+  priya.sync.add(draft('c_000020', 'Priya wrote this.'));
+  await priya.idle();
+
+  // The author opens the file Priya sent back: her comment is inside it.
+  const author = await client(w, { seed: [draft('c_000020', 'Priya wrote this.')] });
+  await author.idle();
+  await author.tick();
+  assert.ok(!author.net.calls.some((c) => c.startsWith('POST')), 'nothing the service already holds is sent again');
+  assert.equal(author.sync.isMine('c_000020'), false);
+  assert.equal(author.sync.isUnshared('c_000020'), false);
+  assert.equal(author.sync.view().problem, null);
+  assert.equal(author.store.comments()[0].author.name, 'Priya');
+});
+
+test('deleting a comment while it is on the wire loses nothing else, and the comment stays deleted (review R6)', async (t) => {
+  const w = await world(t);
+  const a = await client(w);
+  await a.idle();
+  const gate = gateOn(a, (method) => method === 'POST');
+  a.sync.add(draft('c_000021', 'Deleted while being sent.'));
+  await gate.arrived;
+  a.sync.remove('c_000021');
+  a.sync.add(draft('c_000022', 'The change that used to be thrown away.', '2026-09-18T12:00:01Z'));
+  gate.open();
+  await a.idle();
+  await a.tick();
+
+  const held = await w.held();
+  assert.deepEqual(held.map((r) => [r.id, r.deleted_at !== null]), [['c_000021', true], ['c_000022', false]]);
+  assert.deepEqual(a.store.comments().map((c) => c.id), ['c_000022'], 'and it does not come back on the next list');
+  assert.equal(a.sync.view().unsent, 0);
+});
+
+test('an edit made while the first send is unanswered is not overwritten by the first text (review R7)', async (t) => {
+  const w = await world(t);
+  const a = await client(w);
+  await a.idle();
+  let first = true;
+  a.net.fail = (method) => {
+    if (method === 'POST' && first) {
+      first = false;
+      return 'after'; // it landed; the answer was lost
+    }
+    return null;
+  };
+  a.sync.add(draft('c_000023', 'First text.'));
+  await a.idle();
+  a.sync.update('c_000023', { intent: { text: 'Second text.', tag: null } });
+  await a.idle();
+  await a.tick();
+  await a.tick();
+  assert.equal((await w.held())[0].body.intent.text, 'Second text.');
+  assert.equal(a.store.comments()[0].intent.text, 'Second text.');
+  assert.equal(a.sync.view().unsent, 0);
+});
+
+test('a change stamped just before the last answer, and stored just after it, still arrives (review R8)', async (t) => {
+  const w = await world(t);
+  const a = await client(w);
+  const b = await client(w);
+  a.sync.add(draft('c_000024', 'Seen in time.'));
+  await a.idle();
+  w.clock.advance(10_000);
+  await b.tick();
+  const polledAt = w.clock.now();
+
+  // A write whose timestamp was taken two seconds BEFORE that poll, but whose row landed after it.
+  w.clock.advance(1_000);
+  await w.database.query(
+    `insert into comments (prototype_key, id, version_id, author_name, body, status, token_hash, created, updated)
+     values ($1, 'c_000025', $2, 'Late', $3::jsonb, 'open', 'x', $4, $4)`,
+    [w.key, w.versionId, JSON.stringify(draft('c_000025', 'Stamped early, stored late.')), new Date(polledAt - 2_000).toISOString()],
+  );
+  await b.tick();
+  assert.deepEqual(b.store.comments().map((c) => c.id).sort(), ['c_000024', 'c_000025']);
+});
+
+test('a refused reply stays, is marked, and is shared once its writer shortens it (review R12)', async (t) => {
+  const w = await world(t);
+  const a = await client(w);
+  const b = await client(w);
+  a.sync.add(draft('c_000026', 'Reply to me.'));
+  await a.idle();
+  await b.tick();
+
+  const reply = b.sync.addReply('c_000026', 'x'.repeat(4001));
+  await b.idle();
+  await b.tick();
+  assert.equal(b.store.comments()[0].replies.length, 1, 'still in the list after a poll');
+  assert.equal(b.sync.isUnshared(reply.id), true);
+  assert.match(b.sync.view().problem, /too long/);
+
+  b.sync.editReply('c_000026', reply.id, 'Short now.');
+  await b.idle();
+  w.clock.advance(6_000);
+  await a.tick();
+  assert.deepEqual(a.store.comments()[0].replies.map((r) => r.text), ['Short now.']);
+  assert.equal(b.sync.isUnshared(reply.id), false);
+});
+
+test('a refused edit keeps its warning and its text until the writer fixes it (review R19)', async (t) => {
+  const w = await world(t);
+  const a = await client(w);
+  a.sync.add(draft('c_000027', 'Fine as it is.'));
+  await a.idle();
+  a.sync.update('c_000027', { intent: { text: 'y'.repeat(4001), tag: null } });
+  await a.idle();
+  await a.tick();
+  await a.tick();
+  assert.match(a.sync.view().problem, /too long/, 'the same cycle used to clear this');
+  assert.equal(a.sync.isUnshared('c_000027'), true);
+  assert.equal(a.store.comments()[0].intent.text.length, 4001, 'a poll does not swap the old text back in');
+
+  a.sync.update('c_000027', { intent: { text: 'Shorter.', tag: null } });
+  await a.idle();
+  await a.tick();
+  assert.equal(a.sync.view().problem, null);
+  assert.equal(a.sync.isUnshared('c_000027'), false);
+  assert.equal((await w.held())[0].body.intent.text, 'Shorter.');
 });
