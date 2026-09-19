@@ -220,6 +220,16 @@ export async function startCheck({ issuer, clientId, clientSecret, group, port =
   };
 }
 
+/**
+ * On WSL the script runs in Linux and the browser runs in Windows, where
+ * `/mnt/c/Users/me/Desktop/x.html` is `C:\Users\me\Desktop\x.html`. Anything
+ * else is returned as a file:// address.
+ */
+export function openablePath(filePath) {
+  const mounted = /^\/mnt\/([a-z])\/(.*)$/.exec(filePath);
+  return mounted ? `${mounted[1].toUpperCase()}:\\${mounted[2].replace(/\//g, '\\')}` : pathToFileURL(filePath).toString();
+}
+
 function option(args, name) {
   const at = args.indexOf(name);
   return at === -1 ? undefined : args[at + 1];
@@ -244,7 +254,8 @@ async function main() {
   console.log('Open each of these in the browser where the person is logged in to GitLab, and press the button:');
   console.log(`  1. an ordinary web page:        ${check.url}/`);
   console.log(`  2. a locked-down stored page:   ${check.url}/sandboxed`);
-  console.log(`  3. a file opened from disk:     ${pathToFileURL(check.diskPage)}`);
+  console.log(`  3. a file opened from disk:     ${openablePath(check.diskPage)}`);
+  console.log('     (on WSL, pass --disk /mnt/c/Users/<you>/Desktop so a Windows browser can open it)');
   console.log('For each one, note: did the small window open, did the GitLab login finish inside it, and was an');
   console.log('approval screen shown (expected the first time only).');
   if (option(args, '--callback')) {

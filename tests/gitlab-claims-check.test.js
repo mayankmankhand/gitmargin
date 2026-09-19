@@ -9,7 +9,7 @@ import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { startCheck, STORED_PAGE_SANDBOX } from '../scripts/gitlab-claims-check.mjs';
+import { startCheck, openablePath, STORED_PAGE_SANDBOX } from '../scripts/gitlab-claims-check.mjs';
 import { startFakeGitlab } from './helpers/fake-gitlab.js';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -104,6 +104,11 @@ test('a refused token call is reported by name, and nothing is recorded', async 
 test('an address from some other sign-in is refused', async (t) => {
   const { check } = await setUp(t);
   await assert.rejects(() => check.finish(`${check.url}/callback?code=x&state=not-ours`), /does not belong/);
+});
+
+test('a page written to a Windows drive from WSL is named the way Windows opens it', () => {
+  assert.equal(openablePath('/mnt/c/Users/me/Desktop/gitmargin-popup-check.html'), 'C:\\Users\\me\\Desktop\\gitmargin-popup-check.html');
+  assert.equal(openablePath('/tmp/x/gitmargin-popup-check.html'), 'file:///tmp/x/gitmargin-popup-check.html');
 });
 
 test('the three test pages exist: web, locked-down, and a copy on disk that points back here', async (t) => {
