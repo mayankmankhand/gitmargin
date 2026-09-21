@@ -69,6 +69,8 @@ export function mountUi(deps) {
     const name = (author && author.name && author.name.trim()) || 'Someone';
     return author && author.verified === true ? `${name} \u00b7 ${providerName(author.provider)}` : name;
   };
+  /** A vouched-for name is drawn a step stronger than a typed one, so the two are told apart at a glance. */
+  const authorClass = (author) => (author && author.verified === true ? 'gm-author is-verified' : 'gm-author');
 
   // ---- host + shadow root -------------------------------------------------
   const host = el('div', { id: ROOT_ID, popover: 'manual' });
@@ -813,7 +815,7 @@ export function mountUi(deps) {
       const mine = sync && sync.isMine(r.id);
       const row = el('div', { class: 'gm-reply' }, [
         el('div', { class: 'gm-meta' }, [
-          el('span', { class: 'gm-author', text: mine ? `${nameOf(r.author)} (you)` : nameOf(r.author) }),
+          el('span', { class: authorClass(r.author), text: mine ? `${nameOf(r.author)} (you)` : nameOf(r.author) }),
           // A reply the service refused stays here, marked, until its writer fixes it (review R12).
           sync && sync.isUnshared(r.id) ? el('span', { class: 'gm-flag', text: 'not shared yet' }) : null,
         ]),
@@ -950,7 +952,7 @@ export function mountUi(deps) {
     const quote = c.anchor && c.anchor.quote && c.anchor.quote.exact;
     return el('div', { class: 'gm-older' }, [
       el('div', { class: 'gm-meta' }, [
-        el('span', { class: 'gm-author', text: nameOf(c.author) }),
+        el('span', { class: authorClass(c.author), text: nameOf(c.author) }),
         screen ? el('span', { text: screen }) : null,
         c.status && c.status !== 'open' ? el('span', { class: 'gm-status', text: c.status }) : null,
       ]),
@@ -996,8 +998,10 @@ export function mountUi(deps) {
     const hadFocus = shadow.activeElement === identityBtn || shadow.activeElement === identityQuiet;
     identityDrawn = drawn;
     identityLine.hidden = !on;
+    identityLine.classList.toggle('is-row', Boolean(says && quiet && !button && !code));
     if (whoRow) whoRow.hidden = on;
     identitySays.textContent = says;
+    identitySays.title = says; // a long name is cut with an ellipsis on the one-row layout; the whole line stays reachable
     identitySays.hidden = !says;
     identityCode.textContent = code;
     identityCode.hidden = !code;
@@ -1112,7 +1116,7 @@ export function mountUi(deps) {
     // page that is the first thing a reader needs. Always set as text, never as
     // markup: a name is whatever a stranger with the page key typed.
     const own = !sync || sync.isMine(comment.id);
-    if (sync) meta.appendChild(el('span', { class: 'gm-author', text: own ? nameOf(comment.author) + ' (you)' : nameOf(comment.author) }));
+    if (sync) meta.appendChild(el('span', { class: authorClass(comment.author), text: own ? nameOf(comment.author) + ' (you)' : nameOf(comment.author) }));
     if (comment.intent.tag) meta.appendChild(el('span', { class: 'gm-tag', text: comment.intent.tag }));
     const screen = comment.state.screen && comment.state.screen.name;
     if (screen) meta.appendChild(el('span', { text: screen }));

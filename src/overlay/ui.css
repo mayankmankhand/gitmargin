@@ -482,4 +482,12 @@ a.gm-vrow:hover, button.gm-vrow:hover { color: var(--gm-accent); }
 }
 .gm-identity-quiet:hover { color: var(--gm-text); }
 .gm-identity-btn:focus, .gm-identity-quiet:focus { outline: 2px solid var(--gm-accent); outline-offset: 2px; }
-
+/* Signed in: one row, the name on the left and the quiet action on the right (design critic, round 1). */
+.gm-identity.is-row { display: flex; align-items: baseline; gap: 10px; }
+.gm-identity.is-row .gm-identity-says { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gm-identity.is-row .gm-identity-quiet { white-space: nowrap; }
+.gm-identity.is-row .gm-identity-actions { margin-top: 0; }
+.gm-identity-quiet { text-decoration: none; border-bottom: 1px solid var(--gm-line-strong); }
+.gm-identity-quiet:hover { border-bottom-color: var(--gm-text); }
+/* A name the comment service vouched for, against a typed one: same type, one step stronger. */
+.gm-author.is-verified { color: var(--gm-text); font-weight: 600; }
