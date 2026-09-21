@@ -410,6 +410,156 @@ test('the browser is told it may send the pass header', async (t) => {
 
 // ---- a database made by the code before this ---------------------------------------
 
+// ---- strict reading (plan step 9) ------------------------------------------
+
+const PAGE_HTML = '<!doctype html><title>secret roadmap</title><h1>Secret roadmap</h1>';
+
+/** A strict prototype with one stored page and one comment on it. */
+async function setUpStrict(t, options = {}) {
+  const ctx = await setUp(t, { read: 'members', ...options });
+  const stored = await ctx.author('POST', `/api/prototypes/${ctx.key}/versions`, { hash: 'abc123', html: PAGE_HTML });
+  assert.equal(stored.answer.page_stored, true);
+  return ctx;
+}
+
+/** Open a stored copy the way a person does: the gate's link, the provider, then the confirm page. */
+async function toReturnConfirm(ctx, which = 'latest') {
+  const started = await call(ctx, 'GET', `/auth/start?key=${ctx.key}&return=${which}`);
+  assert.equal(started.status, 302, started.text);
+  const landed = new URL(ctx.fake.approve(started.headers.get('location')));
+  return call(ctx, 'GET', `${landed.pathname}${landed.search}`);
+}
+
+async function pressContinue(ctx, page, decision = 'continue') {
+  return call(ctx, 'POST', '/auth/confirm', { form: { state: formField(page.text, 'state'), token: formField(page.text, 'token'), decision } });
+}
+
+test('strict reading: the comments list needs a member or the author', async (t) => {
+  const ctx = await setUpStrict(t);
+  const list = `/api/p/${ctx.key}/comments`;
+
+  const stranger = await call(ctx, 'GET', list);
+  assert.equal(stranger.status, 401);
+  assert.deepEqual(stranger.answer, { error: 'sign_in', provider: 'gitlab', read: 'members' });
+
+  const madeUp = await call(ctx, 'GET', list, { headers: { 'x-gitmargin-pass': `gp_${'x'.repeat(40)}` } });
+  assert.equal(madeUp.status, 401);
+
+  const { pass } = await signIn(ctx);
+  const member = await call(ctx, 'GET', list, { headers: { 'x-gitmargin-pass': pass } });
+  assert.equal(member.status, 200);
+  assert.deepEqual(member.answer.prototype, { name: 'onboarding.html', identity: 'gitlab', read: 'members', members: 'gitmargin-test' });
+
+  const author = await call(ctx, 'GET', list, { headers: { authorization: `Bearer ${ctx.service.secret}` } });
+  assert.equal(author.status, 200);
+  const wrongSecret = await call(ctx, 'GET', list, { headers: { authorization: 'Bearer not-the-secret' } });
+  assert.equal(wrongSecret.status, 401);
+
+  // Ending the passes (the author's "stop them now") closes reading too.
+  await ctx.author('PATCH', `/api/prototypes/${ctx.key}`, { identity: 'gitlab', members: 'gitmargin-test', read: 'members' });
+  assert.equal((await call(ctx, 'GET', list, { headers: { 'x-gitmargin-pass': pass } })).status, 401);
+});
+
+test('strict reading: a non-member who signs in still reads nothing', async (t) => {
+  const ctx = await setUpStrict(t, { person: 'sam' });
+  const claimed = await signIn(ctx);
+  assert.equal(claimed.member, false);
+  assert.equal(claimed.pass, undefined);
+  assert.equal((await call(ctx, 'GET', `/api/p/${ctx.key}/comments`)).status, 401);
+});
+
+test('with reading open, sign-in mode still lets anyone read', async (t) => {
+  const ctx = await setUp(t);
+  await ctx.author('POST', `/api/prototypes/${ctx.key}/versions`, { hash: 'abc123', html: PAGE_HTML });
+  const listed = await call(ctx, 'GET', `/api/p/${ctx.key}/comments`);
+  assert.equal(listed.status, 200);
+  const page = await call(ctx, 'GET', `/p/${ctx.key}/latest`);
+  assert.equal(page.status, 200);
+  assert.equal(page.text, PAGE_HTML);
+  // And `return` is not a way to start a sign-in there: there is nothing to return to.
+  assert.equal((await call(ctx, 'GET', `/auth/start?key=${ctx.key}&return=latest`)).status, 400);
+});
+
+test('strict reading: a stored copy without a ticket answers the sign-in page and nothing about the prototype', async (t) => {
+  const ctx = await setUpStrict(t);
+  for (const address of [`/p/${ctx.key}/latest`, `/p/${ctx.key}/${ctx.version}`, `/p/${ctx.key}/v9-ffffff`, `/p/${ctx.key}/latest?ticket=gt_${'x'.repeat(40)}`]) {
+    const gate = await call(ctx, 'GET', address);
+    assert.equal(gate.status, 401, address);
+    assert.match(gate.text, /Sign in with GitLab/);
+    assert.ok(!gate.text.includes('Secret roadmap') && !gate.text.includes('onboarding'), 'the gate must not name or show the prototype');
+    assert.equal(gate.headers.get('x-frame-options'), 'DENY');
+  }
+});
+
+test('strict reading: sign in, Continue, and the copy opens once, with a code the panel swaps for a pass', async (t) => {
+  const ctx = await setUpStrict(t);
+  const page = await toReturnConfirm(ctx);
+  assert.match(page.text, /Open onboarding\.html as Priya Shah\?/);
+  assert.equal((await ctx.service.query('select 1 from tickets')).length, 0, 'nothing exists before Continue');
+
+  const sent = await pressContinue(ctx, page);
+  assert.equal(sent.status, 303);
+  const location = sent.headers.get('location');
+  const m = /^\/p\/(gm_[\w-]+)\/latest\?ticket=(gt_[\w-]+)#gm_claim=([0-9a-f]{32})$/.exec(location);
+  assert.ok(m, location);
+  assert.equal(m[1], ctx.key);
+  // Hashes only: neither the ticket nor the code is in the database.
+  const dump = JSON.stringify([await ctx.service.query('select * from tickets'), await ctx.service.query('select * from signins')]);
+  assert.ok(!dump.includes(m[2]) && !dump.includes(m[3]));
+
+  const opened = await call(ctx, 'GET', location.split('#')[0]);
+  assert.equal(opened.status, 200);
+  assert.equal(opened.text, PAGE_HTML);
+  assert.match(opened.headers.get('content-security-policy'), /^sandbox /);
+  assert.equal((await call(ctx, 'GET', location.split('#')[0])).status, 401, 'a ticket works once');
+
+  const claimed = (await call(ctx, 'POST', `/api/p/${ctx.key}/auth/claim`, { body: { code: m[3] } })).answer;
+  assert.equal(claimed.member, true);
+  assert.equal((await call(ctx, 'GET', `/api/p/${ctx.key}/comments`, { headers: { 'x-gitmargin-pass': claimed.pass } })).status, 200);
+  assert.equal((await call(ctx, 'POST', `/api/p/${ctx.key}/auth/claim`, { body: { code: m[3] } })).status, 404, 'and so does the code');
+});
+
+test('strict reading: a ticket opens only the address it was made for, and only for a minute', async (t) => {
+  const ctx = await setUpStrict(t);
+  const forLatest = (await pressContinue(ctx, await toReturnConfirm(ctx, 'latest'))).headers.get('location');
+  const ticket = /ticket=(gt_[\w-]+)/.exec(forLatest)[1];
+  assert.equal((await call(ctx, 'GET', `/p/${ctx.key}/${ctx.version}?ticket=${ticket}`)).status, 401, 'another version');
+
+  // The same ticket on another prototype of the same author.
+  const otherKey = (await ctx.author('POST', '/api/prototypes', { name: 'other.html' })).answer.key;
+  await ctx.author('POST', `/api/prototypes/${otherKey}/versions`, { hash: 'abc123', html: PAGE_HTML });
+  await ctx.author('PATCH', `/api/prototypes/${otherKey}`, { identity: 'gitlab', members: 'gitmargin-test', read: 'members' });
+  assert.equal((await call(ctx, 'GET', `/p/${otherKey}/latest?ticket=${ticket}`)).status, 401, 'another prototype');
+  assert.equal((await call(ctx, 'GET', `/p/${ctx.key}/latest?ticket=${ticket}`)).status, 200, 'still good where it belongs');
+
+  const slow = (await pressContinue(ctx, await toReturnConfirm(ctx, ctx.version))).headers.get('location');
+  ctx.clock.advance(MINUTE + 1000);
+  assert.equal((await call(ctx, 'GET', slow.split('#')[0])).status, 401, 'older than a minute');
+});
+
+test('strict reading: the return address is one of this prototype\'s stored pages, by name, and nothing else', async (t) => {
+  const ctx = await setUpStrict(t);
+  for (const bad of ['https://evil.example/', '//evil.example', '../../api/ping', 'latest/../x', 'v1-abc123?x=1', '']) {
+    const started = await call(ctx, 'GET', `/auth/start?key=${ctx.key}&return=${encodeURIComponent(bad)}`);
+    assert.equal(started.status, 400, bad);
+    assert.equal(started.headers.get('location'), null);
+  }
+  assert.equal((await ctx.service.query('select 1 from signins')).length, 0);
+});
+
+test('strict reading: Cancel, and a non-member, get no ticket', async (t) => {
+  const ctx = await setUpStrict(t);
+  const cancelled = await pressContinue(ctx, await toReturnConfirm(ctx), 'cancel');
+  assert.equal(cancelled.status, 200);
+  assert.equal(cancelled.headers.get('location'), null);
+
+  ctx.fake.set({ person: 'sam' });
+  const outsider = await toReturnConfirm(ctx);
+  assert.match(outsider.text, /can only be opened by members of/);
+  assert.equal(formField(outsider.text, 'token'), undefined);
+  assert.equal((await ctx.service.query('select 1 from tickets')).length, 0);
+});
+
 // Frozen on purpose: these are the statements the #15 service ran (commit 73fc4c9).
 // The owner's real deployment holds exactly these tables, with real rows in them.
 const OLD_SCHEMA = [

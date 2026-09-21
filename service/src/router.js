@@ -439,7 +439,15 @@ const PAGE_HEADERS = {
   'cache-control': 'no-store',
 };
 
-async function servePage({ query }, key, which) {
+async function servePage(deps, key, which, params) {
+  const { query } = deps;
+  // Strict reading (plan step 9): the copy opens only with a ticket, which the
+  // service hands out at the end of a member's sign-in. Checked before anything
+  // about the page is looked up, so the refusal tells a stranger nothing.
+  const prototype = await findPrototype(query, key);
+  if (prototype && readIsForMembers(prototype) && !(await signin.takeTicket(deps, key, which, params.ticket))) {
+    return signin.gatePage(prototype, which);
+  }
   const rows =
     which === 'latest'
       ? await query('select html from versions where prototype_key = $1 order by round desc limit 1', [key])
@@ -465,6 +473,9 @@ const AUTHOR_PROTOTYPE = new RegExp(`^/api/prototypes/${KEY}$`);
 const CLAIM = new RegExp(`^/api/p/${KEY}/auth/claim$`);
 const SESSION = new RegExp(`^/api/p/${KEY}/auth/session$`);
 
+/** Strict reading is on: sign-in is switched on AND the author limited reading to members. */
+const readIsForMembers = (prototype) => prototype.identity !== 'none' && prototype.read_rule === 'members';
+
 async function findPrototype(query, key) {
   const rows = await query('select key, name, identity, members, read_rule from prototypes where key = $1', [key]);
   return rows[0] || null;
@@ -485,7 +496,7 @@ async function dispatch(request, deps) {
 
   if (method === 'GET' && (m = PAGE.exec(path))) {
     await ensureSchema(query);
-    return servePage(deps, m[1], m[2]);
+    return servePage(deps, m[1], m[2], request.query || {});
   }
 
   // Sign-in (issue #18). These answer small HTML pages in a pop-up, not JSON.
@@ -534,7 +545,14 @@ async function dispatch(request, deps) {
   if (!prototype) return refuse(404, 'not_found');
   const key = prototype.key;
 
-  if (method === 'GET' && COMMENTS.test(path)) return listComments(deps, prototype, request.query || {});
+  if (method === 'GET' && COMMENTS.test(path)) {
+    // Strict reading: a member's pass, or the author (`pull --live`). The refusal
+    // says which provider and that it is about reading, so a panel can say so.
+    if (readIsForMembers(prototype) && !secretMatches(headers, deps.secret) && !(await signin.passSession(deps, key, headers['x-gitmargin-pass']))) {
+      return json(401, { error: 'sign_in', provider: prototype.identity, read: 'members' });
+    }
+    return listComments(deps, prototype, request.query || {});
+  }
   if (method === 'GET') return refuse(404, 'not_found');
 
   // The two sign-in calls a page makes. Neither is a comment write: no token, no write slot.

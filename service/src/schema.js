@@ -104,6 +104,18 @@ const STATEMENTS = [
      expires timestamptz not null
    )`,
   `create index if not exists sessions_by_prototype on sessions (prototype_key)`,
+  // Strict reading (plan step 9). A sign-in that began on the page in front of a
+  // stored copy remembers which copy to return to: `latest` or a version id,
+  // never a free address. Null for a sign-in begun in the panel's pop-up.
+  `alter table signins add column if not exists return_version text`,
+  // What opens a stored copy when reading is for members: stored as its SHA-256,
+  // good for one prototype and one address, for 60 seconds, once.
+  `create table if not exists tickets (
+     ticket_hash text primary key,
+     prototype_key text not null,
+     version_id text not null,
+     expires timestamptz not null
+   )`,
 ];
 
 /** One promise per `query` function, so a warm function pays for this once. */

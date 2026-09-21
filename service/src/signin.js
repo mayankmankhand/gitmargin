@@ -25,6 +25,7 @@ export const SIGNIN = {
   minutesToFinish: 10,
   passDays: 7,
   groupPath: 255,
+  ticketSeconds: 60,
 };
 
 const sha256 = (text) => createHash('sha256').update(String(text), 'utf8').digest('hex');
@@ -35,6 +36,9 @@ const escapeHtml = (text) =>
 export const isCodeHash = (v) => typeof v === 'string' && /^[0-9a-f]{64}$/.test(v);
 export const isCode = (v) => typeof v === 'string' && /^[0-9a-f]{32}$/.test(v);
 export const isPass = (v) => typeof v === 'string' && /^gp_[A-Za-z0-9_-]{20,60}$/.test(v);
+export const isTicket = (v) => typeof v === 'string' && /^gt_[A-Za-z0-9_-]{20,60}$/.test(v);
+/** Where a sign-in may return to: one of this prototype's own stored pages, by name. Never an address. */
+export const isReturn = (v) => v === 'latest' || (typeof v === 'string' && /^v\d{1,4}-[0-9a-f]{6}$/.test(v));
 
 /** The four digits both the panel and the confirm page show, written `48-21`. */
 export function shortCode(codeHash) {
@@ -193,7 +197,9 @@ function htmlPage(status, title, bodyHtml, { closes = false } = {}) {
     '.code{font:600 15px ui-monospace,Consolas,monospace;letter-spacing:.06em;}' +
     'form{display:flex;gap:8px;margin-top:14px;}' +
     'button{font:inherit;padding:6px 14px;border:1px solid #767a9c;background:#fff;color:#1c1d2b;cursor:pointer;}' +
-    'button.primary{background:#363a9c;border-color:#363a9c;color:#fff;}' +
+    'a.button{display:inline-block;padding:6px 14px;border:1px solid #767a9c;text-decoration:none;}' +
+    'button.primary,a.button.primary{background:#363a9c;border-color:#363a9c;color:#fff;}' +
+    'a.button:focus-visible{outline:2px solid #363a9c;outline-offset:2px;}' +
     'button:focus-visible{outline:2px solid #363a9c;outline-offset:2px;}' +
     `</style></head><body><main>${bodyHtml}</main>${script}</body></html>`;
   return {
@@ -249,7 +255,15 @@ export async function setIdentity(deps, key, body, { json, refuse }) {
 export async function start(deps, prototype, params) {
   const { query, now } = deps;
   if (!prototype || prototype.identity === 'none') return problemPage(404, 'This prototype does not use sign-in.');
-  if (!isCodeHash(params.code_hash)) return problemPage(400, 'The sign-in request was incomplete.');
+  // Two ways in. The panel's pop-up brings the hash of a code the page made. The
+  // page in front of a stored copy (strict reading) brings `return` instead: no
+  // page is waiting with a code, so none exists until Continue makes one. The
+  // placeholder below is the hash of bytes nobody keeps, so it can never be claimed.
+  const returns = params.return !== undefined;
+  if (returns ? !isReturn(params.return) || prototype.read_rule !== 'members' : !isCodeHash(params.code_hash)) {
+    return problemPage(400, 'The sign-in request was incomplete.');
+  }
+  const codeHash = returns ? sha256(randomBytes(32).toString('hex')) : params.code_hash;
   const provider = PROVIDERS[prototype.identity];
   const settings = providerSettings(deps, prototype.identity);
   if (!provider || !settings) return problemPage(409, `The author's comment service is not set up for ${providerLabel(prototype.identity)} sign-in yet.`);
@@ -260,22 +274,24 @@ export async function start(deps, prototype, params) {
   // Housekeeping rides along, as it does with writes.
   await query('delete from sessions where expires < $1', [at.toISOString()]);
   await query('delete from signins where expires < $1', [new Date(at.getTime() - 3_600_000).toISOString()]);
+  await query('delete from tickets where expires < $1', [at.toISOString()]);
   // The limit is a condition of the insert, for the reason the write limit is (review of #15, R3).
   const recorded = await query(
-    `insert into signins (state, prototype_key, provider, code_hash, verifier, created, expires)
-     select $1::text, $2::text, $3::text, $4::text, $5::text, $6::timestamptz, $7::timestamptz
+    `insert into signins (state, prototype_key, provider, code_hash, verifier, created, expires, return_version)
+     select $1::text, $2::text, $3::text, $4::text, $5::text, $6::timestamptz, $7::timestamptz, $10::text
       where (select count(*) from signins where prototype_key = $2 and created > $8::timestamptz) < $9
      returning state`,
     [
       state,
       prototype.key,
       prototype.identity,
-      params.code_hash,
+      codeHash,
       verifier,
       at.toISOString(),
       new Date(at.getTime() + SIGNIN.minutesToFinish * 60_000).toISOString(),
       new Date(at.getTime() - 60_000).toISOString(),
       SIGNIN.startsPerMinute,
+      returns ? params.return : null,
     ],
   );
   if (!recorded[0]) return problemPage(429, 'Too many sign-ins were started for this prototype just now. Wait a minute and try again.');
@@ -299,7 +315,7 @@ export async function callback(deps, params) {
   const rows = await query(
     `update signins set used_at = $2
       where state = $1 and used_at is null and ended_at is null and expires > $2
-      returning prototype_key, provider, code_hash, verifier`,
+      returning prototype_key, provider, code_hash, verifier, return_version`,
     [state, at],
   );
   const signin = rows[0];
@@ -343,7 +359,22 @@ export async function callback(deps, params) {
     return htmlPage(
       200,
       'Not a member',
-      `<h1>Signed in as ${escapeHtml(person.name)}</h1><p>This prototype only takes comments from members of <strong>${escapeHtml(prototype.members)}</strong> on ${escapeHtml(provider.label)}.</p><p class="muted">You can close this window.</p>`,
+      `<h1>Signed in as ${escapeHtml(person.name)}</h1><p>This prototype ${signin.return_version ? 'can only be opened by' : 'only takes comments from'} members of <strong>${escapeHtml(prototype.members)}</strong> on ${escapeHtml(provider.label)}.</p><p class="muted">You can close this window.</p>`,
+    );
+  }
+  const confirmForm =
+    `<form method="post" action="/auth/confirm"><input type="hidden" name="state" value="${escapeHtml(state)}"><input type="hidden" name="token" value="${escapeHtml(confirmToken)}">` +
+    '<button class="primary" id="gm-continue" name="decision" value="continue" type="submit">Continue</button>' +
+    '<button id="gm-cancel" name="decision" value="cancel" type="submit">Cancel</button></form>';
+  if (signin.return_version) {
+    // No panel is waiting, so there is no code to compare: the person is about to
+    // land on the page themselves, in this window.
+    return htmlPage(
+      200,
+      'Confirm sign-in',
+      `<h1>Open ${escapeHtml(prototype.name)} as ${escapeHtml(person.name)}?</h1>` +
+        '<p>You will be able to read and leave comments on it.</p>' +
+        confirmForm,
     );
   }
   return htmlPage(
@@ -352,9 +383,7 @@ export async function callback(deps, params) {
     `<h1>Sign in to comment on ${escapeHtml(prototype.name)} as ${escapeHtml(person.name)}?</h1>` +
       `<p>Only continue if you pressed Sign in yourself, just now, and your comment panel shows this code:</p><p class="code">${escapeHtml(shortCode(signin.code_hash))}</p>` +
       '<p class="muted">If someone sent you a link that led here, press Cancel.</p>' +
-      `<form method="post" action="/auth/confirm"><input type="hidden" name="state" value="${escapeHtml(state)}"><input type="hidden" name="token" value="${escapeHtml(confirmToken)}">` +
-      '<button class="primary" id="gm-continue" name="decision" value="continue" type="submit">Continue</button>' +
-      '<button id="gm-cancel" name="decision" value="cancel" type="submit">Cancel</button></form>',
+      confirmForm,
   );
 }
 
@@ -369,14 +398,33 @@ export async function confirm(deps, body) {
     await query('update signins set ended_at = $3, confirm_hash = null where state = $1 and confirm_hash = $2 and ended_at is null', [state, sha256(token), at]);
     return htmlPage(200, 'Cancelled', '<h1>Cancelled</h1><p>Nothing was signed in. You can close this window.</p>', { closes: true });
   }
-  // The token works once: a match clears it in the same statement.
+  // The token works once: a match clears it in the same statement. A sign-in
+  // that returns to a stored copy gets its one-time code only now, in that same
+  // statement, so there is no moment at which it is claimable under a code
+  // anyone else could hold.
+  const code = randomBytes(16).toString('hex');
   const rows = await query(
-    `update signins set confirmed_at = $3, confirm_hash = null
+    `update signins set confirmed_at = $3, confirm_hash = null,
+            code_hash = case when return_version is null then code_hash else $4 end
       where state = $1 and confirm_hash = $2 and ended_at is null and confirmed_at is null and expires > $3
-      returning name`,
-    [state, sha256(token), at],
+      returning name, prototype_key, return_version`,
+    [state, sha256(token), at, sha256(code)],
   );
   if (!rows[0]) return problemPage(400, 'This confirmation is unknown, was already used, or took too long.');
+  if (rows[0].return_version) {
+    // Strict reading: send the person to the stored copy they asked for, with a
+    // ticket that opens it once and the code their panel will swap for a pass.
+    // The code rides after the `#`, which no server ever sees, this one included.
+    const ticket = `gt_${randomBytes(30).toString('base64url')}`;
+    await query('insert into tickets (ticket_hash, prototype_key, version_id, expires) values ($1, $2, $3, $4)', [
+      sha256(ticket),
+      rows[0].prototype_key,
+      rows[0].return_version,
+      new Date(now().getTime() + SIGNIN.ticketSeconds * 1000).toISOString(),
+    ]);
+    const location = `/p/${rows[0].prototype_key}/${rows[0].return_version}?ticket=${ticket}#gm_claim=${code}`;
+    return { status: 303, headers: { location, 'cache-control': 'no-store', 'referrer-policy': 'no-referrer' }, body: '' };
+  }
   return htmlPage(200, 'Signed in', `<h1>You are signed in as ${escapeHtml(rows[0].name)}</h1><p class="muted">You can close this window.</p>`, { closes: true });
 }
 
@@ -412,6 +460,36 @@ export async function claim(deps, key, body, { json, refuse }) {
     [sha256(pass), key, signin.provider, signin.subject, signin.username, signin.name, at.toISOString(), expires],
   );
   return json(200, { pass, expires, member: true, identity });
+}
+
+// ---- strict reading: stored copies ------------------------------------------
+
+/** Use a ticket. True once, for the prototype and the address it was made for, within its minute. */
+export async function takeTicket({ query, now }, key, which, ticket) {
+  if (!isTicket(ticket)) return false;
+  const rows = await query(
+    'delete from tickets where ticket_hash = $1 and prototype_key = $2 and version_id = $3 and expires > $4 returning 1 as ok',
+    [sha256(ticket), key, which, now().toISOString()],
+  );
+  return Boolean(rows[0]);
+}
+
+/**
+ * What a stored copy's address answers when reading is for members and no valid
+ * ticket came with it. It says nothing about the prototype, not even its name
+ * or whether that version exists. A plain link, not a form: browsers apply
+ * `form-action` to the redirects that follow a form, and this one leaves for
+ * the provider.
+ */
+export function gatePage(prototype, which) {
+  const label = providerLabel(prototype.identity);
+  const go = `/auth/start?key=${encodeURIComponent(prototype.key)}&return=${encodeURIComponent(which)}`;
+  return htmlPage(
+    401,
+    'Sign in to open this page',
+    `<h1>Sign in to open this page</h1><p>Its author shares it with members of one ${escapeHtml(label)} group only.</p>` +
+      `<p style="margin-top:14px"><a id="gm-signin" class="button primary" href="${escapeHtml(go)}">Sign in with ${escapeHtml(label)}</a></p>`,
+  );
 }
 
 export async function signOut({ query }, key, pass, { json }) {

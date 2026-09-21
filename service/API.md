@@ -269,9 +269,35 @@ one else can, whatever token they send. Written under a typed name before sign-i
 `provider` and no `verified`, and still belongs to the token that created it; while sign-in is on, that browser also
 needs a valid pass, like every write. The author secret can always remove any comment.
 
-### Strict reading (plan step 9; not built until that step)
-With `read: "members"`: `GET /api/p/<key>/comments` needs a member's pass or the author secret, else `401 sign_in`;
-`POST /api/p/<key>/tickets` with `{ "version_id": "..." }` and a pass answers a one-use, 60-second `{ "ticket": "..." }`;
-`GET /p/<key>/<version>?ticket=...` serves the stored page, and without a valid ticket answers a small sign-in page
-instead of the prototype, whose sign-in returns only to this prototype's own stored pages.
+### Strict reading
+Opt-in per prototype: `read: "members"` on the settings route. Reading then needs what commenting needs.
 
+- **The comments list.** `GET /api/p/<key>/comments` needs a member's `X-Gitmargin-Pass` or the author secret
+  (`Authorization: Bearer`, which is how `pull --live` reads). Anything else answers
+  `401 { "error": "sign_in", "provider": "gitlab", "read": "members" }`. **Client rule:** on that answer show the sign-in
+  control and ask again slowly, not every five seconds.
+- **Stored copies.** `GET /p/<key>/<version>` and `/p/<key>/latest` serve the page only with `?ticket=gt_...`. Without a
+  valid ticket they answer `401` and a small sign-in page that says nothing about the prototype: not its name, and not
+  whether that version exists.
+- **A ticket** is made in one place only, the Continue press of a sign-in that began on that sign-in page. It opens one
+  address (`latest`, or one version id) of one prototype, once, within 60 seconds. The service stores its SHA-256.
+
+The sign-in from that page is the one above with three differences:
+
+1. It starts at `GET /auth/start?key=<key>&return=latest|<version id>`, in the same tab, with no `code_hash`. `return`
+   is a name, never an address: anything else is `400`, and so is `return` on a prototype whose reading is open.
+2. The confirm page asks "Open <prototype> as <person>?" and shows no short code, because no panel is waiting with
+   one to compare.
+3. Continue answers `303` to `/p/<key>/<return>?ticket=gt_...#gm_claim=<code>`. The code is made in the same statement
+   that records the Continue, so the sign-in is never claimable under a code anyone else could hold. It rides after the
+   `#`, which browsers send to no server. The overlay in the page it lands on takes it out of the address and posts it
+   to `/auth/claim` like any other code, so the person arrives signed in. A non-member gets the not-a-member page and no
+   ticket; Cancel gets none either.
+
+A stored copy cannot remember anything (it is sandboxed), so a reload meets the sign-in page again. After the first
+time the provider asks nothing, so that is two presses.
+
+**What strict reading does not do:** it does not pull back what a person already has. Comments a member's browser
+fetched while they were a member stay in that browser's storage, and a copy of the page they saved is theirs.
+
+**Limits:** a ticket lasts 60 seconds and works once; expired tickets are cleared when a sign-in starts.
