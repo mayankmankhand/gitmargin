@@ -176,6 +176,40 @@ One tension the plugin has to handle: this repository never commits a copy attac
 carries a service address and a page key. A Pages channel publishes by pushing exactly that copy. That is fine when
 the page and the repo have the same audience, and never fine when a private repo feeds a public site.
 
+### The GitLab Pages channel, done by hand once
+
+Cycle 1's two-computer walk published its test page by hand. These are the steps cycle 3 automates, written down
+as they were really done, so the plugin copies something that worked and not something imagined.
+
+1. In a private GitLab group, make a private project. Reviewers are members of the group (a Guest is enough, both
+   to open the page and to pass the members rule at sign-in).
+2. `gitmargin attach <page> --service <address>`, then
+   `gitmargin identity <attached copy> gitlab --members <group path>`. The mode lives on the service, so the order
+   of these two and the upload does not matter, and the mode can change later without publishing again.
+3. Put two files in the project: the attached copy, renamed `index.html`, and this build file as `.gitlab-ci.yml`.
+   GitLab Pages publishes only through a build, and the build only has to copy the page into `public/`:
+
+   ```yaml
+   pages:
+     stage: deploy
+     script:
+       - mkdir -p public
+       - cp index.html public/
+     artifacts:
+       paths:
+         - public
+     rules:
+       - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+   ```
+
+4. In the project's settings, under visibility, set Pages access to "Only project members". Check it from a
+   logged-out window: it must be sent to GitLab's sign-in, not shown the page.
+5. The link is under Deploy, Pages. Uploading a new `index.html` republishes.
+
+What the plugin must handle that the walk met: a brand-new gitlab.com account may be asked to verify itself before
+its first build runs, and the first builds can fail until it has; and the pushed copy carries the service address
+and the page key, which is the tension described above.
+
 ## 6. What a reviewer experiences
 
 These are targets. The mechanism underneath them is measured (section 3); the click counts are confirmed by a
