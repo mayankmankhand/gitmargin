@@ -289,11 +289,31 @@ function normalise(comment, label, position) {
     // on the envelope, so these keys are added only when the comment has them
     // and a part-1 batch keeps exactly the shape it had.
     ...(comment.author && typeof comment.author === 'object' && typeof comment.author.name === 'string'
-      ? { author: { name: comment.author.name } }
+      ? { author: cleanAuthor(comment.author) }
       : {}),
     ...(typeof comment.version_id === 'string' ? { version_id: comment.version_id } : {}),
   };
 }
+
+/**
+ * Who wrote a comment or reply, field by field. A typed name is `{ name }`, as
+ * it always was. A name the comment service vouched for (sign-in, issue #18)
+ * also says which provider and which username, and is marked `verified`. The
+ * mark is kept only when it is exactly `true` AND a provider is named, so a
+ * returned file cannot promote a typed name by adding one word.
+ */
+function cleanAuthor(author, fallbackName) {
+  const name = author && typeof author === 'object' && typeof author.name === 'string' ? author.name : fallbackName;
+  if (author && author.verified === true && typeof author.provider === 'string' && author.provider) {
+    return { name, provider: author.provider, username: typeof author.username === 'string' ? author.username : '', verified: true };
+  }
+  return { name };
+}
+
+/** "GitLab, verified" for the markdown. The provider is someone else's string too. */
+const PROVIDER_LABELS = { gitlab: 'GitLab', github: 'GitHub' };
+const authorLine = (author) =>
+  author.verified === true ? `${oneLine(author.name)} (${PROVIDER_LABELS[author.provider] || oneLine(author.provider)}, verified)` : oneLine(author.name);
 
 /**
  * One reply, field by field, or null when it has no text.
@@ -306,7 +326,7 @@ function normaliseReply(reply) {
   return {
     id: typeof reply.id === 'string' ? reply.id : null,
     time: typeof reply.time === 'string' ? reply.time : null,
-    author: { name: reply.author && typeof reply.author.name === 'string' ? reply.author.name : null },
+    author: cleanAuthor(reply.author, null),
     text: reply.text,
   };
 }
@@ -430,10 +450,10 @@ export function toMarkdown(batch) {
     // part-1 batch renders exactly as before. Names and replies go through
     // `oneLine` like the comment text: they are other people's input too.
     const extras = [];
-    if (c.author && c.author.name) extras.push(`   From ${oneLine(c.author.name)}.`);
+    if (c.author && c.author.name) extras.push(`   From ${authorLine(c.author)}.`);
     if (c.status && c.status !== 'open') extras.push(`   Status: ${oneLine(c.status)}.`);
     for (const r of c.replies || []) {
-      extras.push(`   Reply${r.author && r.author.name ? ` from ${oneLine(r.author.name)}` : ''}: "${oneLine(r.text)}"`);
+      extras.push(`   Reply${r.author && r.author.name ? ` from ${authorLine(r.author)}` : ''}: "${oneLine(r.text)}"`);
     }
 
     return [`${i + 1}. ${tag}${bits.join(', ')}: ${target}${selector}${flag}.\n   "${oneLine(c.intent.text)}"`, ...extras].join('\n');

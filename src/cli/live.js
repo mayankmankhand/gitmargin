@@ -111,6 +111,9 @@ const REFUSALS = {
   service_unavailable: 'The comment service could not reach its database.',
   unknown_version: 'The comment service has no such version of this prototype.',
   invalid: 'The comment service did not accept that request.',
+  provider_not_configured:
+    'The comment service has no GitLab application set up yet. Add GITMARGIN_GITLAB_ID and GITMARGIN_GITLAB_SECRET to its\n' +
+    'deployment (service/README.md, "Sign-in"), redeploy, and run this again.',
 };
 
 async function call(address, method, route, { body, auth } = {}) {
@@ -348,3 +351,59 @@ export async function removeComment(args) {
   process.stderr.write(`${id} is removed for everyone.\n`);
   return EXIT_OK;
 }
+
+const IDENTITIES = ['none', 'gitlab'];
+const PROVIDER_NAMES = { gitlab: 'GitLab' };
+
+/**
+ * `gitmargin identity <attached copy> <none|gitlab> [--members <group>] [--read open|members]`
+ *
+ * Who may comment on a shared prototype (issue #18). The setting lives on the
+ * comment service, not in the page, so nothing is re-attached and the copies
+ * people already hold pick it up the next time they check in. The secret goes
+ * only where `status` and `remove` would send it: an address the author typed.
+ */
+export async function setIdentityMode(args) {
+  const members = takeOption(args, '--members');
+  const read = takeOption(members.rest, '--read');
+  const positional = read.rest.filter((a) => !a.startsWith('-'));
+  const usage = 'identity needs the attached copy and a mode: none or gitlab.';
+  if (positional.length !== 2) throw new CliError(usage, EXIT_USAGE, 'Try: gitmargin identity prototype.gitmargin.html gitlab --members your-group');
+  const [file, mode] = positional;
+  if (!IDENTITIES.includes(mode)) throw new CliError(`Not a sign-in mode: ${mode}`, EXIT_USAGE, `One of: ${IDENTITIES.join(', ')}`);
+  if (read.present && !['open', 'members'].includes(read.value)) throw new CliError(`--read takes open or members, not ${read.value}`, EXIT_USAGE);
+  if (mode === 'none' && (members.present || read.present)) {
+    throw new CliError('--members and --read only mean something with a sign-in mode.', EXIT_USAGE, 'Try: gitmargin identity <copy> none');
+  }
+
+  const stamp = sharedStamp(file);
+  const auth = secret();
+  assertSecretMayGo(stamp.service, { typed: false });
+  const set = await call(stamp.service, 'PATCH', `/api/prototypes/${stamp.key}`, {
+    auth,
+    body: { identity: mode, members: members.value, ...(read.present ? { read: read.value } : {}) },
+  });
+
+  const name = path.basename(file);
+  const lines = [];
+  if (set.identity === 'none') {
+    lines.push(`Sign-in is OFF for ${name}. Anyone who can open the page comments under a name they type.`);
+  } else {
+    const provider = PROVIDER_NAMES[set.identity] || set.identity;
+    lines.push(`Sign-in is ON for ${name}: people comment under their ${provider} name.`);
+    lines.push(
+      set.members
+        ? `Who can comment: members of the ${provider} group "${set.members}" only.`
+        : `Who can comment: anyone with a ${provider} account who can open the page.`
+    );
+    lines.push(set.read === 'members' ? 'Who can read the comments: signed-in members only.' : 'Who can read the comments: anyone who can open the page.');
+    if (set.members) {
+      lines.push(`If you rename or delete "${set.members}", run this again: a freed group path can be registered by someone else.`);
+    }
+    lines.push('A copy you shared before switching this on can still read, but its comments are refused until you attach and share it again.');
+  }
+  lines.push(`Passes ended: ${set.passes_ended}. Everyone signs in again the next time they comment.`);
+  process.stderr.write(`${lines.join('\n')}\n`);
+  return EXIT_OK;
+}
+
