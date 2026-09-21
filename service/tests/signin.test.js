@@ -11,7 +11,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { startService, testClock, memoryDatabase } from '../../tests/helpers/service-server.js';
 import { startFakeGitlab } from '../../tests/helpers/fake-gitlab.js';
 import { ensureSchema } from '../src/schema.js';
-import { isMember, shortCode, cleanGroup } from '../src/signin.js';
+import { isMember, shortCode, cleanGroup, cleanSetting } from '../src/signin.js';
 
 const sha256 = (text) => createHash('sha256').update(text, 'utf8').digest('hex');
 const newCode = () => randomBytes(16).toString('hex');
@@ -370,6 +370,20 @@ test('the settings route needs the secret, refuses nonsense, and says when the s
 test('a provider address on plain http that is not loopback is refused', async (t) => {
   const ctx = await setUp(t, { identity: 'none', gitlab: { url: 'http://gitlab.example', clientId: 'id', clientSecret: 'made-up-value-for-this-test' } });
   assert.equal((await ctx.author('PATCH', `/api/prototypes/${ctx.key}`, { identity: 'gitlab' })).answer.error, 'provider_not_configured');
+});
+
+test('an id or secret pasted with stray quotes or spaces still signs people in', async (t) => {
+  assert.equal(cleanSetting(" 'abc123' "), 'abc123');
+  assert.equal(cleanSetting("'abc123"), 'abc123', 'the slip that happened on the first real deployment: one leading quote');
+  assert.equal(cleanSetting('"gloas-x"\n'), 'gloas-x');
+  assert.equal(cleanSetting(undefined), '');
+
+  const fake = await startFakeGitlab();
+  t.after(() => fake.close());
+  const ctx = await setUp(t, { gitlab: { url: ` ${fake.url} `, clientId: `'${fake.clientId}`, clientSecret: `'${fake.clientSecret}'` } });
+  fake.allowRedirect(`${ctx.service.url}/auth/callback`);
+  ctx.fake = fake;
+  assert.equal((await signIn(ctx)).member, true);
 });
 
 // ---- nothing changes when it is off -------------------------------------------------

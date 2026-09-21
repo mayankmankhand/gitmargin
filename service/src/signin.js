@@ -76,12 +76,23 @@ function providerAddressOk(address) {
   }
 }
 
+/**
+ * A setting as a person pasted it. Pasting `'abc'` (or just `'abc`) into a
+ * hosting dashboard is an easy slip, and the provider then answers "unknown
+ * client" with no hint why: it happened on the first real deployment (plan
+ * step 8). No real id or secret starts or ends with a quote or a space.
+ */
+export const cleanSetting = (value) => String(value || '').trim().replace(/^['"\s]+|['"\s]+$/g, '');
+
 export function providerSettings(deps, name) {
   const settings = deps.providers && deps.providers[name];
-  if (!settings || !settings.id || !settings.secret || !deps.origin || !deps.fetch) return null;
-  const url = String(settings.url || 'https://gitlab.com').replace(/\/+$/, '');
+  if (!settings || !deps.origin || !deps.fetch) return null;
+  const id = cleanSetting(settings.id);
+  const secret = cleanSetting(settings.secret);
+  if (!id || !secret) return null;
+  const url = (cleanSetting(settings.url) || 'https://gitlab.com').replace(/\/+$/, '');
   if (!providerAddressOk(url)) return null;
-  return { url, id: settings.id, secret: settings.secret };
+  return { url, id, secret };
 }
 
 /** One discovery per provider address per warm function. A failure is not remembered. */
