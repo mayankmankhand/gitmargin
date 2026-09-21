@@ -112,9 +112,10 @@ The decisions inside that picture:
   prototype, able to do one thing.
 - **Reviewers are never asked for more than "verify who you are"** (GitLab's `openid` permission). A frightening
   permission screen is the login friction that, most likely, killed GitLab's own Visual Reviews. Group membership
-  comes from the `groups` claim that gitlab.com's public sign-in metadata lists for that permission. If that claim
-  turns out not to be filled, the fallback is that the service checks membership itself with a read-only token the
-  author provides; what reviewers are asked for does not change.
+  comes from the `groups` claim. Measured against the real gitlab.com on 2026-09-21: with `openid` alone, userinfo
+  returned `groups` listing a private group for its owner. The same for a Guest is confirmed in cycle 1's
+  two-computer walk. There is no second mechanism: if the claim ever fails, the rule fails closed and nobody outside
+  the list comments.
 - **The members rule names a group, matched exactly and whole**, without regard to case, never by the start of a
   path. Whatever GitLab counts as membership counts, inherited membership included. The claim carries paths and not
   permanent ids, so after renaming or deleting a group the author sets the rule again: a freed path can be
