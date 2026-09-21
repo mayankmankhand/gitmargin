@@ -58,7 +58,17 @@ export function mountUi(deps) {
   // gets exactly the panel it always had.
   const sync = deps.sync || null;
   /** A blank name is allowed; it still needs something to stand in the list. */
-  const nameOf = (author) => (author && author.name && author.name.trim()) || 'Someone';
+  const PROVIDERS = { gitlab: 'GitLab', github: 'GitHub' };
+  const providerName = (id) => PROVIDERS[id] || String(id || '');
+  /**
+   * A blank name is allowed; it still needs something to stand in the list. A
+   * name the comment service vouched for says who vouched ("Priya Shah · GitLab");
+   * a typed one reads as it always did, with no mark (issue #18).
+   */
+  const nameOf = (author) => {
+    const name = (author && author.name && author.name.trim()) || 'Someone';
+    return author && author.verified === true ? `${name} \u00b7 ${providerName(author.provider)}` : name;
+  };
 
   // ---- host + shadow root -------------------------------------------------
   const host = el('div', { id: ROOT_ID, popover: 'manual' });
@@ -124,6 +134,7 @@ export function mountUi(deps) {
     el('span', { class: 'label', text: 'Comment mode' }),
   ]);
   const closeBtn = el('button', { class: 'gm-close', type: 'button', title: 'Collapse', text: '›' });
+  let whoRow = null; // the typed-name row, hidden while sign-in is on
   const nameInput = el('input', { type: 'text', id: 'gm-reviewer', placeholder: 'optional' });
 
   const listLabel = el('div', { class: 'gm-section' }, [el('span', { text: 'Comments' }), el('span', { class: 'gm-spacer' })]);
@@ -150,6 +161,24 @@ export function mountUi(deps) {
   const newerNote = el('div', { class: 'gm-newer', role: 'status' });
   const sharedHead = el('div', { class: 'gm-shared', hidden: 'hidden' }, [versionBtn, versionList, newerNote]);
 
+  // Sign-in (issue #18). One line that takes the place of the typed-name fields
+  // when, and only when, the comment service says this prototype uses sign-in.
+  // Built once and updated in place: it sits above a live list, and rebuilding
+  // things up there is what costs keyboard users their place (LESSONS, #15).
+  const identitySays = el('span', { class: 'gm-identity-says', role: 'status', 'aria-live': 'polite' });
+  const identityCode = el('span', { class: 'gm-identity-code', hidden: 'hidden' });
+  const identityBtn = el('button', { type: 'button', class: 'gm-identity-btn' });
+  const identityQuiet = el('button', { type: 'button', class: 'gm-identity-quiet', hidden: 'hidden' });
+  const identityLine = el('div', { class: 'gm-identity', hidden: 'hidden' }, [identitySays, identityCode, el('div', { class: 'gm-identity-actions' }, [identityBtn, identityQuiet])]);
+  // The click handler calls straight into sync.signIn(): nothing may be awaited
+  // between this click and the pop-up opening, or the browser blocks it.
+  identityBtn.addEventListener('click', () => sync && sync.signIn());
+  identityQuiet.addEventListener('click', () => {
+    if (!sync) return;
+    if (sync.view().signin.state === 'waiting') sync.cancelSignIn();
+    else sync.signOut();
+  });
+
   const panel = el('div', {
     class: 'gm-panel is-open',
     role: 'complementary',
@@ -163,11 +192,11 @@ export function mountUi(deps) {
         switchBtn,
         closeBtn,
       ]),
-      ...(sync ? [sharedHead] : []),
-      el('div', { class: 'gm-who' }, [
+      ...(sync ? [sharedHead, identityLine] : []),
+      (whoRow = el('div', { class: 'gm-who' }, [
         el('label', { for: 'gm-reviewer', text: sync ? 'Your name, shown with your comments' : 'Your name, for the author' }),
         nameInput,
-      ]),
+      ])),
       listLabel,
       list,
       el('div', { class: 'gm-foot' }, [noteToggle, overall, el('div', { class: 'gm-send' }, [sendBtn, copyBtn]), said, keepNote]),
@@ -262,11 +291,12 @@ export function mountUi(deps) {
     const rect = box.getBoundingClientRect();
     box.style.top = `${clamp(rect.top, 8, Math.max(8, window.innerHeight - rect.height - 8))}px`;
   }
+  const signInOn = () => Boolean(sync && sync.view().identity.mode !== 'none');
   let replyNameAsk = false; // the same ask, drawn beside a reply instead
   let nameAsked = false;
   /** True when the save should wait because the name row was just shown. */
   function askNameFirst(where = 'box') {
-    if (!sync || nameAsked || store.reviewer().trim()) return false;
+    if (!sync || nameAsked || store.reviewer().trim() || signInOn()) return false;
     nameAsked = true;
     if (where === 'box') {
       boxNameRow.hidden = false;
@@ -929,9 +959,60 @@ export function mountUi(deps) {
     ]);
   }
 
+  let identityDrawn = '';
+  /** The identity line, touched only when what it says changes. */
+  function renderIdentity(view) {
+    const on = view.identity.mode !== 'none';
+    const provider = providerName(view.identity.mode);
+    const unsent = view.unsent;
+    const waitingToSend = unsent ? `to send ${unsent} comment${unsent === 1 ? '' : 's'}` : 'to comment';
+    let says = '';
+    let code = '';
+    let button = '';
+    let quiet = '';
+    if (on && view.session) {
+      says = `Commenting as ${view.session.name || 'you'} \u00b7 ${providerName(view.session.provider)}`;
+      quiet = 'Sign out';
+    } else if (on && view.signin.state === 'waiting') {
+      says = `Waiting for ${provider}... Finish in the small window, and check it shows this code:`;
+      code = view.signin.shortCode || '';
+      quiet = 'Cancel';
+    } else if (on && view.signin.state === 'blocked') {
+      says = 'Your browser blocked the sign-in window. Allow pop-ups for this page, then try again.';
+      button = `Sign in with ${provider}`;
+    } else if (on && view.signin.state === 'not_member') {
+      const who = view.signin.who || {};
+      says = `Signed in as ${who.name || 'you'}. This prototype only takes comments from members of ${who.members || view.identity.members || 'one group'}.`;
+      button = 'Try another account';
+    } else if (on && view.signin.state === 'failed') {
+      says = 'Sign-in did not finish.';
+      button = `Sign in with ${provider} ${waitingToSend}`;
+    } else if (on) {
+      says = unsent ? 'Saved here. Not shared until you sign in.' : '';
+      button = `Sign in with ${provider} ${waitingToSend}`;
+    }
+    const drawn = [on, says, code, button, quiet].join('|');
+    if (drawn === identityDrawn) return;
+    const hadFocus = shadow.activeElement === identityBtn || shadow.activeElement === identityQuiet;
+    identityDrawn = drawn;
+    identityLine.hidden = !on;
+    if (whoRow) whoRow.hidden = on;
+    identitySays.textContent = says;
+    identitySays.hidden = !says;
+    identityCode.textContent = code;
+    identityCode.hidden = !code;
+    identityBtn.textContent = button;
+    identityBtn.hidden = !button;
+    identityQuiet.textContent = quiet;
+    identityQuiet.hidden = !quiet;
+    // Pressing Sign in swaps the button for Cancel. Focus follows to whichever is there now.
+    if (hadFocus) (button ? identityBtn : quiet ? identityQuiet : identityBtn).focus();
+  }
+
   function renderShared() {
     if (!sync) return;
     const view = sync.view();
+    renderIdentity(view);
     const here = view.versions.find((v) => v.version_id === sync.versionId) || null;
     sharedHead.hidden = !here;
     if (!here) return;
