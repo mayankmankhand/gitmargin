@@ -11,6 +11,7 @@
 
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { ensureSchema } from './schema.js';
+import * as signin from './signin.js';
 import {
   LIMITS,
   STATUSES,
@@ -30,12 +31,13 @@ import {
  * sandboxed, which gives it an opaque origin too. Neither can be named in an
  * allow-list, so the service answers any origin and relies on the page key
  * (and, for the author, the secret) instead. No cookies are ever used, so an
- * open origin exposes nothing a caller could not already reach with curl.
+ * open origin exposes nothing a caller could not already reach with curl. Sign-in
+ * (issue #18) keeps that true: a pass travels in a header, never in a cookie.
  */
 const CORS = {
   'access-control-allow-origin': '*',
   'access-control-allow-methods': 'GET, POST, PATCH, DELETE, OPTIONS',
-  'access-control-allow-headers': 'content-type, authorization, x-gitmargin-token',
+  'access-control-allow-headers': 'content-type, authorization, x-gitmargin-token, x-gitmargin-pass',
   'access-control-max-age': '86400',
 };
 
@@ -61,12 +63,18 @@ function secretMatches(headers, secret) {
 
 // ---- reads ----------------------------------------------------------------
 
+/** A typed name is just a name. One written under sign-in says who vouched for it. */
+function authorOnWire(row) {
+  if (!row.author_provider) return { name: row.author_name };
+  return { name: row.author_name, provider: row.author_provider, username: row.author_username || '', verified: true };
+}
+
 function replyOnWire(row) {
   return {
     id: row.id,
     time: iso(row.created),
     updated: iso(row.updated),
-    author: { name: row.author_name },
+    author: authorOnWire(row),
     text: row.text,
   };
 }
@@ -77,7 +85,7 @@ function commentOnWire(row, replies) {
     ...row.body,
     id: row.id,
     version_id: row.version_id,
-    author: { name: row.author_name },
+    author: authorOnWire(row),
     status: row.status,
     updated: iso(row.updated),
     replies: replies.filter((r) => r.comment_id === row.id).map(replyOnWire),
@@ -134,7 +142,11 @@ async function listComments({ query, now }, prototype, params) {
   const replies = await liveReplies(query, prototype.key, rows.filter((r) => !r.deleted_at).map((r) => r.id));
 
   return json(200, {
-    prototype: { name: prototype.name },
+    // The new fields appear only when sign-in is on, so a prototype without it answers byte for byte as before.
+    prototype:
+      prototype.identity && prototype.identity !== 'none'
+        ? { name: prototype.name, identity: prototype.identity, read: prototype.read_rule, members: prototype.members }
+        : { name: prototype.name },
     latest,
     version,
     versions: versions.map((v) => ({
@@ -180,7 +192,7 @@ async function overWriteLimit({ query, now }, key) {
   return false;
 }
 
-async function addComment(deps, key, token, body) {
+async function addComment(deps, key, token, body, session) {
   const { query, now } = deps;
   const cleaned = cleanComment(body && body.comment);
   if (cleaned.error) return refuse(400, cleaned.error);
@@ -201,11 +213,13 @@ async function addComment(deps, key, token, body) {
   // the cap is recoverable by design. What stops add-then-remove from filling the
   // database is that a removed comment keeps no text (removeComment, review R2).
   const inserted = await query(
-    `insert into comments (prototype_key, id, version_id, author_name, body, status, token_hash, created, updated)
-     select $1::text, $2::text, $3::text, $4::text, $5::jsonb, 'open', $6::text, $7::timestamptz, $7::timestamptz
+    `insert into comments (prototype_key, id, version_id, author_name, body, status, token_hash, created, updated,
+                           author_provider, author_subject, author_username)
+     select $1::text, $2::text, $3::text, $4::text, $5::jsonb, 'open', $6::text, $7::timestamptz, $7::timestamptz,
+            $9::text, $10::text, $11::text
       where (select count(*) from comments where prototype_key = $1 and deleted_at is null) < $8
      on conflict (prototype_key, id) do nothing returning id`,
-    [key, id, body.version_id, cleanName(body.author && body.author.name), JSON.stringify(cleaned.body), sha256(token), at, LIMITS.comments],
+    [key, id, body.version_id, writerName(session, body), JSON.stringify(cleaned.body), sha256(token), at, LIMITS.comments, ...writerIdentity(session)],
   );
   if (!inserted[0]) {
     const held = await query('select token_hash from comments where prototype_key = $1 and id = $2', [key, id]);
@@ -215,16 +229,37 @@ async function addComment(deps, key, token, body) {
   return json(inserted[0] ? 201 : 200, await oneComment(query, key, id));
 }
 
-/** The live comment, only when `token` created it. Otherwise the refusal to send. */
-async function ownComment(query, key, id, token) {
-  const rows = await query('select token_hash, deleted_at from comments where prototype_key = $1 and id = $2', [key, id]);
+/**
+ * The name and identity a write is stored under. With a pass, both come from the
+ * pass and whatever the request body claims is ignored.
+ */
+const writerName = (session, body) => (session ? cleanName(session.name) : cleanName(body && body.author && body.author.name));
+const writerIdentity = (session) => (session ? [session.provider, session.subject, session.username || ''] : [null, null, null]);
+
+/**
+ * "Your own", for both kinds of row. A comment or reply keeps the rule it was
+ * created under: written under sign-in it belongs to that verified person, on
+ * any browser, and no token opens it; written under a typed name it belongs to
+ * the token that made it.
+ */
+function isOwn(row, token, session) {
+  if (row.author_subject) return Boolean(session && session.provider === row.author_provider && session.subject === row.author_subject);
+  return row.token_hash === sha256(token);
+}
+
+/** The live comment, only when the writer owns it. Otherwise the refusal to send. */
+async function ownComment(query, key, id, token, session) {
+  const rows = await query(
+    'select token_hash, deleted_at, author_provider, author_subject from comments where prototype_key = $1 and id = $2',
+    [key, id],
+  );
   if (!rows[0] || rows[0].deleted_at) return { refusal: refuse(404, 'not_found') };
-  if (rows[0].token_hash !== sha256(token)) return { refusal: refuse(403, 'not_yours') };
+  if (!isOwn(rows[0], token, session)) return { refusal: refuse(403, 'not_yours') };
   return {};
 }
 
-async function editComment({ query, now }, key, id, token, body) {
-  const own = await ownComment(query, key, id, token);
+async function editComment({ query, now }, key, id, token, body, session) {
+  const own = await ownComment(query, key, id, token, session);
   if (own.refusal) return own.refusal;
   const cleaned = cleanIntent(body && body.intent);
   if (cleaned.error) return refuse(400, cleaned.error);
@@ -243,7 +278,8 @@ async function removeComment({ query, now }, key, id) {
   // for anyone with the key, since removed rows do not count toward the cap
   // (review of the #15 cycle, R2).
   const rows = await query(
-    `update comments set deleted_at = $3, updated = $3, body = '{}'::jsonb, author_name = ''
+    `update comments set deleted_at = $3, updated = $3, body = '{}'::jsonb, author_name = '',
+            author_provider = null, author_subject = null, author_username = null
       where prototype_key = $1 and id = $2 and deleted_at is null returning id`,
     [key, id, at],
   );
@@ -261,7 +297,7 @@ async function removeComment({ query, now }, key, id) {
 const touchComment = (query, key, id, at) =>
   query('update comments set updated = $3 where prototype_key = $1 and id = $2', [key, id, at]);
 
-async function addReply({ query, now }, key, commentId, token, body) {
+async function addReply({ query, now }, key, commentId, token, body, session) {
   if (!body || !isReplyId(body.id)) return refuse(400, 'invalid');
   const text = cleanText(body.text);
   if (text.error) return refuse(400, text.error);
@@ -270,11 +306,13 @@ async function addReply({ query, now }, key, commentId, token, body) {
 
   const at = now().toISOString();
   const inserted = await query(
-    `insert into replies (prototype_key, comment_id, id, author_name, text, token_hash, created, updated)
-     select $1::text, $2::text, $3::text, $4::text, $5::text, $6::text, $7::timestamptz, $7::timestamptz
+    `insert into replies (prototype_key, comment_id, id, author_name, text, token_hash, created, updated,
+                          author_provider, author_subject, author_username)
+     select $1::text, $2::text, $3::text, $4::text, $5::text, $6::text, $7::timestamptz, $7::timestamptz,
+            $9::text, $10::text, $11::text
       where (select count(*) from replies where prototype_key = $1 and comment_id = $2 and deleted_at is null) < $8
      on conflict (prototype_key, comment_id, id) do nothing returning id`,
-    [key, commentId, body.id, cleanName(body.author && body.author.name), text.text, sha256(token), at, LIMITS.replies],
+    [key, commentId, body.id, writerName(session, body), text.text, sha256(token), at, LIMITS.replies, ...writerIdentity(session)],
   );
   if (inserted[0]) {
     await touchComment(query, key, commentId, at);
@@ -289,21 +327,21 @@ async function addReply({ query, now }, key, commentId, token, body) {
   return json(inserted[0] ? 201 : 200, await oneComment(query, key, commentId));
 }
 
-async function changeReply({ query, now }, key, commentId, replyId, token, body, remove) {
+async function changeReply({ query, now }, key, commentId, replyId, token, body, remove, session) {
   const rows = await query(
-    `select r.token_hash from replies r join comments c
+    `select r.token_hash, r.author_provider, r.author_subject from replies r join comments c
         on c.prototype_key = r.prototype_key and c.id = r.comment_id
       where r.prototype_key = $1 and r.comment_id = $2 and r.id = $3
         and r.deleted_at is null and c.deleted_at is null`,
     [key, commentId, replyId],
   );
   if (!rows[0]) return refuse(404, 'not_found');
-  if (rows[0].token_hash !== sha256(token)) return refuse(403, 'not_yours');
+  if (!isOwn(rows[0], token, session)) return refuse(403, 'not_yours');
 
   const at = now().toISOString();
   if (remove) {
     await query(
-      "update replies set deleted_at = $4, updated = $4, text = '', author_name = '' where prototype_key = $1 and comment_id = $2 and id = $3",
+      "update replies set deleted_at = $4, updated = $4, text = '', author_name = '', author_provider = null, author_subject = null, author_username = null where prototype_key = $1 and comment_id = $2 and id = $3",
       [key, commentId, replyId, at],
     );
   } else {
@@ -422,9 +460,13 @@ const COMMENT = new RegExp(`^/api/p/${KEY}/comments/([^/]+)$`);
 const REPLIES = new RegExp(`^/api/p/${KEY}/comments/([^/]+)/replies$`);
 const REPLY = new RegExp(`^/api/p/${KEY}/comments/([^/]+)/replies/([^/]+)$`);
 const PAGE = new RegExp(`^/p/${KEY}/(latest|v\\d{1,4}-[0-9a-f]{6})$`);
+const ONLY_KEY = new RegExp(`^${KEY}$`);
+const AUTHOR_PROTOTYPE = new RegExp(`^/api/prototypes/${KEY}$`);
+const CLAIM = new RegExp(`^/api/p/${KEY}/auth/claim$`);
+const SESSION = new RegExp(`^/api/p/${KEY}/auth/session$`);
 
 async function findPrototype(query, key) {
-  const rows = await query('select key, name from prototypes where key = $1', [key]);
+  const rows = await query('select key, name, identity, members, read_rule from prototypes where key = $1', [key]);
   return rows[0] || null;
 }
 
@@ -446,12 +488,32 @@ async function dispatch(request, deps) {
     return servePage(deps, m[1], m[2]);
   }
 
+  // Sign-in (issue #18). These answer small HTML pages in a pop-up, not JSON.
+  if (path === '/auth/start' && method === 'GET') {
+    await ensureSchema(query);
+    const params = request.query || {};
+    const found = typeof params.key === 'string' && ONLY_KEY.test(params.key) ? await findPrototype(query, params.key) : null;
+    return signin.start(deps, found, params);
+  }
+  if (path === '/auth/callback' && method === 'GET') {
+    await ensureSchema(query);
+    return signin.callback(deps, request.query || {});
+  }
+  if (path === '/auth/confirm' && method === 'POST') {
+    await ensureSchema(query);
+    return signin.confirm(deps, body);
+  }
+
   // Author routes. The secret is checked before anything is looked up, so a
   // wrong secret learns nothing about which prototypes exist.
   if (path.startsWith('/api/prototypes')) {
     if (!secretMatches(headers, deps.secret)) return refuse(401, 'unauthorized');
     await ensureSchema(query);
     if (method === 'POST' && path === '/api/prototypes') return createPrototype(deps, body);
+    if ((m = AUTHOR_PROTOTYPE.exec(path)) && method === 'PATCH') {
+      if (!(await findPrototype(query, m[1]))) return refuse(404, 'not_found');
+      return signin.setIdentity(deps, m[1], body || {}, { json, refuse });
+    }
     if ((m = AUTHOR_VERSIONS.exec(path)) && method === 'POST') {
       if (!(await findPrototype(query, m[1]))) return refuse(404, 'not_found');
       return registerVersion(deps, m[1], body);
@@ -465,7 +527,7 @@ async function dispatch(request, deps) {
   }
 
   // Key routes.
-  m = COMMENTS.exec(path) || COMMENT.exec(path) || REPLIES.exec(path) || REPLY.exec(path);
+  m = COMMENTS.exec(path) || COMMENT.exec(path) || REPLIES.exec(path) || REPLY.exec(path) || CLAIM.exec(path) || SESSION.exec(path);
   if (!m) return refuse(404, 'not_found');
   await ensureSchema(query);
   const prototype = await findPrototype(query, m[1]);
@@ -475,23 +537,34 @@ async function dispatch(request, deps) {
   if (method === 'GET' && COMMENTS.test(path)) return listComments(deps, prototype, request.query || {});
   if (method === 'GET') return refuse(404, 'not_found');
 
+  // The two sign-in calls a page makes. Neither is a comment write: no token, no write slot.
+  if (CLAIM.test(path)) return method === 'POST' ? signin.claim(deps, key, body, { json, refuse }) : refuse(404, 'not_found');
+  if (SESSION.test(path)) return method === 'DELETE' ? signin.signOut(deps, key, headers['x-gitmargin-pass'], { json }) : refuse(404, 'not_found');
+
   // Everything below changes something, so it needs a token and a free slot in the minute.
   const token = headers['x-gitmargin-token'];
   if (!isToken(token)) return refuse(400, 'invalid');
+  // With sign-in on, every write needs a pass issued for THIS prototype. The
+  // refusal names the provider so an overlay knows which button to show.
+  let session = null;
+  if (prototype.identity !== 'none') {
+    session = await signin.passSession(deps, key, headers['x-gitmargin-pass']);
+    if (!session) return json(401, { error: 'sign_in', provider: prototype.identity });
+  }
   if (await overWriteLimit(deps, key)) return refuse(429, 'slow_down');
 
-  if (COMMENTS.test(path) && method === 'POST') return addComment(deps, key, token, body);
+  if (COMMENTS.test(path) && method === 'POST') return addComment(deps, key, token, body, session);
   if ((m = COMMENT.exec(path)) && isCommentId(m[2])) {
-    if (method === 'PATCH') return editComment(deps, key, m[2], token, body);
+    if (method === 'PATCH') return editComment(deps, key, m[2], token, body, session);
     if (method === 'DELETE') {
-      const own = await ownComment(query, key, m[2], token);
+      const own = await ownComment(query, key, m[2], token, session);
       return own.refusal || removeComment(deps, key, m[2]);
     }
   }
-  if ((m = REPLIES.exec(path)) && isCommentId(m[2]) && method === 'POST') return addReply(deps, key, m[2], token, body);
+  if ((m = REPLIES.exec(path)) && isCommentId(m[2]) && method === 'POST') return addReply(deps, key, m[2], token, body, session);
   if ((m = REPLY.exec(path)) && isCommentId(m[2]) && isReplyId(m[3])) {
-    if (method === 'PATCH') return changeReply(deps, key, m[2], m[3], token, body, false);
-    if (method === 'DELETE') return changeReply(deps, key, m[2], m[3], token, null, true);
+    if (method === 'PATCH') return changeReply(deps, key, m[2], m[3], token, body, false, session);
+    if (method === 'DELETE') return changeReply(deps, key, m[2], m[3], token, null, true, session);
   }
   return refuse(404, 'not_found');
 }

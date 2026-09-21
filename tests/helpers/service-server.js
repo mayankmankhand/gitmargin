@@ -29,7 +29,7 @@ export function testClock(start = '2026-09-18T12:00:00.000Z') {
 }
 
 /**
- * @param {{secret?: string, clock?: {now: () => Date}, down?: () => boolean}} [options]
+ * @param {{secret?: string, clock?: {now: () => Date}, down?: () => boolean, gitlab?: object}} [options]
  *   `down` lets a test take the service away mid-session and bring it back.
  */
 export async function startService(options = {}) {
@@ -45,15 +45,30 @@ export async function startService(options = {}) {
     const chunks = [];
     for await (const chunk of req) chunks.push(chunk);
     let body = null;
-    try {
-      body = chunks.length ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : null;
-    } catch {
-      body = null;
+    const raw = Buffer.concat(chunks).toString('utf8');
+    if (String(req.headers['content-type'] || '').includes('application/x-www-form-urlencoded')) {
+      // Vercel hands a posted form to the function as an object; so does this.
+      body = Object.fromEntries(new URLSearchParams(raw));
+    } else {
+      try {
+        body = raw ? JSON.parse(raw) : null;
+      } catch {
+        body = null;
+      }
     }
     const url = new URL(req.url, 'http://service.local');
     const answer = await route(
       { method: req.method, path: url.pathname, query: Object.fromEntries(url.searchParams), headers: req.headers, body },
-      { query: database.query, now: clock.now, secret },
+      {
+        query: database.query,
+        now: clock.now,
+        secret,
+        log: options.log,
+        // Sign-in: `options.gitlab` is a started fake GitLab (tests/helpers/fake-gitlab.js).
+        fetch: (...args) => fetch(...args),
+        origin: `http://127.0.0.1:${server.address().port}`,
+        providers: options.gitlab ? { gitlab: { url: options.gitlab.url, id: options.gitlab.clientId, secret: options.gitlab.clientSecret } } : {},
+      },
     );
     res.writeHead(answer.status, answer.headers);
     res.end(answer.body);

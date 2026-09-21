@@ -1,4 +1,4 @@
-// The tables, created on first use.
+// The tables, created on first use, and the columns added since.
 //
 // An author who arrives through the Deploy button has no terminal open and no
 // migration step to run, so the service makes its own tables. Each statement
@@ -58,6 +58,52 @@ const STATEMENTS = [
      at timestamptz not null
    )`,
   `create index if not exists writes_by_time on writes (prototype_key, at)`,
+  // Sign-in (issue #18). Deployments already hold the tables above, so new
+  // columns arrive by `add column if not exists`: idempotent like everything
+  // here, and no migration step for an author who deployed with the button.
+  `alter table prototypes add column if not exists identity text not null default 'none'`,
+  `alter table prototypes add column if not exists members text`,
+  `alter table prototypes add column if not exists read_rule text not null default 'open'`,
+  // Filled only for a comment or reply written under sign-in. Null means a typed
+  // name, which keeps the ownership rule it was created under (the edit token).
+  `alter table comments add column if not exists author_provider text`,
+  `alter table comments add column if not exists author_subject text`,
+  `alter table comments add column if not exists author_username text`,
+  `alter table replies add column if not exists author_provider text`,
+  `alter table replies add column if not exists author_subject text`,
+  `alter table replies add column if not exists author_username text`,
+  // One row per sign-in attempt. It holds the HASH of the page's one-time code
+  // and of the confirm token, never either value, and never a provider token.
+  `create table if not exists signins (
+     state text primary key,
+     prototype_key text not null,
+     provider text not null,
+     code_hash text not null,
+     verifier text not null,
+     confirm_hash text,
+     subject text,
+     username text,
+     name text,
+     member boolean,
+     created timestamptz not null,
+     expires timestamptz not null,
+     used_at timestamptz,
+     confirmed_at timestamptz,
+     ended_at timestamptz
+   )`,
+  `create index if not exists signins_by_code on signins (prototype_key, code_hash)`,
+  // A pass, stored as its SHA-256, valid for one prototype.
+  `create table if not exists sessions (
+     pass_hash text primary key,
+     prototype_key text not null,
+     provider text not null,
+     subject text not null,
+     username text,
+     name text not null,
+     created timestamptz not null,
+     expires timestamptz not null
+   )`,
+  `create index if not exists sessions_by_prototype on sessions (prototype_key)`,
 ];
 
 /** One promise per `query` function, so a warm function pays for this once. */

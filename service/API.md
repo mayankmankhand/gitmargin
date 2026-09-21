@@ -214,8 +214,9 @@ belongs only to a subgroup is not a member of its parent. The claim carries path
 is renamed or deleted the author sets the rule again: a freed path can be registered by someone else.
 
 ### What a page is told
-The `prototype` block of `GET /api/p/<key>/comments` gains `"identity"`, `"read"` and `"members"`. This is how an
-overlay learns that a prototype needs sign-in; nothing is written into the page. A write without a valid pass answers
+When sign-in is on, the `prototype` block of `GET /api/p/<key>/comments` gains `"identity"`, `"read"` and
+`"members"`; with it off the block is `{ "name": ... }` exactly as before. This is how an overlay learns that a
+prototype needs sign-in; nothing is written into the page. A write without a valid pass answers
 `401 { "error": "sign_in", "provider": "gitlab" }`.
 
 **Client rule:** `401 sign_in` on a write means keep the change and wait for a pass. Never drop it.

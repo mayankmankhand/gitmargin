@@ -256,6 +256,8 @@ export async function startFakeGitlab(options = {}) {
     allowRedirect: (uri) => redirectUris.add(uri),
     /** Change who signs in, or make the next sign-in go wrong. */
     set: (fields) => Object.assign(settings, fields),
+    /** Every code and token handed out so far, so a test can prove the service kept none of them. */
+    handedOut: () => [...codes.keys(), ...tokens.keys()],
     /** Forget that anyone approved, so the approval page shows again. */
     forgetApprovals: () => approved.clear(),
     /**
