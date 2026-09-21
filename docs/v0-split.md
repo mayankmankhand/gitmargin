@@ -162,6 +162,8 @@ already give.
 
 ## 7. Part 2: what is parked, and what unparks it
 
+**Amended 2026-09-21.** Cycle 1 of that design, sign-in with GitLab ([#18](https://github.com/mayankmankhand/gitmargin/issues/18)), is built and was walked live. "No sign-in" below describes part 1 and the default of shared comments; on a shared prototype sign-in is now the author's choice.
+
 **Amended 2026-09-19.** Part 2 now has one design, in [part-2-design.md](part-2-design.md): where the page lives, who may comment, and the author's own comment service as the constant, built in four cycles that each end in a live test on accounts one person can own. That document is the description of part 2 from here on. What follows is kept as the record of how the list got there.
 
 **Amended 2026-09-18 ([issue #13](https://github.com/mayankmankhand/gitmargin/issues/13), built in [issue #15](https://github.com/mayankmankhand/gitmargin/issues/15)).** One piece of this list left the parking lot, in a smaller shape than the one below. Shared, live comments no longer wait for sign-in:
@@ -222,5 +224,5 @@ does. That is the honest line for the README.
 | [#4](https://github.com/mayankmankhand/gitmargin/issues/4) | gitmargin server on Vercel + Neon: sign-in, record, mirrors, batch API | Closed 2026-09-18, superseded: storage by #15, sign-in by #17 and #18; the GitLab-issue mirror is retired | 2 |
 | [#5](https://github.com/mayankmankhand/gitmargin/issues/5) | npx gitmargin publish and pull: GitLab Pages deploy, Slack link, batch for agents (CLI + MCP) | Part 1: npx gitmargin attach and pull: inject the overlay, read comments back for agents | 1 |
 | [#15](https://github.com/mayankmankhand/gitmargin/issues/15) | (new, from #13) | Shared live comments: a comment service on Vercel + Neon the author deploys; versions, stored pages, replies, statuses; no sign-in | between 1 and 2 |
-| [#16](https://github.com/mayankmankhand/gitmargin/issues/16) to [#19](https://github.com/mayankmankhand/gitmargin/issues/19) | (new, from #13) | A publishing plugin, GitHub sign-in, GitLab sign-in through the company login, Vercel same-project mode | 2 |
+| [#16](https://github.com/mayankmankhand/gitmargin/issues/16) to [#19](https://github.com/mayankmankhand/gitmargin/issues/19) | (new, from #13) | A publishing plugin, GitHub sign-in, GitLab sign-in (built 2026-09-21, cycle 1; the company-login pass-through untested), Vercel same-project mode | 2 |
 | [#6](https://github.com/mayankmankhand/gitmargin/issues/6) | Dogfood round 1 on gitlab.com Pages with three real reviewers | Part 1 dogfood: a wizard prototype sent as a file to two reviewers, comments back, Claude Code applies | 1 |

@@ -8,8 +8,9 @@ Decided 2026-09-19. It came out of thinking through issues
 four features. It replaces the parked list in section 7 of [the split](v0-split.md) as the description of part 2.
 Technical terms are explained in the research report's [glossary](../research/prior-art-landscape.md#8-glossary).
 
-**Status on 2026-09-19:** this is a design record. The one browser claim it rests on has been measured (section 3).
-Cycle 1 (section 7) is being built under issue #18. Everything else here is decided and not yet built, and says so.
+**Status on 2026-09-21:** cycle 1 (section 7), the sign-in core and the GitLab plug, is built under issue #18 and was
+walked on two computers with two gitlab.com accounts. Everything else here is decided and not yet built, and says so.
+The contract is `service/API.md`; setup and warnings are in `service/README.md`.
 
 ## 1. Why one design
 
@@ -128,8 +129,11 @@ The decisions inside that picture:
   talked into pressing Continue on a link someone sent them gives that person a pass for that one prototype, until
   it expires.
 - **"No cookies, ever" stays true.** The service answers pages from any origin, a file on disk included, and that is
-  safe only because it never uses cookies. The pass travels in a request header. In strict reading mode an older
-  stored version opens with a one-use ticket in its address.
+  safe only because it never uses cookies. The pass travels in a request header. In strict reading mode a
+  stored copy opens with a one-use ticket in its address, handed out only at the Continue press of a sign-in that
+  began on the small sign-in page in front of that copy; the same redirect carries a one-time code after the `#`,
+  which no server sees, so the person lands already signed in. There is deliberately no route that turns a pass into
+  a ticket: a copy opened that way would hold no pass and need a second sign-in, and it would be one more door.
 - **A comment keeps the ownership rule it was created under.** Written under sign-in, it belongs to that verified
   person on any computer. Written under a typed name before sign-in was switched on, it stays a typed-name comment,
   with no verified mark.
@@ -212,8 +216,10 @@ and the page key, which is the tension described above.
 
 ## 6. What a reviewer experiences
 
-These are targets. The mechanism underneath them is measured (section 3); the click counts are confirmed by a
-two-computer walk at the end of cycle 1 and corrected here if the walk disagrees.
+The sign-in column was walked for cycle 1 on 2026-09-21, on gitlab.com: GitLab Pages (members only), the service
+link and a file from disk, end to end in Chrome; in Firefox the window opened from a real click with the pop-up
+blocker on and reached GitLab's login, and the rest rests on the automated suite. The Guest of a private group was
+recognised as a member with the `openid` permission alone. The other rows are still targets.
 
 | The page lives on | Typed names | With sign-in |
 |---|---|---|

@@ -86,14 +86,112 @@ comments. The panel's Version line opens the older versions, each with its own c
 - **Stored copies are not behind your password.** The service keeps a copy of each version (the newest ten, up to 4 MB
   each) so an older version can still be opened with its comments in place. If the live page sits behind a password,
   the stored copy does not: whoever has the link to it can open it.
-- **Names are typed, not verified.** There is no sign-in. "Your own" comment means "written in this browser".
+- **Names are typed, not verified, unless you switch sign-in on.** Without sign-in, "your own" comment means
+  "written in this browser". With it (next section), a comment carries the person's GitLab name and belongs to them
+  on any computer.
 - **A stored page cannot remember you.** It is served sandboxed, so a commenter's name and unsent comments last for
   that tab only.
 - **Limits:** 4,000 characters per comment, 500 comments and 50 versions per prototype, 60 writes a minute. You can
   remove anyone's comment, so a prototype that fills up with comments is recoverable. The version limit is not: at 50
   versions, start a new prototype by attaching from a folder with no previous copy, without `--key`.
 
-Sign-in is separate, later work. This service is the no-sign-in mode.
+Everything above describes a prototype with sign-in off, which is the default and never changes unless you change
+it.
+
+## Sign-in with GitLab (optional, per prototype)
+
+Reviewers press **Sign in with GitLab** in the comment panel and comment under their real GitLab name, and you can
+limit commenting, and reading too, to the members of one GitLab group. It works wherever the page lives: a file on
+disk, the service link, GitLab Pages, any host. The design and its reasons are in
+[docs/part-2-design.md](../docs/part-2-design.md); the contract is in [API.md](API.md).
+
+### Set it up, once per service
+
+1. **Register an application on GitLab.** Signed in to GitLab, open `/-/user_settings/applications` (avatar, Edit
+   profile, Access, Applications). Name it anything. Redirect URI: `https://<project>.vercel.app/auth/callback`, the
+   project's main address. Tick **Confidential**. Tick the one scope **`openid`** and nothing else: that is what keeps
+   GitLab's permission screen down to "verify who you are". Save. GitLab shows an **Application ID** and a **Secret**.
+2. **Give both to the deployment**, as sensitive values, then redeploy. A changed value is only picked up by a new
+   deployment.
+
+   ```bash
+   vercel env add GITMARGIN_GITLAB_ID production --sensitive
+   vercel env add GITMARGIN_GITLAB_SECRET production --sensitive
+   vercel deploy --prod
+   ```
+
+   **Paste the bare value: no quotes, no `export`, nothing around it.** The prompt shows nothing while you paste, so
+   use the Copy button on GitLab's page and paste once. A wrong ID makes GitLab itself say "unknown client"; a wrong
+   Secret makes the sign-in window say "GitLab did not confirm the sign-in". The ID is the long value with no prefix;
+   the Secret starts with `gloas-`. A self-managed GitLab also needs `GITMARGIN_GITLAB_URL` (default
+   `https://gitlab.com`).
+3. **Switch it on for a prototype:**
+
+   ```bash
+   node bin/gitmargin.js identity prototype.gitmargin.html gitlab --members your-group/full-path
+   node bin/gitmargin.js identity prototype.gitmargin.html gitlab --members your-group/full-path --read members
+   node bin/gitmargin.js identity prototype.gitmargin.html none
+   ```
+
+   The command prints, in plain words, who can now read and who can comment. The mode lives on the service, not in the
+   page, so you can change it without attaching or publishing again.
+
+### What a reviewer does
+
+Press Sign in. A small window opens on GitLab; the first time, GitLab asks them to approve, and after that it does
+not. The window then shows a page from **your** service naming the prototype and the person, with a short code such
+as `48-21`; they check it matches the code in their panel and press **Continue**. They are signed in for 7 days on
+that browser. A Guest of the group is a member: that was measured on gitlab.com, on a private group.
+
+### What you should know before you switch it on
+
+- **A pass is what a signed-in browser holds.** It is random, the service stores only its hash, it works for that one
+  prototype and for one thing, commenting there, and it lasts 7 days. GitLab's own tokens are used once, inside the
+  sign-in, and thrown away; the Secret never leaves the service.
+- **Removing someone is two steps.** Removing them from the GitLab group stops their next sign-in. Running the
+  `identity` command again, with the same settings, ends every pass for that prototype now, theirs included. Everyone
+  else signs in again with two presses.
+- **Why the Continue page exists, and the limit it leaves.** GitLab skips its approval after the first time, so
+  without that page someone holding the page key could send a member a sign-in link and collect a pass in the
+  member's name from one silent click. With it, nothing is granted until the member presses Continue on a page that
+  shows a code only their own panel shows. What remains: a member who is talked into pressing Continue on a link
+  someone sent them gives that person a pass for that one prototype, for at most 7 days.
+- **The members rule names a group by its full path,** matched whole and in any case, never by prefix. If you rename
+  or delete the group, set the rule again: a freed path can be registered by someone else.
+- **A copy you shared before switching sign-in on can still read, but its comments are refused** until you attach
+  and share it again, because the older overlay in it has no sign-in button. The comments are kept on that person's
+  page, not lost.
+- **Two people with the same display name look the same in the panel.** The GitLab username is stored and comes
+  through `pull`, but the panel shows the name.
+
+### Strict reading: `--read members`
+
+By default sign-in limits who can comment; anyone who can open the page can still read. With `--read members`,
+reading needs what commenting needs:
+
+- The panel shows "Sign in with GitLab to see comments" and nothing else until a member signs in.
+- The copies stored on the service stop being open links. Their address answers a small sign-in page that says
+  nothing about the prototype; after GitLab and Continue the person lands on the page, already signed in. A stored
+  copy cannot remember anyone, so a reload asks again: two presses, since GitLab no longer asks anything.
+- `pull --live` sends your author secret, because reading now needs it, under the same rule as every other command:
+  only to an address you typed yourself.
+- **What it does not do:** it cannot take back what someone already has. Comments a member's browser fetched while
+  they were a member stay in that browser, and a page they saved is theirs. The page on your own host is still
+  guarded only by your host.
+
+### When a sign-in fails
+
+| The small window shows | It means | Do |
+|---|---|---|
+| GitLab's own page: "unknown client" | the Application ID is wrong | add `GITMARGIN_GITLAB_ID` again, bare, and redeploy |
+| "GitLab did not confirm the sign-in" | the Secret is wrong, or GitLab was unreachable | renew the Secret on GitLab, add it again, redeploy |
+| "This sign-in is unknown, was already used, or took longer than 10 minutes" | the attempt was reused or too slow | close it and press Sign in again |
+| "only takes comments from members of ..." | that account is not in the group | expected for an outsider; otherwise check the invite was accepted |
+| "not set up for GitLab sign-in yet" | one of the two values is missing | `vercel env ls production` should list both |
+
+The reason is in the function's log by name, never with a secret in it: `vercel logs <project>.vercel.app --since 30m`
+and look for `token call refused:`. `invalid_client` is a wrong ID or Secret; `invalid_grant` is a reused attempt or a
+callback address that is not registered on the application.
 
 ## Tests
 
