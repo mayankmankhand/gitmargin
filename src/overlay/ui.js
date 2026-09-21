@@ -967,7 +967,10 @@ export function mountUi(deps) {
     const on = view.identity.mode !== 'none';
     const provider = providerName(view.identity.mode);
     const unsent = view.unsent;
-    const waitingToSend = unsent ? `to send ${unsent} comment${unsent === 1 ? '' : 's'}` : 'to comment';
+    // Strict reading: until someone signs in there is nothing to show, so the
+    // button says what signing in is FOR. Unsent work still comes first.
+    const strict = view.identity.read === 'members';
+    const waitingToSend = unsent ? `to send ${unsent} comment${unsent === 1 ? '' : 's'}` : strict ? 'to see comments' : 'to comment';
     let says = '';
     let code = '';
     let button = '';
@@ -984,7 +987,7 @@ export function mountUi(deps) {
       button = `Sign in with ${provider}`;
     } else if (on && view.signin.state === 'not_member') {
       const who = view.signin.who || {};
-      says = `Signed in as ${who.name || 'you'}. This prototype only takes comments from members of ${who.members || view.identity.members || 'one group'}.`;
+      says = `Signed in as ${who.name || 'you'}. This prototype ${strict ? 'is only open to' : 'only takes comments from'} members of ${who.members || view.identity.members || 'one group'}.`;
       button = 'Try another account';
     } else if (on && view.signin.state === 'failed') {
       says = 'Sign-in did not finish.';
@@ -1100,12 +1103,14 @@ export function mountUi(deps) {
   function sharedLine() {
     const view = sync.view();
     if (view.problem) return view.problem;
+    if (view.state === 'locked') return 'Comments on this prototype are for members only. Sign in to read them.';
     if (view.state === 'offline') {
       return store.storageOk() === false
         ? 'Working locally. Comments will be shared when the service is back; keep this tab open until then.'
         : 'Working locally. Comments will be shared when the service is back.';
     }
     if (view.state === 'connecting' || view.unsent > 0) return 'Sharing...';
+    if (view.identity.read === 'members') return 'Shared. Signed-in members see these comments.';
     return 'Shared. Everyone with this page sees these comments.';
   }
 

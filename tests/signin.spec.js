@@ -34,7 +34,7 @@ function gitmargin(args, env) {
 }
 
 /** A shared, attached wizard with sign-in on, and the service and provider behind it. */
-async function world(testInfo, { person = 'priya', members = 'gitmargin-test' } = {}) {
+async function world(testInfo, { person = 'priya', members = 'gitmargin-test', read = 'open' } = {}) {
   const fake = await startFakeGitlab({ person });
   const service = await startService({ gitlab: fake });
   fake.allowRedirect(`${service.url}/auth/callback`);
@@ -44,7 +44,7 @@ async function world(testInfo, { person = 'priya', members = 'gitmargin-test' } 
   await copyFile(resolve('fixtures/wizard.html'), source);
   const env = { GITMARGIN_SECRET: service.secret };
   const attached = await gitmargin(['attach', source, '--service', service.url], env);
-  if (members !== false) await gitmargin(['identity', attached, 'gitlab', '--members', members], env);
+  if (members !== false) await gitmargin(['identity', attached, 'gitlab', '--members', members, '--read', read], env);
   const html = readFileSync(attached, 'utf8');
   const key = /<meta name="gitmargin-key" content="([^"]+)"/.exec(html)[1];
   const version = /<meta name="gitmargin-version" content="([^"]+)"/.exec(html)[1];
@@ -218,6 +218,66 @@ test('with sign-in off the panel is exactly the old one and no /auth address is 
   await expect(page.locator('.gm-identity')).toBeHidden();
   await expect(page.locator('.gm-who')).toBeVisible();
   expect(asked.filter((u) => u.includes('/auth'))).toEqual([]);
+  await w.service.close();
+  await w.fake.close();
+});
+
+// ---- strict reading (plan step 9) ------------------------------------------
+
+test('strict reading, the stored copy: a sign-in page first, then the page, signed in, with nothing left in the address', async ({ browser }, testInfo) => {
+  const w = await world(testInfo, { read: 'members' });
+  const page = await (await browser.newContext()).newPage();
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(String(e)));
+
+  // A stranger with the link gets the sign-in page and not one word of the prototype.
+  const gate = await page.goto(w.stored);
+  expect(gate.status()).toBe(401);
+  await expect(page.locator('h1')).toHaveText('Sign in to open this page');
+  expect(await page.content()).not.toContain('step-1');
+
+  await page.click('#gm-signin');
+  await page.waitForLoadState();
+  if (await page.locator('#fake-sign-in').count()) await page.click('#fake-sign-in');
+  await page.waitForLoadState();
+  if (await page.locator('#fake-authorize').count()) await page.click('#fake-authorize');
+  await expect(page.locator('h1')).toHaveText('Open wizard.html as Priya Shah?', SLOW);
+  await page.click('#gm-continue');
+
+  // Same tab, now the prototype, and the panel is signed in without a second sign-in.
+  await page.waitForFunction(() => !!window.__gitmargin, null, SLOW);
+  await expect(page.locator('.gm-identity-says')).toHaveText('Commenting as Priya Shah · GitLab', SLOW);
+  expect(new URL(page.url()).hash).toBe('');
+  await comment(page, '#step-1 h2', 'Members only, and I am one.');
+  await expect(page.locator('.gm-card .gm-author').first()).toHaveText('Priya Shah · GitLab (you)', SLOW);
+  await expect.poll(async () => (await w.service.query('select 1 from comments')).length, SLOW).toBe(1);
+
+  // The ticket is spent: a reload, or the same address pasted elsewhere, meets the sign-in page again.
+  const again = await page.reload();
+  expect(again.status()).toBe(401);
+  expect(errors).toEqual([]);
+  await w.service.close();
+  await w.fake.close();
+});
+
+test('strict reading, a file on disk: the panel is locked and says so; signing in shows the comments', async ({ browser }, testInfo) => {
+  const w = await world(testInfo, { read: 'members' });
+  const context = await browser.newContext();
+  const writer = await context.newPage();
+  await open(writer, w.disk);
+  await expect(writer.locator('.gm-identity-btn')).toHaveText('Sign in with GitLab to see comments', SLOW);
+  await signIn(writer);
+  await expect(writer.locator('.gm-identity-says')).toHaveText('Commenting as Priya Shah · GitLab', SLOW);
+  await comment(writer, '#step-1 h2', 'Only members should read this.');
+  await expect.poll(async () => (await w.service.query('select 1 from comments')).length, SLOW).toBe(1);
+
+  // Someone else with the same file, signed out: no comments, and a plain reason.
+  const reader = await (await browser.newContext()).newPage();
+  const errors = await open(reader, w.disk);
+  await expect(reader.locator('.gm-identity-btn')).toHaveText('Sign in with GitLab to see comments', SLOW);
+  await expect(reader.locator('.gm-card')).toHaveCount(0);
+  await expect(reader.locator('.gm-panel')).toContainText('for members only');
+  expect(errors).toEqual([]);
   await w.service.close();
   await w.fake.close();
 });

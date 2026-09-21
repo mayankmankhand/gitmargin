@@ -22,7 +22,7 @@ const SECRET = 'sync-identity-test-value-0123';
 const SERVICE = 'https://comments.example';
 let instance = 0;
 
-async function world(t, { person = 'priya', members = 'gitmargin-test' } = {}) {
+async function world(t, { person = 'priya', members = 'gitmargin-test', read = 'open' } = {}) {
   const database = memoryDatabase();
   const fake = await startFakeGitlab({ person });
   fake.allowRedirect(`${SERVICE}/auth/callback`);
@@ -46,8 +46,8 @@ async function world(t, { person = 'priya', members = 'gitmargin-test' } = {}) {
   };
   const author = async (method, p, body) => JSON.parse((await call(method, p, { headers: { authorization: `Bearer ${SECRET}` }, body })).body);
   const { key } = await author('POST', '/api/prototypes', { name: 'proto.html' });
-  const { version_id: versionId } = await author('POST', `/api/prototypes/${key}/versions`, { hash: 'aaaaaa' });
-  if (members !== false) await author('PATCH', `/api/prototypes/${key}`, { identity: 'gitlab', members });
+  const { version_id: versionId } = await author('POST', `/api/prototypes/${key}/versions`, { hash: 'aaaaaa', html: '<!doctype html><h1>proto</h1>' });
+  if (members !== false) await author('PATCH', `/api/prototypes/${key}`, { identity: 'gitlab', members, read });
   const held = () => database.query('select id, author_name, author_provider from comments where deleted_at is null order by id');
   return { fake, deps, clock, key, versionId, author, call, held };
 }
@@ -63,7 +63,7 @@ async function popup(w, url, { press = 'continue' } = {}) {
   return shown;
 }
 
-async function client(w, { storage = new Map(), syncModule = '../src/overlay/sync.js', blocked = false } = {}) {
+async function client(w, { storage = new Map(), syncModule = '../src/overlay/sync.js', blocked = false, arrival = null } = {}) {
   instance += 1;
   const store = await import(`../src/overlay/store.js?identity=${instance}`);
   const { startSync } = await import(syncModule);
@@ -108,6 +108,7 @@ async function client(w, { storage = new Map(), syncModule = '../src/overlay/syn
       opened.push(url);
       return blocked ? null : { closed: true }; // reads as closed at once, as measured
     },
+    takeArrivalCode: () => arrival,
   });
 
   const idle = async () => {
@@ -315,4 +316,69 @@ test('a copy shared before the switch, still running the #15 overlay, fails safe
   await c.tick();
   await c.tick();
   assert.equal(c.net.calls.filter((line) => line.startsWith('POST')).length, writes, 'an old copy retries a refused write in a loop');
+});
+
+// ---- strict reading (plan step 9) ------------------------------------------
+
+test('strict reading: signed out, the panel is locked, says why, and asks rarely; signing in opens it', async (t) => {
+  const w = await world(t, { read: 'members' });
+  const writer = await client(w);
+  writer.sync.signIn();
+  await popup(w, writer.opened[0]);
+  await writer.tick();
+  writer.sync.add(draft('c_bbbbbb'));
+  await writer.idle();
+  assert.equal((await w.held()).length, 1);
+
+  const c = await client(w);
+  assert.equal(c.sync.view().state, 'locked');
+  assert.deepEqual(c.sync.view().identity, { mode: 'gitlab', read: 'members', members: null });
+  assert.equal(c.store.comments().length, 0, 'a signed-out browser was shown comments');
+  assert.equal(c.sync.debug().delay, 30_000, 'a locked panel must not knock every five seconds');
+
+  c.sync.signIn();
+  await popup(w, c.opened[0]);
+  await c.tick();
+  assert.equal(c.sync.view().state, 'shared');
+  assert.deepEqual(c.store.comments().map((x) => x.id), ['c_bbbbbb']);
+  assert.equal(c.sync.view().identity.members, 'gitmargin-test');
+});
+
+test('strict reading: when the author ends the passes, an open panel locks and keeps unsent work', async (t) => {
+  const w = await world(t, { read: 'members' });
+  const c = await client(w);
+  c.sync.signIn();
+  await popup(w, c.opened[0]);
+  await c.tick();
+  assert.equal(c.sync.view().state, 'shared');
+
+  await w.author('PATCH', `/api/prototypes/${w.key}`, { identity: 'gitlab', members: 'gitmargin-test', read: 'members' });
+  c.sync.add(draft('c_cccccc'));
+  await c.idle();
+  await c.tick();
+  assert.equal(c.sync.view().state, 'locked');
+  assert.equal(c.sync.view().session, null);
+  assert.equal(c.sync.view().unsent, 1, 'the comment was dropped instead of kept');
+  assert.equal((await w.held()).length, 0);
+});
+
+test('strict reading: a stored copy opened through the sign-in page arrives signed in, from the code after the #', async (t) => {
+  const w = await world(t, { read: 'members' });
+  const started = await w.call('GET', `/auth/start?key=${w.key}&return=latest`);
+  const confirmPage = await w.call('GET', w.fake.approve(started.headers.location));
+  const field = (name) => (new RegExp(`name="${name}" value="([^"]*)"`).exec(confirmPage.body) || [])[1];
+  const sent = await w.call('POST', '/auth/confirm', { body: { state: field('state'), token: field('token'), decision: 'continue' } });
+  assert.equal(sent.status, 303);
+  const code = /#gm_claim=([0-9a-f]{32})$/.exec(sent.headers.location)[1];
+
+  const c = await client(w, { arrival: code });
+  assert.deepEqual(c.sync.view().session, { provider: 'gitlab', name: 'Priya Shah', username: 'priya' });
+  assert.equal(c.sync.view().state, 'shared');
+  assert.equal(c.opened.length, 0, 'no second sign-in was needed');
+  assert.equal(c.net.calls[0], `POST /api/p/${w.key}/auth/claim`, 'the claim must come before the first list');
+
+  // A code that is wrong or already spent costs nothing: the panel is simply locked, with its own sign-in on offer.
+  const late = await client(w, { arrival: code });
+  assert.equal(late.sync.view().session, null);
+  assert.equal(late.sync.view().state, 'locked');
 });

@@ -88,6 +88,27 @@ function safeStorage(getStorage) {
 }
 
 /**
+ * The code a strict stored copy arrives with, taken OUT of the address at once:
+ * it works once, and a prototype's own script that reads the hash for its
+ * screens should not find ours in it. Null anywhere else.
+ */
+function arrivalCodeFromAddress() {
+  try {
+    const found = /(?:^#|&)gm_claim=([0-9a-f]{32})(?:&|$)/.exec(window.location.hash);
+    if (!found) return null;
+    const rest = window.location.hash.replace(/(^#|&)gm_claim=[0-9a-f]{32}/, '$1').replace(/^#&?$/, '');
+    try {
+      window.history.replaceState(null, '', window.location.pathname + window.location.search + rest);
+    } catch {
+      /* the code is spent on first use either way */
+    }
+    return found[1];
+  } catch {
+    return null;
+  }
+}
+
+/**
  * @param {object} deps
  * @param {{service: ?string, key: ?string, versionId: ?string}} deps.stamp
  * @param {object} deps.store  src/overlay/store.js
@@ -106,6 +127,9 @@ export function startSync({
   // play the person; in a browser it must run inside the click, which is why
   // everything before it in `signIn` is synchronous.
   openWindow = (url) => window.open(url, 'gitmargin-signin', 'popup,width=520,height=680'),
+  // Strict reading: a stored copy opened through the service's sign-in page
+  // arrives with a one-time code after the `#` (API.md, "Strict reading").
+  takeArrivalCode = arrivalCodeFromAddress,
 }) {
   if (!stamp || !stamp.service || !stamp.key || !stamp.versionId) return null;
 
@@ -455,7 +479,16 @@ export function startSync({
       const full = since === null;
       const url = `${base}?version=${encodeURIComponent(stamp.versionId)}${full ? '' : `&since=${encodeURIComponent(since)}`}`;
       const listed = await request('GET', url);
-      if (!listed.ok) {
+      if (!listed.ok && listed.answer.error === 'sign_in') {
+        // Strict reading, and this browser holds no pass the service accepts.
+        // Not a failure: the service is fine and said exactly what it wants. The
+        // next answer that does come must be a full one, whoever signs in.
+        setIdentity({ identity: listed.answer.provider, read: 'members', members: identity.members });
+        endSession();
+        since = null;
+        failures = 0;
+        setView({ state: 'locked', problem: null });
+      } else if (!listed.ok) {
         // The service answered, and the answer is "not this page". Polling on
         // would only repeat it; the comments stay local and say why.
         failures += 1;
@@ -481,6 +514,9 @@ export function startSync({
 
   function delay() {
     if (failures > 0) return Math.min(POLL_MS * 2 ** failures, MAX_BACKOFF_MS);
+    // Locked out of reading: only a sign-in (which kicks) or the author changing
+    // the rule can change the answer, so ask rarely.
+    if (view.state === 'locked') return QUIET_POLL_MS;
     return now() - lastActivity >= QUIET_AFTER_MS ? QUIET_POLL_MS : POLL_MS;
   }
 
@@ -511,15 +547,35 @@ export function startSync({
     }
   });
 
+  /** Swap an arrival code for a pass, once, before the first list is asked for. */
+  async function claimArrival(code) {
+    try {
+      const response = await fetchImpl(`${base.replace(/\/comments$/, '')}/auth/claim`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ code }),
+      });
+      const answer = await response.json();
+      if (response.status === 200 && answer && answer.member === true && typeof answer.pass === 'string') {
+        session = { pass: answer.pass, expires: answer.expires, identity: answer.identity || {} };
+        disk.write(passKey, session);
+      }
+    } catch {
+      /* no pass: the panel offers its own sign-in, as it would have anyway */
+    }
+  }
+
   save();
-  kick();
+  const arrival = takeArrivalCode();
+  if (arrival) claimArrival(arrival).then(kick);
+  else kick();
 
   return {
     subscribe(fn) {
       listeners.add(fn);
       return () => listeners.delete(fn);
     },
-    /** `{ state: 'connecting'|'shared'|'offline', problem, versions, latest }` */
+    /** `{ state: 'connecting'|'shared'|'offline'|'locked', problem, versions, latest }` */
     view: () => ({
       ...view,
       unsent: ops.length,

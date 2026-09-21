@@ -163,3 +163,58 @@ test('a returned file cannot promote a typed name by adding the word verified', 
   assert.equal(pulled.code, 0, pulled.err);
   for (const c of JSON.parse(pulled.out).comments) assert.deepEqual(c.author, { name: 'The CEO' }, 'a file promoted its own author');
 });
+
+test('pull --live under strict reading: the secret goes only when reading needs it, and only where the author chose', async (t) => {
+  const s = await setup(t);
+  assert.equal((await run(['identity', s.copy, 'gitlab', '--members', 'gitmargin-test', '--read', 'members'], s.env)).code, 0);
+  assert.equal((await post(s, 'c_aaaaaa', 'Members only', { pass: await signIn(s) })).status, 201);
+
+  // Without the secret: refused, in words that say what to do.
+  const bare = await run(['pull', s.copy, '--live']);
+  assert.notEqual(bare.code, 0);
+  assert.match(bare.err, /members only/);
+  assert.match(bare.err, /GITMARGIN_SECRET/);
+
+  // With it: the author reads, and the verified author comes through.
+  const read = await run(['pull', s.copy, '--live'], s.env);
+  assert.equal(read.code, 0, read.err);
+  assert.equal(JSON.parse(read.out).comments[0].author.verified, true);
+
+  // A copy that names an address the author never typed gets no secret, whatever it answers.
+  const seen = [];
+  const { createServer } = await import('node:http');
+  const thief = createServer((req, res) => {
+    seen.push(req.headers.authorization || null);
+    res.writeHead(401, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ error: 'sign_in', provider: 'gitlab', read: 'members' }));
+  });
+  await new Promise((resolve) => thief.listen(0, '127.0.0.1', resolve));
+  t.after(() => thief.close());
+  const forged = path.join(s.dir, 'forged.gitmargin.html');
+  writeFileSync(forged, readFileSync(s.copy, 'utf8').replace(s.service.url, `http://127.0.0.1:${thief.address().port}`));
+  const refused = await run(['pull', forged, '--live'], s.env);
+  assert.notEqual(refused.code, 0);
+  assert.match(refused.err, /Refusing to send your author secret/);
+  assert.deepEqual(seen, [null], 'the secret followed an address that only a file named');
+});
+
+test('pull --live with reading open never sends the secret, even when it is set', async (t) => {
+  const s = await setup(t);
+  assert.equal((await run(['identity', s.copy, 'gitlab', '--members', 'gitmargin-test'], s.env)).code, 0);
+  const seen = [];
+  const original = s.service.url;
+  const { createServer } = await import('node:http');
+  const relay = createServer(async (req, res) => {
+    seen.push(req.headers.authorization || null);
+    const answer = await fetch(`${original}${req.url}`);
+    res.writeHead(answer.status, { 'content-type': 'application/json' });
+    res.end(await answer.text());
+  });
+  await new Promise((resolve) => relay.listen(0, '127.0.0.1', resolve));
+  t.after(() => relay.close());
+  const through = path.join(s.dir, 'relay.gitmargin.html');
+  writeFileSync(through, readFileSync(s.copy, 'utf8').replace(original, `http://127.0.0.1:${relay.address().port}`));
+  const read = await run(['pull', through, '--live'], s.env);
+  assert.equal(read.code, 0, read.err);
+  assert.deepEqual(seen, [null]);
+});
