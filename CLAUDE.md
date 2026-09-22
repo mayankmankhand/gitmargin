@@ -23,11 +23,15 @@ reviewers (issue #6), which is scoped and ready to run: a designer and an engine
 fixture, with the file to send at `fixtures/onboarding.gitmargin.html`. The one gap found by using it, that
 comment mode did not show what a click would attach to, was issue #10 and is closed: a one-pixel frame follows
 the pointer and shows the element a click will anchor, snapped to the nearest control or named block
-(`docs/v0-split.md` section 2).
+(`docs/v0-split.md` section 2). **The overlay was redrawn in issue #21** (2026-09-22): a teardrop pin with the
+author's initials marks the spot, the thread opens beside the element, every comment lives in a sheet behind the count
+badge (grouped by screen, with All, Unread and Mine), and one floating pill holds comment mode, the badge and the
+identity chip. The look is Marker on a light page and Graphite on a dark one, measured from the page itself by
+`src/overlay/theme.js`; `DESIGN-PROFILE.md` names the system and the retired one.
 **Shared live comments are built** (issue #15): a comment service in `service/` that each author deploys to their own
 Vercel account with Neon Postgres. `attach --service <address>` registers the prototype and version, uploads a copy of
 the page, and writes the address and a page key into the copy; the overlay then saves locally first and syncs about
-every 5 seconds, and the panel shows authors, replies, a read-only status badge and a Version line that opens older
+every 5 seconds, and the comments carry authors, replies, a read-only status badge, and a Version line that opens older
 versions. `pull --live`, `status` and `remove` are the author's commands. By default there is no sign-in: the key in the page is
 the only gate. A page attached without `--service` never reaches the network. `service/API.md` is the contract the
 CLI and the overlay are both written against; `service/README.md` has the deploy steps and the plain-English warnings.
@@ -35,7 +39,7 @@ A reviewer needs Chrome or Edge 88, Firefox 85, or Safari 15.4; anything older n
 rather than failing silently (`docs/v0-split.md` section 5). **Part 2** (in progress; cycle 1 built, the rest parked) = sign-in (GitHub in issue #17, GitLab through the
 company login in #18), a publishing plugin (#16), Vercel same-project mode (#19), the Slack mirror, the phone mode, and
 the four spikes. **Part 2 has one design since 2026-09-19, in `docs/part-2-design.md`:** read it before touching sign-in or
-publishing, and do not restate it elsewhere. It is built in four cycles; **cycle 1, the sign-in core plus GitLab, is built (issue #18):** `gitmargin identity <copy> gitlab --members <group> [--read members]` sets the mode on the service, never in the page; the panel signs in through a pop-up and a confirm page; `service/src/signin.js` holds the flow; tests run against `tests/helpers/fake-gitlab.js`. This session may not write saved secrets or deploy to a production address: those lines are the owner's.
+publishing, and do not restate it elsewhere. It is built in four cycles; **cycle 1, the sign-in core plus GitLab, is built (issue #18):** `gitmargin identity <copy> gitlab --members <group> [--read members]` sets the mode on the service, never in the page; the overlay signs in through a pop-up and a confirm page; `service/src/signin.js` holds the flow; tests run against `tests/helpers/fake-gitlab.js`. This session may not write saved secrets or deploy to a production address: those lines are the owner's.
 The GitLab-issue mirror is retired: comments are shown on the page. The split and the reasons: `docs/v0-split.md`; the original decision and the
 out-of-scope list: `docs/v0-decision.md`; the batch an agent reads: `docs/batch-format.md` (v0.6, wire 0.1).
 

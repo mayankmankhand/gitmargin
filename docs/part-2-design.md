@@ -80,7 +80,7 @@ the way the real one does:
 Three consequences, all taken from the measurement:
 
 - The pop-up closes itself when it is done. The opening page cannot close it, and cannot even tell whether it is
-  still open: from its side the pop-up reads as closed from the first moment. So the panel never watches the window;
+  still open: from its side the pop-up reads as closed from the first moment. So the overlay never watches the window;
   waiting has its own Cancel and a time limit.
 - The one-time code's hash is computed in the page without waiting for anything, because whatever is awaited between
   the click and opening the pop-up invites the pop-up blocker. The browser's built-in hashing waits, and is missing
@@ -91,7 +91,7 @@ Three consequences, all taken from the measurement:
 ## 4. How sign-in works
 
 ```
-Reviewer clicks "Sign in with GitLab" in the panel
+Reviewer clicks "Sign in with GitLab" under the identity chip in the overlay's toolbar
   -> the page makes a one-time code and opens a small pop-up to the author's service   (pop-up blocked?)
     -> the service sends the pop-up to GitLab                                           (service not set up for GitLab?)
       -> GitLab: the company login if it is enforced, then one approval                 ("verify who you are" only)
@@ -125,12 +125,12 @@ The decisions inside that picture:
   page's key could make their own one-time code, send a group member the start link, and collect a pass under that
   member's name from a single silent click, because providers skip their approval screen after the first time. The
   confirm page names the prototype and the person and shows a short code that must match the one in the reviewer's
-  own panel, which is what every "sign in on another screen" flow does. The limit that remains: a member who is
+  own page, which is what every "sign in on another screen" flow does. The limit that remains: a member who is
   talked into pressing Continue on a link someone sent them gives that person a pass for that one prototype, until
   it expires.
 - **Strict reading is the second rule from section 2, switched on per prototype.** By default sign-in limits who may
   comment and anyone who can open the page may still read. With strict reading on, reading needs what commenting
-  needs: the panel shows nothing until a member signs in, the copies stored on the service stop being open links, and
+  needs: the overlay shows no comments until a member signs in, the copies stored on the service stop being open links, and
   the author's own `pull --live` sends the author secret. What it cannot do is take back what a member's browser
   already fetched.
 - **"No cookies, ever" stays true.** The service answers pages from any origin, a file on disk included, and that is

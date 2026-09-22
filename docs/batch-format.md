@@ -50,7 +50,7 @@ Four rules the embedded carrier lives by, all settled by building against it:
   rather than a dead end. Without that, re-sending a reviewed file would replace its comments with an empty list.
 - **The reviewed file is the page as it was delivered, not as the reviewer left it.** The overlay snapshots the
   document when its script starts, before it creates a single element of its own, and writes the comment block into
-  that. Serialising the live page instead would save a wizard frozen on step 3 with the overlay's panel baked in.
+  that. Serialising the live page instead would save a wizard frozen on step 3 with the overlay's sheet baked in.
   A page opened from disk cannot fetch its own source, which is why the snapshot is taken in the page rather than
   read from the file. One known limit: a prototype script that ran before the overlay has already changed the DOM,
   and its changes are in the snapshot. For the init-on-load scripts an AI writes, that is harmless; the issue #6

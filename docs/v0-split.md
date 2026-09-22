@@ -52,8 +52,9 @@ Three pieces:
    box opens: one text field with the placeholder "What did you expect here?" and an optional tag (change, bug,
    question, like). In comment mode a one-pixel frame follows the pointer and shows the element a click will
    attach to, snapped to the nearest control or named block: a click on the word inside a button means the button,
-   and a click on a bold word inside a paragraph means the paragraph. A small numbered pin marks the element; a
-   slim panel on the right lists every thread.
+   and a click on a bold word inside a paragraph means the paragraph. A pin carrying the reviewer's initials marks
+   the element and its thread opens beside it; a sheet behind the count badge lists every thread. (The pins were
+   numbered and the list was a permanent side panel until issue #21 redrew the overlay on 2026-09-22.)
 2. **Attach and pull.** `gitmargin attach prototype.html` writes a copy of the file next to the original with
    the overlay inside, and stamps a version id into that copy. The original is untouched; the copy is what you
    send. `gitmargin pull reviewed.html` reads the comments back out, from the returned file or from a pasted
@@ -115,7 +116,7 @@ prototype.
 Two measured limits found while building it, both standing as known gaps for the dogfood:
 
 - A prototype that opens a **modal** dialog (`showModal()`) puts that dialog above the overlay, so while it is open
-  the panel and the comment box cannot be reached. A non-modal dialog is fine, and the screen name is read from
+  the overlay and the comment box cannot be reached. A non-modal dialog is fine, and the screen name is read from
   either. Working around it would mean writing into the prototype's page, which part 1 does not do.
 - **Keyboard reach is partial.** A reviewer can turn comment mode on, tab to any control the prototype makes
   focusable, and press C to comment on it, and a text selection made with the keyboard works the same way. What is

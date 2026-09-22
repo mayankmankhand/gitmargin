@@ -77,7 +77,7 @@ checkout, attaches a new version of the same prototype instead of starting a new
 folder need only `--service`.
 
 Each attach of changed content is a new version (v1, v2, v3, numbered by the service). A new version opens with no
-comments. The panel's Version line opens the older versions, each with its own comments.
+comments. The Version line in the comments sheet opens the older versions, each with its own comments.
 
 ## What you should know before you share a page
 
@@ -100,7 +100,7 @@ it.
 
 ## Sign-in with GitLab (optional, per prototype)
 
-Reviewers press **Sign in with GitLab** in the comment panel and comment under their real GitLab name, and you can
+Reviewers press **Sign in with GitLab** under the identity chip in the overlay's toolbar and comment under their real GitLab name, and you can
 limit commenting, and reading too, to the members of one GitLab group. It works wherever the page lives: a file on
 disk, the service link, GitLab Pages, any host. The design and its reasons are in
 [docs/part-2-design.md](../docs/part-2-design.md); the contract is in [API.md](API.md).
@@ -142,7 +142,7 @@ disk, the service link, GitLab Pages, any host. The design and its reasons are i
 
 Press Sign in. A small window opens on GitLab; the first time, GitLab asks them to approve, and after that it does
 not. The window then shows a page from **your** service naming the prototype and the person, with a short code such
-as `48-21`; they check it matches the code in their panel and press **Continue**. On a page with a web address they
+as `48-21`; they check it matches the code the overlay shows them and press **Continue**. On a page with a web address they
 stay signed in for 7 days in that browser. On a copy stored on the service, and on a file opened from disk, the
 sign-in lasts for that tab only: those pages have no storage of their own that other pages cannot read, so the
 next visit is two presses again (GitLab asks nothing the second time). A Guest of the group is a member: that was
@@ -159,22 +159,23 @@ measured on gitlab.com, on a private group.
 - **Why the Continue page exists, and the limit it leaves.** GitLab skips its approval after the first time, so
   without that page someone holding the page key could send a member a sign-in link and collect a pass in the
   member's name from one silent click. With it, nothing is granted until the member presses Continue on a page that
-  shows a code only their own panel shows. What remains: a member who is talked into pressing Continue on a link
+  shows a code only their own page shows. What remains: a member who is talked into pressing Continue on a link
   someone sent them gives that person a pass for that one prototype, for at most 7 days.
 - **The members rule names a group by its full path,** matched whole and in any case, never by prefix. If you rename
   or delete the group, set the rule again: a freed path can be registered by someone else.
 - **A copy you shared before switching sign-in on can still read, but its comments are refused** until you attach
   and share it again, because the older overlay in it has no sign-in button. The comments are kept on that person's
   page, not lost.
-- **Two people with the same display name look the same in the panel.** The GitLab username is stored and comes
-  through `pull`, but the panel shows the name.
+- **Two people with the same display name are told apart by their handle.** The GitLab username is stored, comes
+  through `pull`, is shown after the name in every thread, and chooses the colour of the person's pin, so two
+  "Mayank Mankhand"s get two colours.
 
 ### Strict reading: `--read members`
 
 By default sign-in limits who can comment; anyone who can open the page can still read. With `--read members`,
 reading needs what commenting needs:
 
-- The panel shows "Sign in with GitLab to see comments" and nothing else until a member signs in.
+- The overlay shows "Sign in with GitLab to see comments" under the identity chip and no comments until a member signs in.
 - The copies stored on the service stop being open links. Their address answers a small sign-in page that says
   nothing about the prototype; after GitLab and Continue the person lands on the page, already signed in. A stored
   copy cannot remember anyone, so a reload asks again: two presses, since GitLab no longer asks anything.

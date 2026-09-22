@@ -17,6 +17,9 @@ reviewer receives a prototype in part 1. For a plain file, nothing here starts a
 | `service/tests/router.test.js` | node:test | every route, refusal and limit of the comment service |
 | `tests/roundtrip.spec.js`, `tests/cli-roundtrip.spec.js` | Playwright | the part-1 overlay and the attach, comment, pull round trip |
 | `tests/shared.spec.js` | Playwright | shared comments between two and three real browsers |
+| `tests/signin.spec.js` | Playwright | sign-in with a fake GitLab and a real pop-up |
+| `tests/overlay-rethink.spec.js` | Playwright | the redrawn overlay (issue #21): the light/dark switch, initials and colours, pin placement, the sheet's links to the pins, Unread, open state across a rebuild |
+| `tests/theme.test.js`, `tests/author.test.js` | node:test | the luminance maths behind the switch, and the initials and colour a chip carries |
 
 **The comment service in tests is the real one.** `tests/helpers/service-server.js` runs the same `route` function Vercel
 runs, over an in-process Postgres (PGlite, a root dev dependency) on a random loopback port. So the service tests need
@@ -38,7 +41,12 @@ behind the switch runs in `tests/theme.test.js` under Node, on the exact colour 
 **The three part-1 test files are a tripwire.** Shared comments were built under the rule that
 `tests/roundtrip.spec.js`, `tests/cli-roundtrip.spec.js` and `tests/cli.test.js` pass with zero edits, since a page
 attached without `--service` must behave exactly as before. It caught one real regression on the way. New behaviour
-gets new files.
+gets new files. The issue #21 rethink was the one deliberate part-1 change: the list moved into a sheet behind the
+count badge, the name field under the identity chip, and a row click opens the thread, so two of the three files
+were edited under a stated rule (a class-name swap, one added "open" click, a card assertion becoming the same
+comment's thread assertion, or an assertion on a removed control becoming the same assertion on its replacement),
+every edit listed in that plan's Outcomes, and no assertion changed what it checks beyond those. `tests/cli.test.js`
+was not touched.
 
 ## Browsers
 
