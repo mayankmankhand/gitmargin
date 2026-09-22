@@ -1,15 +1,26 @@
-// The Hairline UI: pins on the page, a panel down the right edge, and one
-// comment box. Everything lives in a shadow root, so the prototype's CSS cannot
-// reach in and the overlay's cannot reach out.
+// The overlay's surface (issue #21): pins on the page, a thread that opens at
+// the spot, a sheet listing every comment on demand, one floating pill of
+// controls, and one comment box. Everything lives in a shadow root, so the
+// prototype's CSS cannot reach in and the overlay's cannot reach out.
 //
-// The overlay never writes into the prototype's DOM. Pins and quote underlines
-// are drawn in our own tree at viewport coordinates, so the page the reviewer
-// sends back is the page they were given.
+// The overlay never writes into the prototype's DOM. Pins, frames and quote
+// underlines are drawn in our own tree at viewport coordinates, so the page
+// the reviewer sends back is the page they were given.
+//
+// Open state (which thread, whether the sheet is open, the filter, the
+// popovers) lives in variables here, never in the DOM: on a shared page the
+// surface is rebuilt whenever anyone comments, and a rebuild that read its
+// state from the DOM would close what a reviewer had just opened.
 
 import css from './ui.css';
 import { ROOT_ID } from './root.js';
+import { themeOf } from './theme.js';
+import { initialsOf, authorHue } from './author.js';
 
 const TAGS = ['change', 'bug', 'question', 'like'];
+const SHEET_WIDTH = 320;
+const PIN = 26; // the pin's box; it grows from its point when selected, so the point stays put
+const THREAD_WIDTH = 300;
 
 /** Small DOM helper: el('div', { class: 'x' }, [children]). */
 function el(tag, props = {}, children = []) {
@@ -23,7 +34,33 @@ function el(tag, props = {}, children = []) {
   return node;
 }
 
+/** An inline icon: one path in a 16-unit box, stroked in the current colour. */
+function icon(d) {
+  const NS = 'http://www.w3.org/2000/svg';
+  const node = document.createElementNS(NS, 'svg');
+  node.setAttribute('viewBox', '0 0 16 16');
+  node.setAttribute('aria-hidden', 'true');
+  node.setAttribute('class', 'gm-icon');
+  const path = document.createElementNS(NS, 'path');
+  path.setAttribute('d', d);
+  node.appendChild(path);
+  return node;
+}
+const BUBBLE = 'M2 3h12v8H6l-3 3v-3H2z';
+
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+const collapse = (s) => String(s || '').replace(/\s+/g, ' ').trim();
+
+/** "2m", "3h", "4d": how long ago, for a card's meta. Blank when the time is unreadable. */
+function ago(iso) {
+  const t = Date.parse(iso || '');
+  if (!Number.isFinite(t)) return '';
+  const s = Math.max(0, Math.round((Date.now() - t) / 1000));
+  if (s < 60) return 'now';
+  if (s < 3600) return `${Math.round(s / 60)}m`;
+  if (s < 86400) return `${Math.round(s / 3600)}h`;
+  return `${Math.round(s / 86400)}d`;
+}
 
 /**
  * A Range covering `exact` inside `root`, or null.
@@ -33,8 +70,7 @@ const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 function rangeForQuote(root, exact) {
   // Typed, not just truthy: on a shared page this value was written by whoever
   // holds the page key, and a number here used to throw inside the loop that
-  // draws every pin, hiding all of them for every reviewer (review R4). The
-  // service now refuses such a value; this is the overlay not relying on that.
+  // draws every pin, hiding all of them for every reviewer (review R4).
   if (!root || typeof exact !== 'string' || !exact || exact.length > 200) return null;
   const pattern = new RegExp(exact.split(/\s+/).map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\s+'));
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
@@ -54,10 +90,8 @@ function rangeForQuote(root, exact) {
 export function mountUi(deps) {
   const { store, batch, createComment, anchorFromElement, anchorFromSelection, resolve, setRecording, targetFor } = deps;
   // Null unless the page is shared (issue #15, src/overlay/sync.js). Every
-  // shared-mode element below is built only when this is set, so a plain file
-  // gets exactly the panel it always had.
+  // shared-mode element below is built only when this is set.
   const sync = deps.sync || null;
-  /** A blank name is allowed; it still needs something to stand in the list. */
   const PROVIDERS = { gitlab: 'GitLab', github: 'GitHub' };
   const providerName = (id) => PROVIDERS[id] || String(id || '');
   /**
@@ -71,10 +105,18 @@ export function mountUi(deps) {
     // The handle too: two people can share a display name, and the mark vouches
     // for the account, not for the name shown (review of the #18 cycle, R5).
     const handle = author.username ? ` @${author.username}` : '';
-    return `${name}${handle} \u00b7 ${providerName(author.provider)}`;
+    return `${name}${handle} · ${providerName(author.provider)}`;
   };
   /** A vouched-for name is drawn a step stronger than a typed one, so the two are told apart at a glance. */
   const authorClass = (author) => (author && author.verified === true ? 'gm-author is-verified' : 'gm-author');
+  /**
+   * Who a comment is from, for its chip. On a plain file comments carry no
+   * author: they are all the one reviewer's, so the chip is theirs.
+   */
+  const authorOf = (comment) => comment.author || (sync ? null : { name: store.reviewer() });
+  /** A chip: initials on the author's colour. */
+  const avatar = (author, cls = 'gm-avatar') =>
+    el('span', { class: cls, style: `--gm-author:${authorHue(author)}`, text: initialsOf(author && author.name), 'aria-hidden': 'true' });
 
   // ---- host + shadow root -------------------------------------------------
   const host = el('div', { id: ROOT_ID, popover: 'manual' });
@@ -87,14 +129,23 @@ export function mountUi(deps) {
     //
     // Known limit, measured: a <dialog> opened with showModal() AFTER this
     // point sits above us in the top layer, and re-showing the popover does not
-    // reorder it (Chromium 151). While such a dialog is open the panel and the
-    // comment box are behind its backdrop, so a reviewer cannot comment on a
-    // modal dialog's contents. Recorded for the issue #6 dogfood rather than
-    // worked around, because every workaround writes into the prototype's DOM.
+    // reorder it (Chromium 151). While such a dialog is open the overlay is
+    // behind its backdrop, so a reviewer cannot comment on a modal dialog's
+    // contents. Recorded rather than worked around, because every workaround
+    // writes into the prototype's DOM.
     host.showPopover();
   } catch {
     host.removeAttribute('popover'); // older engine: plain fixed positioning
   }
+
+  // Which way the page is lit decides which token set draws the overlay.
+  // Measured at mount, on resize, and once on the first scroll (theme.js).
+  let theme = 'light';
+  function applyTheme() {
+    theme = themeOf(document);
+    host.classList.toggle('gm-dark', theme === 'dark');
+  }
+  applyTheme();
 
   const pinLayer = el('div');
   const lineLayer = el('div');
@@ -107,70 +158,68 @@ export function mountUi(deps) {
 
   // ---- state --------------------------------------------------------------
   let commentMode = false;
-  let selectedId = null;
+  let selectedId = null; // the open thread
   let editingId = null;
-  // The reply being written, kept here rather than in the DOM: the list is
+  // The reply being written, kept here rather than in the DOM: the thread is
   // rebuilt whenever comments change, and in shared mode they change while you type.
   let replyingId = null;
   let editingReplyId = null;
   let replyDraft = '';
   let replyDiscardArmed = false; // Escape or Cancel pressed once over a typed reply
   let focusAfterRender = null; // a data-focus token to return keyboard focus to
-  let draft = null; // { anchor, element, x, y, tag }
+  let draft = null; // { anchor, element, tag }
   let stashedSelection = null;
   let framed = null; // the element the target preview is on, or null
   let pointerDown = false; // a drag in progress may be a text selection
   let selectionMoved = false; // did the selection change during this gesture?
   let selectionAtDown = ''; // the selection's text when the pointer went down
+  let sheetOpen = false;
+  let filter = 'all'; // all | unread | mine
+  let identityOpen = false;
+  let previewId = null; // the pin under the pointer
+  let hotId = null; // the sheet row under the pointer, whose pin lights up
+  let editDraft = null; // the text in the open edit field, so a rebuild never loses it
+  let editDiscardArmed = false; // Escape or a page click pressed once over a changed edit
+  let armedDelete = null; // the comment id, or `reply:<id>`, whose Delete was pressed once
+  let sheetOpenedOnce = false; // the reviewer has found the sheet, so the hint under the pill can go
+  let openedFrom = 'pin'; // what opened the thread, so closing it hands the keyboard back there
+  let noticeSay = ''; // the line under the pill, kept here so opening a popover can stand it down
+  let listDrawn = ''; // what the sheet's rows were last built from
+  let threadDrawn = ''; // what the thread was last built from
+  const pinPos = new Map(); // comment id -> { left, top, below } of its drawn pin
+  const pinCache = new Map(); // comment id -> { key, pick }: last frame's placement while the element has not moved
 
-  // ---- panel --------------------------------------------------------------
-  const rail = el('button', {
-    class: 'gm-rail',
-    type: 'button',
-    'aria-label': 'Open the gitmargin comment panel',
-  });
+  // ---- the chrome: one pill, top right -----------------------------------
   const switchBtn = el('button', {
     class: 'gm-switch',
     type: 'button',
     role: 'switch',
     'aria-checked': 'false',
-    title: 'While this is on, clicking marks a spot instead of using the page. Escape turns it off.',
-  }, [
-    el('span', { class: 'dot' }),
-    el('span', { class: 'label', text: 'Comment mode' }),
+    title: 'Comment mode. While this is on, clicking marks a spot instead of using the page. C turns it on, Escape off.',
+  }, [icon(BUBBLE), el('span', { class: 'label', text: 'Comment' })]);
+  const badgeCount = el('span', { class: 'count', text: '0' });
+  const badgeDot = el('span', { class: 'dot', hidden: 'hidden' });
+  const badgeBtn = el('button', { class: 'gm-badge', type: 'button', 'aria-expanded': 'false', title: 'All comments', 'data-focus': 'badge' }, [
+    icon(BUBBLE), badgeCount, badgeDot,
   ]);
-  const closeBtn = el('button', { class: 'gm-close', type: 'button', title: 'Collapse', text: '›' });
-  let whoRow = null; // the typed-name row, hidden while sign-in is on
-  const nameInput = el('input', { type: 'text', id: 'gm-reviewer', placeholder: 'optional' });
+  const idAvatar = el('span', { class: 'gm-avatar', 'aria-hidden': 'true' });
+  const idText = el('span', { class: 'label', hidden: 'hidden' });
+  const idBtn = el('button', { class: 'gm-id', type: 'button', 'aria-expanded': 'false', 'aria-label': 'Your name' }, [idAvatar, idText]);
+  const bar = el('div', { class: 'gm-bar', role: 'toolbar', 'aria-label': 'gitmargin' }, [switchBtn, badgeBtn, idBtn]);
+  // One line under the pill for what the closed sheet would otherwise hide:
+  // where Send is, that the service is down, that a newer version exists
+  // (review of #21, R7, R8, R11). A click opens the sheet.
+  const notice = el('button', { class: 'gm-notice', type: 'button', 'aria-live': 'polite', hidden: 'hidden' });
+  notice.addEventListener('click', () => openSheet());
+  shadow.append(bar, notice);
 
-  const listLabel = el('div', { class: 'gm-section' }, [el('span', { text: 'Comments' }), el('span', { class: 'gm-spacer' })]);
-  const listCount = el('span', { class: 'count' });
-  listLabel.appendChild(listCount);
-  const list = el('div', { class: 'gm-list' });
-  const overall = el('textarea', {
-    placeholder: 'Anything that is not about one spot',
-    'aria-label': 'A note about the whole thing',
-    hidden: 'hidden',
-  });
-  const noteToggle = el('button', { class: 'gm-note-toggle', type: 'button', text: 'Add a note about the whole thing' });
-  const sendBtn = el('button', { class: 'gm-btn primary', type: 'button', text: 'Send to author' });
-  const copyBtn = el('button', { class: 'gm-btn ghost', type: 'button', text: 'Copy for author' });
-  const said = el('div', { class: 'gm-said', role: 'status', 'aria-live': 'polite' });
-  const keepNote = el('div', { class: 'gm-keep', role: 'status', 'aria-live': 'polite' });
-
-  // Shared mode only: which version of the page this is, the way to the others,
-  // and a nudge when this is not the newest. At the top of the panel rather
-  // than across the page, because a bar would cover the design under review.
-  const versionBtn = el('button', { class: 'gm-version', type: 'button', 'aria-expanded': 'false' });
-  // Polite live region: 'Loading...' and a failure to load are otherwise silent.
-  const versionList = el('div', { class: 'gm-versions', hidden: 'hidden', 'aria-live': 'polite' });
-  const newerNote = el('div', { class: 'gm-newer', role: 'status' });
-  const sharedHead = el('div', { class: 'gm-shared', hidden: 'hidden' }, [versionBtn, versionList, newerNote]);
-
-  // Sign-in (issue #18). One line that takes the place of the typed-name fields
-  // when, and only when, the comment service says this prototype uses sign-in.
-  // Built once and updated in place: it sits above a live list, and rebuilding
-  // things up there is what costs keyboard users their place (LESSONS, #15).
+  // ---- the identity popover: the typed name, or the sign-in states ---------
+  const nameInput = el('input', { type: 'text', id: 'gm-reviewer', placeholder: 'optional', maxlength: '80' });
+  const whoRow = el('div', { class: 'gm-who' }, [
+    el('label', { for: 'gm-reviewer', text: sync ? 'Your name, shown with your comments' : 'Your name, for the author' }),
+    nameInput,
+  ]);
+  // Sign-in (issue #18). Built once and updated in place.
   const identitySays = el('span', { class: 'gm-identity-says' });
   const identityCode = el('span', { class: 'gm-identity-code', hidden: 'hidden' });
   // One live region holds the sentence AND the code, so a screen reader hears
@@ -187,84 +236,245 @@ export function mountUi(deps) {
     if (sync.view().signin.state === 'waiting') sync.cancelSignIn();
     else sync.signOut();
   });
+  const idPop = el('div', { class: 'gm-pop gm-idpop', hidden: 'hidden', role: 'dialog', 'aria-label': 'Your name' }, [
+    ...(sync ? [identityLine] : []),
+    whoRow,
+  ]);
+  shadow.appendChild(idPop);
 
-  const panel = el('div', {
-    class: 'gm-panel is-open',
+  // ---- the sheet: every comment, grouped by screen ------------------------
+  const listCount = el('span', { class: 'count', text: '0' });
+  const sheetTitle = el('div', { class: 'gm-section' }, [el('span', { text: 'Comments' }), listCount]);
+  const closeBtn = el('button', { class: 'gm-close', type: 'button', title: 'Close', 'aria-label': 'Close the comments list', text: '✕' });
+  const filters = el('div', { class: 'gm-filters', hidden: sync ? null : 'hidden' });
+  const filterBtns = ['all', 'unread', 'mine'].map((key) =>
+    el('button', { type: 'button', class: 'gm-filter', 'data-filter': key, 'aria-pressed': 'false', text: key[0].toUpperCase() + key.slice(1) })
+  );
+  filterBtns.forEach((b) => {
+    filters.appendChild(b);
+    b.addEventListener('click', () => {
+      filter = b.dataset.filter;
+      render(true);
+    });
+  });
+  const list = el('div', { class: 'gm-list' });
+  const overall = el('textarea', {
+    placeholder: 'Anything that is not about one spot',
+    'aria-label': 'A note about the whole thing',
+    hidden: 'hidden',
+  });
+  // Drawn as a field, because it is one: pressing it opens the real textarea.
+  const noteToggle = el('button', { class: 'gm-note-toggle', type: 'button', text: 'Add a note about the whole thing' });
+  const sendBtn = el('button', { class: 'gm-btn primary', type: 'button', text: 'Send to author' });
+  const copyBtn = el('button', { class: 'gm-btn ghost', type: 'button', text: 'Copy for author' });
+  const said = el('div', { class: 'gm-said', role: 'status', 'aria-live': 'polite' });
+  const keepNote = el('div', { class: 'gm-keep', role: 'status', 'aria-live': 'polite' });
+
+  // Shared mode only: which version of the page this is, the way to the others,
+  // and a nudge when this is not the newest.
+  const versionBtn = el('button', { class: 'gm-version', type: 'button', 'aria-expanded': 'false' });
+  // Polite live region: 'Loading...' and a failure to load are otherwise silent.
+  const versionList = el('div', { class: 'gm-versions', hidden: 'hidden', 'aria-live': 'polite' });
+  const newerNote = el('div', { class: 'gm-newer', role: 'status' });
+  const sharedHead = el('div', { class: 'gm-shared', hidden: 'hidden' }, [versionBtn, versionList, newerNote]);
+
+  const sheet = el('div', {
+    class: 'gm-sheet',
+    hidden: 'hidden',
     role: 'complementary',
     'aria-label': 'gitmargin comments',
   }, [
-    rail,
-    el('div', { class: 'gm-panel-inner' }, [
-      el('div', { class: 'gm-head' }, [
-        el('span', { class: 'gm-label name', text: 'gitmargin' }),
-        el('div', { class: 'gm-spacer' }),
-        switchBtn,
-        closeBtn,
-      ]),
-      ...(sync ? [sharedHead, identityLine] : []),
-      (whoRow = el('div', { class: 'gm-who' }, [
-        el('label', { for: 'gm-reviewer', text: sync ? 'Your name, shown with your comments' : 'Your name, for the author' }),
-        nameInput,
-      ])),
-      listLabel,
-      list,
-      el('div', { class: 'gm-foot' }, [noteToggle, overall, el('div', { class: 'gm-send' }, [sendBtn, copyBtn]), said, keepNote]),
-      el('div', { class: 'gm-fill' }),
+    el('div', { class: 'gm-sheet-head' }, [
+      el('div', { class: 'gm-sheet-title' }, [sheetTitle, el('div', { class: 'gm-spacer' }), closeBtn]),
+      keepNote,
+      ...(sync ? [sharedHead] : []),
+    ]),
+    filters,
+    list,
+    el('div', { class: 'gm-foot' }, [
+      noteToggle,
+      overall,
+      el('div', { class: 'gm-send' }, [sendBtn, copyBtn]),
+      said,
     ]),
   ]);
-  shadow.appendChild(panel);
+  shadow.appendChild(sheet);
 
-  const openPanel = () => panel.classList.add('is-open');
+  // ---- the thread and the hover preview, at the spot ----------------------
+  const thread = el('div', { class: 'gm-thread', hidden: 'hidden', role: 'dialog', 'aria-label': 'Comment' });
+  const preview = el('div', { class: 'gm-preview', hidden: 'hidden', 'aria-hidden': 'true' });
+  shadow.append(thread, preview);
+  // Clicks inside the thread are about the thread, never "click elsewhere".
+  thread.addEventListener('click', (e) => e.stopPropagation());
+
+  // ---- open and close ------------------------------------------------------
+  /** The bar and the popovers move left when the sheet is open. */
+  function layoutChrome() {
+    bar.classList.toggle('is-shifted', sheetOpen);
+    notice.classList.toggle('is-shifted', sheetOpen);
+    idPop.classList.toggle('is-shifted', sheetOpen);
+    sheet.hidden = !sheetOpen;
+    badgeBtn.setAttribute('aria-expanded', sheetOpen ? 'true' : 'false');
+    idPop.hidden = !identityOpen;
+    idBtn.setAttribute('aria-expanded', identityOpen ? 'true' : 'false');
+    paintNotice();
+  }
+
+  /**
+   * The line under the pill. It shares that spot with the identity popover and
+   * is covered by the sheet, so it stands down for either rather than fighting
+   * for the space.
+   */
+  function paintNotice() {
+    if (notice.textContent !== noticeSay) notice.textContent = noticeSay;
+    notice.hidden = !noticeSay || identityOpen || sheetOpen;
+  }
+  const openSheet = () => {
+    if (sheetOpen) return;
+    sheetOpen = true;
+    sheetOpenedOnce = true;
+    identityOpen = false;
+    layoutChrome();
+    render(true);
+  };
+  const closeSheet = () => {
+    if (!sheetOpen) return;
+    sheetOpen = false;
+    layoutChrome();
+    render();
+  };
+  function closePopovers() {
+    if (!identityOpen) return;
+    identityOpen = false;
+    layoutChrome();
+  }
+  function openThread(id, { scroll = false, from = 'pin' } = {}) {
+    selectedId = id;
+    openedFrom = from;
+    previewId = null;
+    closePopovers();
+    // Reading someone else's comment is what Unread means by "read".
+    if (sync && !sync.isMine(id) && store.markSeen) store.markSeen(id);
+    render(true);
+    if (!scroll) return;
+    const entry = resolvedNow.find((r) => r.comment.id === id);
+    if (entry && entry.element && entry.status === 'found') {
+      entry.element.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }
+  }
+  /** The text the open edit started from, so a change can be told from a look. */
+  function editOriginal() {
+    const c = store.comments().find((x) => x.id === editingId);
+    return c ? c.intent.text : '';
+  }
+  /**
+   * Close, but not silently over a changed edit: the same two-press rule the
+   * comment box and a typed reply already follow (review of #21, R3).
+   */
+  function closeThreadGuarded() {
+    if (editingId !== null && editDraft !== null && editDraft !== editOriginal() && !editDiscardArmed) {
+      editDiscardArmed = true;
+      render(true);
+      return false;
+    }
+    closeThread();
+    return true;
+  }
+  function closeThread() {
+    if (selectedId === null) return;
+    const closing = selectedId;
+    selectedId = null;
+    editingId = null;
+    editDraft = null;
+    editDiscardArmed = false;
+    armedDelete = null;
+    // A typed reply is work; it stays put for when the thread opens again.
+    if (!replyDraft.trim()) {
+      replyingId = null;
+      editingReplyId = null;
+    }
+    render(true);
+    // The keyboard goes back to where the thread was opened from: its pin, its
+    // row in the sheet, or the badge (review of #21, R10). Moved directly
+    // rather than through the focus token, because that one steps aside when
+    // anything still holds focus, and here the thing holding it is the control
+    // this close just hid.
+    focusBack(closing);
+  }
+
+  /** Put the keyboard back on whatever opened the thread: its row, its pin, else the badge. */
+  function focusBack(id) {
+    const pin = pins.get(id);
+    const row = sheetOpen ? cards.get(id) : null;
+    const live = (node) => node && node.isConnected && node;
+    const back = openedFrom === 'card' ? live(row) || live(pin) : live(pin) || live(row);
+    (back || badgeBtn).focus();
+  }
+
   const setMode = (on) => {
     commentMode = !!on;
     setRecording(!commentMode); // the trail records the prototype, not the overlay
     switchBtn.classList.toggle('is-on', commentMode);
     document.documentElement.style.cursor = commentMode ? 'crosshair' : '';
-    // A page-level signal that survives collapsing the panel. The crosshair is
-    // not enough on its own: a prototype's own `cursor: pointer` wins over it
-    // on exactly the buttons a reviewer tries to click (review R14).
+    // A page-level signal that is visible wherever the reviewer looks. The
+    // crosshair is not enough on its own: a prototype's own `cursor: pointer`
+    // wins over it on exactly the buttons a reviewer tries to click (review R14).
     host.classList.toggle('gm-armed', commentMode);
     switchBtn.setAttribute('aria-checked', commentMode ? 'true' : 'false');
     if (!commentMode) hideTarget();
-    if (commentMode) openPanel();
     // Leaving the mode governs what a click does; it is not a reason to throw
     // away a comment in progress. An empty box closes, a written one stays open
     // so the reviewer can still save it (review R16, residual path).
-    else if (!boxText.value.trim()) closeBox();
+    else closePopovers();
+    if (!commentMode && !boxText.value.trim()) closeBox();
   };
 
-  rail.addEventListener('click', openPanel);
-  closeBtn.addEventListener('click', () => {
-    // Collapsing hides the switch, so leaving comment mode armed behind it
-    // would freeze the prototype with no visible cause (review R14).
-    setMode(false);
-    panel.classList.remove('is-open');
-  });
   switchBtn.addEventListener('click', () => setMode(!commentMode));
+  badgeBtn.addEventListener('click', () => (sheetOpen ? closeSheet() : openSheet()));
+  closeBtn.addEventListener('click', () => {
+    closeSheet();
+    badgeBtn.focus();
+  });
+  idBtn.addEventListener('click', () => {
+    identityOpen = !identityOpen;
+    layoutChrome();
+    if (identityOpen && !whoRow.hidden) nameInput.focus();
+  });
+  function showNote() {
+    overall.hidden = false;
+    noteToggle.textContent = 'A note about the whole thing';
+    overall.focus();
+  }
   noteToggle.addEventListener('click', () => {
-    overall.hidden = !overall.hidden;
-    noteToggle.textContent = overall.hidden ? 'Add a note about the whole thing' : 'A note about the whole thing';
-    if (!overall.hidden) overall.focus();
+    if (!overall.hidden) {
+      overall.hidden = true;
+      noteToggle.textContent = 'Add a note about the whole thing';
+      return;
+    }
+    showNote();
   });
   nameInput.addEventListener('input', () => store.setReviewer(nameInput.value));
   overall.addEventListener('input', () => store.setOverallNote(overall.value));
 
-  sendBtn.addEventListener('click', () => {
+  function tell(message) {
+    said.textContent = message;
+  }
+  function doSend() {
     const name = batch.download();
     store.markExported();
-    said.textContent = `Saved ${name} to your downloads. Reply to the message you got this file in and attach it.`;
-  });
-  copyBtn.addEventListener('click', async () => {
+    tell(`Saved ${name} to your downloads. Reply to the message you got this file in and attach it.`);
+  }
+  async function doCopy() {
     const result = await batch.copy();
     if (window.__gitmargin) {
       window.__gitmargin.lastCopy = result.text;
       window.__gitmargin.lastCopyOk = result.ok;
     }
     if (result.ok) store.markExported();
-    said.textContent = result.ok
-      ? 'Copied. Paste it anywhere.'
-      : 'Could not reach the clipboard. Use Send to author instead.';
-  });
+    tell(result.ok ? 'Copied. Paste it anywhere.' : 'Could not reach the clipboard. Use Send to author instead.');
+  }
+  sendBtn.addEventListener('click', doSend);
+  copyBtn.addEventListener('click', doCopy);
 
   // ---- comment box --------------------------------------------------------
   const boxWhere = el('div', { class: 'where' });
@@ -312,9 +522,8 @@ export function mountUi(deps) {
       keepBoxInView();
       boxName.focus();
     } else {
-      // Asked beside the reply itself. It used to send focus to the name field at
-      // the top of the panel and explain itself in the footer, leaving the reply
-      // behind with no way back by keyboard (review R11).
+      // Asked beside the reply itself, so the reply is never left behind with
+      // no way back by keyboard (review R11).
       replyNameAsk = true;
       render(true);
     }
@@ -376,9 +585,10 @@ export function mountUi(deps) {
   }
 
   /**
-   * How the box describes the spot. The reviewer may be a designer or an
-   * executive, so a raw CSS selector is not an answer; the exported markdown
-   * already says "the Continue button", and this says the same (review R27).
+   * How the box and the thread describe the spot. The reviewer may be a
+   * designer or an executive, so a raw CSS selector is not an answer; the
+   * exported markdown already says "the Continue button", and this says the
+   * same (review R27).
    */
   function describe(anchor, element) {
     const quoted = anchor.quote && anchor.quote.exact;
@@ -399,12 +609,13 @@ export function mountUi(deps) {
     // is typing. A highlight has no frame: the selection itself is the mark.
     if (keep) showTarget(keep);
     else hideTarget();
+    closeThread();
     boxText.value = '';
     box.hidden = false;
     // Place it near the spot, then keep it inside the viewport. A keyboard
     // entry has no pointer coordinates, so fall back to the element's own box
-    // rather than pinning the panel to the top-left corner (review R20).
-    const width = 268;
+    // rather than pinning the box to the top-left corner (review R20).
+    const width = 300;
     const height = box.getBoundingClientRect().height || 190;
     let atX = x;
     let atY = y;
@@ -415,7 +626,7 @@ export function mountUi(deps) {
       atX = rect.left;
       atY = rect.bottom;
     }
-    box.style.left = `${clamp(atX + 12, 8, window.innerWidth - width - 8)}px`;
+    box.style.left = `${clamp(atX + 12, 8, usableRight() - width - 8)}px`;
     box.style.top = `${clamp(atY + 12, 8, window.innerHeight - height - 8)}px`;
     boxText.focus();
   }
@@ -433,7 +644,6 @@ export function mountUi(deps) {
     });
     store.add(comment);
     closeBox();
-    openPanel();
   }
 
   saveBtn.addEventListener('click', saveDraft);
@@ -457,9 +667,26 @@ export function mountUi(deps) {
       closeBoxGuarded();
       return;
     }
-    // R14: with no box open, Escape is the way out of comment mode. Without it
-    // there was no keyboard exit at all, and a reviewer who could not find the
-    // switch had a frozen prototype and no explanation.
+    // One layer at a time, nearest first: a thread, then a popover, then the
+    // sheet, then comment mode itself. Without the last there was no keyboard
+    // exit at all (R14), and a reviewer who could not find the switch had a
+    // frozen prototype and no explanation.
+    if (selectedId !== null) {
+      e.preventDefault();
+      closeThreadGuarded();
+      return;
+    }
+    if (identityOpen) {
+      e.preventDefault();
+      closePopovers();
+      return;
+    }
+    if (sheetOpen) {
+      e.preventDefault();
+      closeSheet();
+      badgeBtn.focus();
+      return;
+    }
     if (commentMode) {
       e.preventDefault();
       setMode(false);
@@ -467,18 +694,17 @@ export function mountUi(deps) {
   });
 
   // ---- target preview (issue #10) -----------------------------------------
-  // In comment mode nothing used to show what a click would attach to, and the
-  // answer was the innermost node under the pointer: a word's <span>, an icon,
-  // a wrapper. Now the pointer is followed by a frame around targetFor(node),
-  // and the click handler below calls the same function, so the frame can only
-  // ever show the element the click will pick.
+  // In comment mode a frame follows the pointer and shows the element a click
+  // will attach a comment to, snapped up from the innermost node under the
+  // pointer by targetFor. The click handler below calls the same function, so
+  // the frame can only ever show the element the click will pick.
 
   /**
    * The stroke never leaves the window. A wrapper wider than the viewport used
    * to get a frame with all four edges offscreen, which looked exactly like
    * "nothing to comment on" while a click still opened a box on it (review R7,
-   * #10 cycle). Four pixels in, so the line sits inside the armed border with
-   * a gap rather than on top of it.
+   * #10 cycle). Four pixels in, so the line sits inside the armed edge with a
+   * gap rather than on top of it.
    */
   const INSET = 4;
 
@@ -551,7 +777,7 @@ export function mountUi(deps) {
 
   // One update per animation frame, however fast the pointer moves. Capture
   // phase, like every other listener here, so a prototype that stops
-  // propagation cannot hide the preview. Over the overlay's own panel the
+  // propagation cannot hide the preview. Over the overlay's own chrome the
   // event target is the host, which targetFor rejects, so the frame goes away.
   let lastPointerTarget = null;
   let pointerScheduled = false;
@@ -619,9 +845,16 @@ export function mountUi(deps) {
   document.addEventListener(
     'click',
     (event) => {
-      if (!commentMode) return;
       const raw = event.target;
-      if (!raw || raw.nodeType !== 1 || raw.closest(`#${ROOT_ID}`)) return;
+      const inOverlay = raw && raw.nodeType === 1 && raw.closest(`#${ROOT_ID}`);
+      // A click on the page closes what floats over it: the thread and the
+      // popovers. The sheet stays; it is closed on purpose, from its own X.
+      if (!inOverlay) {
+        closePopovers();
+        if (selectedId !== null && (box.hidden || commentMode)) closeThreadGuarded();
+      }
+      if (!commentMode) return;
+      if (!raw || raw.nodeType !== 1 || inOverlay) return;
 
       event.preventDefault();
       event.stopPropagation();
@@ -662,7 +895,7 @@ export function mountUi(deps) {
    * keys, because the selection was only ever stashed on mouseup (review R20).
    */
   document.addEventListener('keydown', (event) => {
-    if (!commentMode || !box.hidden) return;
+    if (!box.hidden) return;
     if (event.key !== 'c' && event.key !== 'C') return;
     if (event.metaKey || event.ctrlKey || event.altKey) return;
 
@@ -674,6 +907,13 @@ export function mountUi(deps) {
     }
     // Never steal the key from something the reviewer is typing into.
     if (active && (active.isContentEditable || active.matches('input, textarea, select'))) return;
+    // With the mode off, C turns it on, which is what the button's tooltip and
+    // the empty sheet promise (review of #21, R9).
+    if (!commentMode) {
+      event.preventDefault();
+      setMode(true);
+      return;
+    }
 
     const selection = window.getSelection();
     const hasText = selection && !selection.isCollapsed && selection.toString().trim();
@@ -699,11 +939,81 @@ export function mountUi(deps) {
 
   // ---- rendering ----------------------------------------------------------
   const pins = new Map(); // comment id -> pin element
-  const cards = new Map(); // comment id -> { row, elements }
+  const cards = new Map(); // comment id -> the sheet row
+  let resolvedNow = []; // the last resolve, read by openThread's scroll
+
+  /** The right edge the overlay may use for floating things: the sheet takes the rest. */
+  const usableRight = () => window.innerWidth - (sheetOpen ? SHEET_WIDTH : 0);
+
+  /**
+   * True when the comment is a highlight inside its element rather than the
+   * element itself: its quote is a fragment of the element's text. A highlight's
+   * pin sits at the end of the quoted words, not on the element's corner, so a
+   * text comment and an element comment on one block never overlap.
+   */
+  function isHighlight(comment, element, range) {
+    const exact = comment.anchor.quote && comment.anchor.quote.exact;
+    return Boolean(range && exact && collapse(element.textContent).length > exact.length);
+  }
+
+  /**
+   * The extent of an element's visible text: a heading is a block as wide as
+   * its column, but its words end long before that, and the thread should sit
+   * beside the words. Null when there is nothing to measure.
+   */
+  function textExtent(element) {
+    try {
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      const rects = Array.from(range.getClientRects()).filter((r) => r.width && r.height);
+      if (!rects.length) return null;
+      return { left: Math.min(...rects.map((r) => r.left)), right: Math.max(...rects.map((r) => r.right)) };
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Whether a pin drawn at (left, top) would cover something. The page is asked
+   * what sits under the pin's centre: the page's own ground, the element the
+   * pin is about, or a box that contains it, is free; anything else (a
+   * neighbouring control, another pin, the sheet) is taken.
+   */
+  function pinSpotFree(left, top, element) {
+    // The centre and the four corners: a pin whose centre is on the ground
+    // while one corner clips a neighbouring button is not free.
+    const inset = 1;
+    const points = [
+      [left + PIN / 2, top + PIN / 2],
+      [left + inset, top + inset],
+      [left + PIN - inset, top + inset],
+      [left + inset, top + PIN - inset],
+      [left + PIN - inset, top + PIN - inset],
+    ];
+    for (const [x, y] of points) {
+      let hit = null;
+      try {
+        hit = document.elementFromPoint(x, y);
+      } catch {
+        return true;
+      }
+      if (!hit || hit === document.body || hit === document.documentElement) continue;
+      if (hit === host) return false;
+      if (hit === element || hit.contains(element)) continue;
+      return false;
+    }
+    return true;
+  }
 
   function renderPins(resolved) {
     lineLayer.textContent = '';
+    pinPos.clear();
     const seen = new Set();
+    const placed = []; // the pins drawn so far this frame, so the next one can avoid them
+    // While the pins are being placed they let the pointer through, so the
+    // free-spot probe sees the page and not a pin's own position from the
+    // last frame; each one takes the pointer back once it is placed.
+    for (const pin of pins.values()) pin.style.pointerEvents = 'none';
 
     resolved.forEach(({ comment, status, element }, index) => {
       if (status !== 'found' || !element) return;
@@ -711,8 +1021,7 @@ export function mountUi(deps) {
       // Off the viewport on ANY edge: no pin at all. Checked before the pin is
       // claimed, so a pin that leaves the screen is removed rather than left at
       // the edge (review R23). The horizontal half matters as much as the
-      // vertical: an off-canvas drawer slides sideways, and a clamped pin then
-      // lands on top of the overlay's own panel.
+      // vertical: an off-canvas drawer slides sideways.
       const rect = element.getBoundingClientRect();
       if (
         rect.bottom < 0 ||
@@ -724,74 +1033,155 @@ export function mountUi(deps) {
       }
       seen.add(comment.id);
 
-      let pin = pins.get(comment.id);
-      if (!pin) {
-        pin = el('button', { class: 'gm-pin', type: 'button' });
-        pin.addEventListener('click', () => {
-          selectedId = selectedId === comment.id ? null : comment.id;
-          openPanel();
-          render();
-          const card = cards.get(comment.id);
-          if (card) card.row.scrollIntoView({ block: 'nearest' });
-        });
-        pins.set(comment.id, pin);
-        pinLayer.appendChild(pin);
-      }
-      pin.textContent = String(index + 1);
-      pin.title = comment.intent.text;
-      // The visible label is a bare digit, and the comment text lives in a
-      // title a keyboard or touch user never sees (review R21).
-      pin.setAttribute('aria-label', `Comment ${index + 1}: ${comment.intent.text}`);
-      pin.classList.toggle('is-selected', selectedId === comment.id);
-
-      // Selecting a comment frames the thing it is about. This is the whole
-      // claim of the tool made visible: here is where the reviewer was.
-      if (selectedId === comment.id) {
-        const box = element.getBoundingClientRect();
-        lineLayer.appendChild(
-          el('div', {
-            class: 'gm-frame',
-            style: `left:${box.left - 3}px;top:${box.top - 3}px;width:${box.width + 6}px;height:${box.height + 6}px`,
-          })
-        );
-      }
-
-      // Above the element's leading edge, fully clear of it: a pin sitting on
-      // the corner reads as damage to the prototype, and a pin in the left
-      // gutter collides with whatever shares the row. Below when there is no
-      // room above.
-      const above = rect.top - 30;
-      const pinLeft = clamp(rect.left - 2, 2, window.innerWidth - 20);
-      const pinTop = clamp(above >= 2 ? above : rect.bottom + 12, 2, window.innerHeight - 20);
-      pin.style.left = `${pinLeft}px`;
-      pin.style.top = `${pinTop}px`;
-
-      // A hairline from the pin to the element, so the number is visibly about
-      // that thing and not floating near it.
-      const gap = above >= 2 ? rect.top - (pinTop + 18) : pinTop - rect.bottom;
-      if (gap > 0 && gap < 40) {
-        const lineTop = above >= 2 ? pinTop + 18 : rect.bottom;
-        lineLayer.appendChild(
-          el('div', { class: 'gm-leader', style: `left:${pinLeft + 9}px;top:${lineTop}px;height:${gap}px` })
-        );
-      }
-
-      // The pencil mark under the quoted text.
+      // The pencil mark under the quoted text, and the point a highlight's pin
+      // sits on.
       let range = null;
       try {
         range = rangeForQuote(element, comment.anchor.quote && comment.anchor.quote.exact);
       } catch {
         // One comment's underline is never worth every other comment's pin.
       }
-      if (range) {
-        for (const r of range.getClientRects()) {
-          if (!r.width) continue;
-          lineLayer.appendChild(
-            el('div', {
-              class: 'gm-underline',
-              style: `left:${r.left}px;top:${r.bottom}px;width:${r.width}px`,
-            })
-          );
+      const rects = range ? Array.from(range.getClientRects()).filter((r) => r.width) : [];
+      const highlight = isHighlight(comment, element, range) && rects.length > 0;
+      // The spot: the element's top-left corner, or the end of the quoted words.
+      const spot = highlight
+        ? { x: rects[rects.length - 1].right, top: rects[rects.length - 1].top, bottom: rects[rects.length - 1].bottom }
+        : { x: rect.left, top: rect.top, bottom: rect.bottom };
+
+      let pin = pins.get(comment.id);
+      if (!pin) {
+        pin = el('button', { class: 'gm-pin', type: 'button', 'data-focus': `pin:${comment.id}` }, [el('span', { class: 'initials' })]);
+        pin.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (selectedId === comment.id) closeThread();
+          else openThread(comment.id);
+        });
+        // A hover previews the thread, mouse only: on touch there is no hover,
+        // and while a thread is open the preview would only get in its way.
+        pin.addEventListener('pointerenter', (e) => {
+          if (e.pointerType && e.pointerType !== 'mouse') return;
+          if (selectedId !== null) return;
+          previewId = comment.id;
+          renderPreview();
+        });
+        pin.addEventListener('pointerleave', () => {
+          if (previewId !== comment.id) return;
+          previewId = null;
+          renderPreview();
+        });
+        pins.set(comment.id, pin);
+        pinLayer.appendChild(pin);
+      }
+      const author = authorOf(comment);
+      pin.style.setProperty('--gm-author', authorHue(author));
+      pin.firstChild.textContent = initialsOf(author && author.name);
+      pin.title = comment.intent.text;
+      // The visible label is initials and a digit, and the comment text lives
+      // in a title a keyboard or touch user never sees (review R21).
+      pin.setAttribute('aria-label', `Comment ${index + 1}: ${comment.intent.text}`);
+      pin.classList.toggle('is-selected', selectedId === comment.id);
+      pin.classList.toggle('is-hot', hotId === comment.id);
+
+      // Selecting a comment frames the thing it is about, in the accent (the
+      // author's colour belongs to the pin and the chip alone). This is the
+      // whole claim of the tool made visible: here is where the reviewer was.
+      // The frame hugs the words, not the block: a heading's box runs the
+      // width of its column, and a frame that wide reads as a form field.
+      const text = textExtent(element);
+      const box = text
+        ? { left: Math.max(rect.left, text.left - 2), right: Math.min(rect.right, text.right + 2) }
+        : { left: rect.left, right: rect.right };
+      if (selectedId === comment.id) {
+        lineLayer.appendChild(
+          el('div', {
+            class: 'gm-frame',
+            style: `left:${box.left - 3}px;top:${rect.top - 3}px;width:${box.right - box.left + 6}px;height:${rect.height + 6}px`,
+          })
+        );
+      }
+
+      // The point of the teardrop touches the spot and the body hangs off the
+      // element, never on it: on it would read as damage to the prototype.
+      // The places to try, in order: for an element, the gutter to its upper
+      // left with the point on the corner (on a centred prototype that covers
+      // nothing at all), then above the corner, then below it; for a
+      // highlight, above the end of its words, then below. A place is taken
+      // when the page has something else there (a neighbouring control, an
+      // earlier pin), and a pin that has to step away from its spot draws a
+      // line back to it, so the map of comments never reads as clutter.
+      const OVERLAP = 4; // how far the point reaches onto the spot
+      const STEP = PIN - 4;
+      const places = highlight
+        ? [
+            { left: spot.x - 2, top: spot.top - PIN - OVERLAP, cls: '', dir: 1, at: [spot.x, spot.top] },
+            { left: spot.x - 2, top: spot.bottom + OVERLAP, cls: 'is-below', dir: 1, at: [spot.x, spot.bottom] },
+          ]
+        : [
+            { left: spot.x - PIN + OVERLAP, top: spot.top - PIN + OVERLAP, cls: 'is-left', dir: -1, at: [spot.x, spot.top] },
+            { left: spot.x - PIN + OVERLAP, top: spot.top - OVERLAP, cls: 'is-below is-left', dir: -1, at: [spot.x, spot.top] },
+            { left: spot.x - 2, top: spot.top - PIN - OVERLAP, cls: '', dir: 1, at: [spot.x, spot.top] },
+            { left: spot.x - 2, top: spot.bottom + OVERLAP, cls: 'is-below', dir: 1, at: [spot.x, spot.bottom] },
+            { left: spot.x - PIN + OVERLAP, top: spot.bottom - OVERLAP, cls: 'is-below is-left', dir: -1, at: [spot.x, spot.bottom] },
+          ];
+      const maxLeft = usableRight() - PIN - 2;
+      const maxTop = window.innerHeight - PIN - 2;
+      const overlaps = (l, t) => placed.some((p) => l < p.right + 6 && l + PIN > p.left - 6 && t < p.bottom + 6 && t + PIN > p.top - 6);
+      // Probing the page is the expensive part, so last frame's place is kept
+      // while the element has not moved and the window has not changed
+      // (review of #21, R15). A neighbour that appears under a resting pin
+      // is caught the next time the element moves.
+      const cacheKey = `${Math.round(spot.x)},${Math.round(spot.top)},${Math.round(spot.bottom)},${maxLeft},${maxTop},${highlight ? 1 : 0}`;
+      const cached = pinCache.get(comment.id);
+      let pick = cached && cached.key === cacheKey && !overlaps(cached.pick.left, cached.pick.top) ? cached.pick : null;
+      for (const place of pick ? [] : places) {
+        for (let step = 0; step <= 3 && !pick; step += 1) {
+          const l = place.left + step * STEP * place.dir;
+          const t = place.top;
+          if (l < 2 || l > maxLeft || t < 2 || t > maxTop) continue;
+          if (overlaps(l, t) || !pinSpotFree(l, t, element)) continue;
+          pick = { ...place, left: l, top: t };
+        }
+        if (pick) break;
+      }
+      // Nowhere is free: the first place, kept inside the window, and stepped
+      // clear of earlier pins at least.
+      if (!pick) {
+        let l = clamp(places[0].left, 2, maxLeft);
+        const t = clamp(places[0].top, 2, maxTop);
+        for (let step = 0; step < 4 && overlaps(l, t); step += 1) l = clamp(l + STEP * places[0].dir, 2, maxLeft);
+        pick = { ...places[0], left: l, top: t };
+      }
+      pinCache.set(comment.id, { key: cacheKey, pick });
+      const pinLeft = pick.left;
+      const pinTop = pick.top;
+      const isLeft = pick.cls.includes('is-left');
+      const below = pick.cls.includes('is-below');
+      pin.style.left = `${pinLeft}px`;
+      pin.style.top = `${pinTop}px`;
+      pin.style.pointerEvents = '';
+      pin.classList.toggle('is-left', isLeft);
+      pin.classList.toggle('is-below', below);
+      placed.push({ left: pinLeft, top: pinTop, right: pinLeft + PIN, bottom: pinTop + PIN });
+      pinPos.set(comment.id, { left: pinLeft, top: pinTop, below, rect, textRight: box.right, frameRight: box.right + 3 });
+
+      // Where the point is, against where the spot is: a pin that had to step
+      // away gets a line from its point to the spot.
+      const pointX = isLeft ? pinLeft + PIN : pinLeft;
+      const pointY = below ? pinTop : pinTop + PIN;
+      const dx = pick.at[0] - pointX;
+      const dy = pick.at[1] - pointY;
+      const length = Math.hypot(dx, dy);
+      if (length > 8 && length < 240) {
+        const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
+        lineLayer.appendChild(el('div', { class: 'gm-leader', style: `left:${pointX}px;top:${pointY}px;width:${length}px;transform:rotate(${angle}deg)` }));
+      }
+
+      // The pencil mark under the quoted words, for a highlight only: an
+      // element's whole text underlined next to its pin says nothing the pin
+      // does not, and the frame says the rest when the thread is open.
+      if (highlight) {
+        for (const r of rects) {
+          lineLayer.appendChild(el('div', { class: 'gm-underline', style: `left:${r.left}px;top:${r.bottom}px;width:${r.width}px` }));
         }
       }
     });
@@ -800,37 +1190,62 @@ export function mountUi(deps) {
       if (!seen.has(id)) {
         pin.remove();
         pins.delete(id);
+        pinCache.delete(id);
       }
     }
   }
 
+  /** The one-line card that follows the pointer over a pin. */
+  function renderPreview() {
+    const entry = previewId !== null ? resolvedNow.find((r) => r.comment.id === previewId) : null;
+    const at = entry && pinPos.get(entry.comment.id);
+    if (!entry || !at) {
+      preview.hidden = true;
+      return;
+    }
+    preview.textContent = '';
+    const author = authorOf(entry.comment);
+    preview.append(el('b', { text: nameOf(author) }), el('span', { text: entry.comment.intent.text }));
+    preview.hidden = false;
+    const width = 220;
+    const height = preview.offsetHeight || 44;
+    let left = at.left + PIN + 8;
+    if (left + width > usableRight() - 8) left = at.left - width - 8;
+    preview.style.left = `${clamp(left, 8, usableRight() - width - 8)}px`;
+    preview.style.top = `${clamp(at.top, 8, window.innerHeight - height - 8)}px`;
+  }
+
+  /** One author line: chip, name, the handle when vouched for, and how long ago. */
+  function whoRowFor(author, { own = false, time = '' } = {}) {
+    const meta = el('div', { class: 'gm-meta' }, [
+      el('span', { class: authorClass(author), text: own ? `${nameOf(author)} (you)` : nameOf(author) }),
+      time ? el('span', { class: 'gm-time', text: ago(time) }) : null,
+    ]);
+    return el('div', { class: 'gm-who-row' }, [avatar(author), meta]);
+  }
+
   /**
    * The replies under a comment, plus the one-line field when a reply is being
-   * written here. Null when there is nothing to draw, so a plain file's card is
-   * exactly the card it was.
+   * written here. Null when there is nothing to draw.
    */
   function repliesFor(comment) {
     const replies = Array.isArray(comment.replies) ? comment.replies : [];
     const writing = sync && replyingId === comment.id;
-    if (!replies.length && !writing) return null;
+    if (!replies.length || (writing && editingReplyId && replies.length === 1)) return null;
     const wrap = el('div', { class: 'gm-replies' });
-    // Clicks in here are about the reply, not about selecting the card.
-    wrap.addEventListener('click', (e) => e.stopPropagation());
 
     replies.forEach((r) => {
       if (writing && editingReplyId === r.id) return; // it is in the field below
       const mine = sync && sync.isMine(r.id);
       const row = el('div', { class: 'gm-reply' }, [
-        el('div', { class: 'gm-meta' }, [
-          el('span', { class: authorClass(r.author), text: mine ? `${nameOf(r.author)} (you)` : nameOf(r.author) }),
-          // A reply the service refused stays here, marked, until its writer fixes it (review R12).
-          sync && sync.isUnshared(r.id) ? el('span', { class: 'gm-flag', text: 'not shared yet' }) : null,
-        ]),
+        whoRowFor(r.author, { own: mine, time: r.time }),
+        // A reply the service refused stays here, marked, until its writer fixes it (review R12).
+        sync && sync.isUnshared(r.id) ? el('div', { class: 'gm-meta', style: 'margin-left:28px' }, [el('span', { class: 'gm-flag', text: 'not shared yet' })]) : null,
         el('p', { class: 'gm-text', text: String(r.text || '') }),
       ]);
       if (mine) {
-        const edit = el('button', { type: 'button', text: 'Edit', 'data-focus': `redit:${r.id}` });
-        const del = el('button', { type: 'button', class: 'gm-del', text: 'Delete', 'data-focus': `rdel:${r.id}` });
+        const edit = el('button', { type: 'button', class: 'gm-quiet', text: 'Edit', 'data-focus': `redit:${r.id}` });
+        const del = el('button', { type: 'button', class: 'gm-del gm-quiet', text: 'Delete', 'data-focus': `rdel:${r.id}` });
         edit.addEventListener('click', () => {
           replyingId = comment.id;
           editingReplyId = r.id;
@@ -838,12 +1253,21 @@ export function mountUi(deps) {
           render(true);
         });
         // Two steps, like a comment's Delete, for the same reason (review R17).
+        // The armed step is state, not a mark on the button: the thread is
+        // rebuilt whenever anyone comments, and a mark on the button went with
+        // it (review of #21, R5).
+        if (armedDelete === `reply:${r.id}`) {
+          del.textContent = 'Delete?';
+          del.dataset.armed = 'yes';
+        }
         del.addEventListener('click', () => {
-          if (del.dataset.armed !== 'yes') {
-            del.dataset.armed = 'yes';
-            del.textContent = 'Delete?';
+          if (armedDelete !== `reply:${r.id}`) {
+            armedDelete = `reply:${r.id}`;
+            focusAfterRender = `rdel:${r.id}`;
+            render(true);
             return;
           }
+          armedDelete = null;
           sync.removeReply(comment.id, r.id);
           focusAfterRender = `reply:${comment.id}`;
           render(true);
@@ -852,8 +1276,13 @@ export function mountUi(deps) {
       }
       wrap.appendChild(row);
     });
+    return wrap;
+  }
 
-    if (writing) {
+  /** The one-line reply field, with the name ask beside it when a name is needed. */
+  function replyComposer(comment) {
+    const wrap = el('div', { class: 'gm-reply-write' });
+    {
       const field = el('input', { type: 'text', class: 'gm-reply-field', 'aria-label': 'Your reply', placeholder: 'Reply', maxlength: '4000' });
       field.value = replyDraft;
       const askingName = replyNameAsk && !store.reviewer().trim();
@@ -867,8 +1296,8 @@ export function mountUi(deps) {
         replyDraft = '';
         replyNameAsk = false;
         replyDiscardArmed = false;
-        // The list is rebuilt, and with it whatever had focus. Put it back on this
-        // card's Reply button, or keyboard users land on the page body (review R14).
+        // The thread is rebuilt, and with it whatever had focus. Put it back on
+        // this comment's Reply button, or keyboard users land on the page body (review R14).
         focusAfterRender = `reply:${comment.id}`;
         render(true);
       };
@@ -912,8 +1341,8 @@ export function mountUi(deps) {
       }
       wrap.appendChild(el('div', { class: 'gm-reply-row' }, [field, send, cancel]));
       wrap.appendChild(warn);
-      // The list was just rebuilt, so these are new elements: put the caret back,
-      // in the name field when that is what is being asked for.
+      // The thread was just rebuilt, so these are new elements: put the caret
+      // back, in the name field when that is what is being asked for.
       requestAnimationFrame(() => {
         if (replyingId !== comment.id) return;
         const target = askingName ? nameField : field;
@@ -926,7 +1355,7 @@ export function mountUi(deps) {
   /**
    * Put keyboard focus back after a rebuild destroyed the element that had it.
    * Only when focus really was lost: if the person has since moved somewhere
-   * else in the panel, that is where they want to be.
+   * else in the overlay, that is where they want to be.
    */
   function restoreFocus() {
     if (!focusAfterRender) return;
@@ -938,6 +1367,216 @@ export function mountUi(deps) {
       const target = Array.from(shadow.querySelectorAll('[data-focus]')).find((node) => node.dataset.focus === token);
       if (target) target.focus();
     });
+  }
+
+  /** The flags a comment carries: where it is, how sure the pin is, whether it reached the others. */
+  function flagsFor(entry) {
+    const { comment, status, via } = entry;
+    const out = [];
+    if (status === 'hidden') out.push(el('span', { class: 'gm-flag', text: 'on another screen' }));
+    if (status === 'orphaned') out.push(el('span', { class: 'gm-flag', text: 'orphaned' }));
+    // The exact element is gone and only its container was found, so the pin is
+    // approximate. Saying so beats pointing confidently at the wrong thing.
+    if ((via === 'ancestor' || via === 'quote-loose') && status !== 'orphaned') out.push(el('span', { class: 'gm-flag', text: 'nearby' }));
+    if (sync && sync.isUnshared(comment.id)) out.push(el('span', { class: 'gm-flag', text: 'not shared yet' }));
+    return out;
+  }
+
+  /**
+   * The thread: one comment, at its spot, with its replies. Rebuilt whole,
+   * except while its text or a reply is being edited (see renderPanel).
+   */
+  function renderThread(resolved, force) {
+    const entry = selectedId !== null ? resolved.find((r) => r.comment.id === selectedId) : null;
+    if (!entry) {
+      if (selectedId !== null) selectedId = null; // deleted under us
+      thread.hidden = true;
+      return;
+    }
+    const { comment, status, element } = entry;
+    const own = !sync || sync.isMine(comment.id);
+    const screen = comment.state.screen && comment.state.screen.name;
+    const index = resolved.indexOf(entry);
+    // Rebuilt only when what it shows has changed, never on a scroll (review of
+    // #21, R1), and never at all while its own text or a reply is being typed
+    // in it (review R7): that field lives inside it. The typed draft is not
+    // part of the signature, so typing itself never triggers a rebuild.
+    const busy = editingId === comment.id || replyingId === comment.id;
+    const signature = JSON.stringify([comment, status, entry.via, own, index, screen, editingId, replyingId, editingReplyId, replyNameAsk, replyDiscardArmed, editDiscardArmed, armedDelete, store.reviewer()]);
+    if (!force && thread.childElementCount && (busy || signature === threadDrawn)) return;
+    threadDrawn = signature;
+
+    // Whatever control in here has the keyboard is about to be destroyed (review R14).
+    const active = shadow.activeElement;
+    if (!focusAfterRender && active && thread.contains(active) && active.dataset.focus) focusAfterRender = active.dataset.focus;
+    thread.textContent = '';
+
+    const ctx = el('div', { class: 'gm-thread-ctx' }, [
+      el('span', { class: 'where' }, [
+        el('b', { text: `#${index + 1}` }),
+        screen ? el('span', { class: 'gm-screen', text: screen }) : null,
+        el('span', { class: 'gm-quote', text: describe(comment.anchor, element) }),
+      ]),
+      ...flagsFor(entry),
+      // What the author or their agent did with it. Read-only here: a status is
+      // set from the command line. 'open' is the default and says nothing.
+      comment.status && comment.status !== 'open' ? el('span', { class: 'gm-status', text: comment.status }) : null,
+    ]);
+
+    const body = el('div', { class: 'gm-thread-body' });
+    body.appendChild(whoRowFor(comment.author || authorOf(comment), { own: Boolean(sync && own), time: comment.time }));
+    if (comment.intent.tag) body.appendChild(el('div', { class: 'gm-meta', style: 'margin-left:28px' }, [el('span', { class: 'gm-tag', text: comment.intent.tag })]));
+
+    if (editingId === comment.id) {
+      const area = el('textarea', { 'data-focus': `editing:${comment.id}` });
+      area.value = editDraft === null ? comment.intent.text : editDraft;
+      area.addEventListener('input', () => {
+        editDraft = area.value;
+        editDiscardArmed = false;
+      });
+      const save = el('button', { type: 'button', text: 'Save' });
+      const cancel = el('button', { type: 'button', text: 'Cancel' });
+      const done = () => {
+        editingId = null;
+        editDraft = null;
+        editDiscardArmed = false;
+        focusAfterRender = `edit:${comment.id}`;
+        render(true);
+      };
+      save.addEventListener('click', () => {
+        const text = area.value.trim();
+        if (text) store.update(comment.id, { intent: { ...comment.intent, text } });
+        done();
+      });
+      cancel.addEventListener('click', done);
+      body.append(
+        area,
+        el('div', { class: 'gm-card-actions' }, [save, cancel]),
+        el('div', { class: 'gm-boxwarn', role: 'status', text: editDiscardArmed ? 'Press again to discard what you typed.' : '' })
+      );
+    } else {
+      const edit = el('button', { type: 'button', class: 'gm-quiet', text: 'Edit', 'data-focus': `edit:${comment.id}` });
+      const del = el('button', { type: 'button', class: 'gm-del gm-quiet', text: 'Delete', 'data-focus': `del:${comment.id}` });
+      edit.addEventListener('click', () => {
+        editingId = comment.id;
+        editDraft = comment.intent.text;
+        editDiscardArmed = false;
+        focusAfterRender = `editing:${comment.id}`;
+        render(true);
+      });
+      // Two steps, in place. A comment is the reviewer's own prose and nothing
+      // keeps a copy once it is gone, so one mis-aimed click should not be
+      // enough (review R17). The armed step is state, so a rebuild between
+      // the two clicks does not reset it (review of #21, R5).
+      if (armedDelete === comment.id) {
+        del.textContent = 'Delete?';
+        del.dataset.armed = 'yes';
+      }
+      del.addEventListener('click', () => {
+        if (armedDelete !== comment.id) {
+          armedDelete = comment.id;
+          focusAfterRender = `del:${comment.id}`;
+          render(true);
+          return;
+        }
+        armedDelete = null;
+        store.remove(comment.id);
+        render(true);
+        badgeBtn.focus(); // its pin and its row are gone with it
+      });
+      // Edit and Delete only on what this browser wrote. Without sign-in that is
+      // all 'your own' can mean; the service enforces the same rule with the
+      // edit token, so hiding the buttons is a courtesy, not the lock.
+      const actions = own ? [edit, del] : [];
+      body.append(
+        el('p', { class: 'gm-text', text: comment.intent.text }),
+        ...(actions.length ? [el('div', { class: 'gm-card-actions' }, actions)] : [])
+      );
+    }
+    const replies = repliesFor(comment);
+    if (replies) body.appendChild(replies);
+
+    // Reply is the thread's own action, so it sits at the foot, after the
+    // replies; while one is being written, the field takes its place.
+    const foot = el('div', { class: 'gm-thread-foot' });
+    if (sync && replyingId === comment.id) {
+      foot.appendChild(replyComposer(comment));
+    } else if (sync) {
+      const reply = el('button', { type: 'button', class: 'gm-reply-btn', text: 'Reply', 'data-focus': `reply:${comment.id}` });
+      reply.addEventListener('click', () => {
+        // A reply half-written elsewhere is work, like a comment is (review R15).
+        if (replyingId && replyingId !== comment.id && replyDraft.trim() && !replyDiscardArmed) {
+          replyDiscardArmed = true;
+          render(true);
+          return;
+        }
+        replyDiscardArmed = false;
+        replyingId = comment.id;
+        editingReplyId = null;
+        replyDraft = '';
+        render(true);
+      });
+      foot.appendChild(reply);
+      // The parked draft's own warning is in a thread that is not on screen, so
+      // the second press would discard it silently; say so here (review of #21, R4).
+      if (replyingId && replyingId !== comment.id && replyDiscardArmed) {
+        foot.appendChild(el('div', { class: 'gm-boxwarn', role: 'status', text: 'Press again to discard the reply you were writing elsewhere.' }));
+      }
+    }
+
+    thread.append(ctx, body, foot);
+    thread.hidden = false;
+    thread.dataset.id = comment.id;
+    thread.dataset.status = status;
+    restoreFocus();
+  }
+
+  /**
+   * Where the thread sits: beside the element it is about, never on it. To
+   * the right of the element when that fits, else to its left, else under it;
+   * pushed up when it would run off the bottom. Docked under the chrome when
+   * the comment has no pin on this screen (it is on another step, or
+   * orphaned), so its replies and actions stay reachable.
+   */
+  function placeThread() {
+    if (thread.hidden) return;
+    const at = pinPos.get(selectedId);
+    const height = thread.offsetHeight || 200;
+    const right = usableRight();
+    if (!at) {
+      thread.style.left = `${Math.max(8, right - THREAD_WIDTH - 16)}px`;
+      thread.style.top = '52px';
+      return;
+    }
+    const { rect, textRight, frameRight } = at;
+    let left;
+    let top = at.top - 8;
+    let beside = false;
+    if (rect.right + 12 + THREAD_WIDTH <= right - 8) {
+      left = rect.right + 12;
+      beside = true;
+    } else if (textRight + 14 + THREAD_WIDTH <= right - 8) {
+      left = textRight + 14;
+      beside = true;
+    } else if (rect.left - 14 - THREAD_WIDTH >= 8) {
+      left = rect.left - 14 - THREAD_WIDTH;
+    } else {
+      left = at.left;
+      top = rect.bottom + 10;
+    }
+    const finalTop = clamp(top, 8, Math.max(8, window.innerHeight - height - 8));
+    thread.style.left = `${clamp(left, 8, Math.max(8, right - THREAD_WIDTH - 8))}px`;
+    thread.style.top = `${finalTop}px`;
+    // A caret on the thread's edge, level with the frame, and a hairline
+    // across any gap between the two, so the frame and the card that explains
+    // it read as one object.
+    thread.classList.toggle('is-beside', beside);
+    const middle = (rect.top + rect.bottom) / 2;
+    thread.style.setProperty('--gm-caret', `${clamp(middle - finalTop, 12, Math.max(12, height - 12))}px`);
+    const finalLeft = clamp(left, 8, Math.max(8, right - THREAD_WIDTH - 8));
+    if (beside && finalLeft - 6 - frameRight > 12 && middle > finalTop && middle < finalTop + height) {
+      lineLayer.appendChild(el('div', { class: 'gm-tie', style: `left:${frameRight + 1}px;top:${middle}px;width:${finalLeft - 6 - frameRight - 1}px` }));
+    }
   }
 
   // ---- shared mode: versions ---------------------------------------------
@@ -969,7 +1608,7 @@ export function mountUi(deps) {
   }
 
   let identityDrawn = '';
-  /** The identity line, touched only when what it says changes. */
+  /** The identity chip and its popover, touched only when what they say changes. */
   function renderIdentity(view) {
     const on = view.identity.mode !== 'none';
     const provider = providerName(view.identity.mode);
@@ -982,16 +1621,19 @@ export function mountUi(deps) {
     let code = '';
     let button = '';
     let quiet = '';
+    let attention = false; // a state the reviewer has to see, so the popover opens itself
     if (on && view.session) {
-      says = `Commenting as ${view.session.name || 'you'}${view.session.username ? ` @${view.session.username}` : ''} \u00b7 ${providerName(view.session.provider)}`;
+      says = `Commenting as ${view.session.name || 'you'}${view.session.username ? ` @${view.session.username}` : ''} · ${providerName(view.session.provider)}`;
       quiet = 'Sign out';
     } else if (on && view.signin.state === 'waiting') {
       says = `Waiting for ${provider}... Finish in the small window, and check it shows this code:`;
       code = view.signin.shortCode || '';
       quiet = 'Cancel';
+      attention = true;
     } else if (on && view.signin.state === 'blocked') {
       says = 'Your browser blocked the sign-in window. Allow pop-ups for this page, then try again.';
       button = `Sign in with ${provider}`;
+      attention = true;
     } else if (on && view.signin.state === 'not_member') {
       // The verdict first, then who, then what to do: the earlier order ("Signed
       // in as ..., this prototype only takes ...") was read as a failure by the
@@ -1001,12 +1643,15 @@ export function mountUi(deps) {
       const group = who.members || view.identity.members || 'the group';
       says = `Your account is not in ${group}. You are signed in to ${provider} as ${who.name || 'someone'}, and only members can ${strict ? 'open this prototype' : 'comment here'}. Ask the author for access, or sign out of ${provider} and sign in here with another account.`;
       button = `Sign in with ${provider} again`;
+      attention = true;
     } else if (on && view.signin.state === 'failed') {
       says = 'Sign-in did not finish.';
       button = `Sign in with ${provider} ${waitingToSend}`;
+      attention = true;
     } else if (on) {
       says = unsent ? 'Saved here. Not shared until you sign in.' : '';
       button = `Sign in with ${provider} ${waitingToSend}`;
+      attention = unsent > 0;
     }
     const drawn = [on, says, code, button, quiet].join('|');
     if (drawn === identityDrawn) return;
@@ -1014,7 +1659,7 @@ export function mountUi(deps) {
     identityDrawn = drawn;
     identityLine.hidden = !on;
     identityLine.classList.toggle('is-row', Boolean(says && quiet && !button && !code));
-    if (whoRow) whoRow.hidden = on;
+    whoRow.hidden = on;
     identitySays.textContent = says;
     identitySays.title = says; // a long name is cut with an ellipsis on the one-row layout; the whole line stays reachable
     identitySays.hidden = !says;
@@ -1025,8 +1670,39 @@ export function mountUi(deps) {
     identityBtn.hidden = !button;
     identityQuiet.textContent = quiet;
     identityQuiet.hidden = !quiet;
+    // The chip: the signed-in person's initials, or the words that are the
+    // way in when nobody is signed in yet.
+    if (on && view.session) {
+      renderChip(view.session);
+    } else if (on) {
+      idAvatar.hidden = true;
+      idText.hidden = false;
+      idText.textContent = 'Sign in';
+      idBtn.classList.add('is-text');
+      idBtn.setAttribute('aria-label', `Sign in with ${provider}`);
+    }
+    // Something happened that the reviewer has to read (a code to check, a
+    // refusal, a blocked window): the popover opens itself.
+    if (attention && !identityOpen) {
+      identityOpen = true;
+      layoutChrome();
+    }
     // Pressing Sign in swaps the button for Cancel. Focus follows to whichever is there now.
     if (hadFocus) (button ? identityBtn : quiet ? identityQuiet : identityBtn).focus();
+  }
+
+  /** The chip in the chrome: initials on the person's colour, or the words that ask for a name. */
+  function renderChip(person) {
+    const name = (person && person.name && person.name.trim()) || '';
+    // No name yet: words, not a question mark, so a new reviewer knows what
+    // the chip is for (review of #21, R18).
+    idAvatar.hidden = !name;
+    idText.hidden = Boolean(name);
+    idText.textContent = name ? '' : 'Your name';
+    idBtn.classList.toggle('is-text', !name);
+    idAvatar.style.setProperty('--gm-author', authorHue(person));
+    idAvatar.textContent = initialsOf(name);
+    idBtn.setAttribute('aria-label', name ? `Your name: ${name}` : 'Your name');
   }
 
   function renderShared() {
@@ -1034,13 +1710,12 @@ export function mountUi(deps) {
     const view = sync.view();
     renderIdentity(view);
     const here = view.versions.find((v) => v.version_id === sync.versionId) || null;
-    sharedHead.hidden = !here;
+    // Shown only when there is another version to know about: a page with one
+    // version has nothing to say here (design critic, #21).
+    const others = here ? view.versions.filter((v) => v.version_id !== sync.versionId) : [];
+    sharedHead.hidden = !here || (others.length === 0 && view.isLatest);
     if (!here) return;
 
-    // The header already says which version this page is, so the list holds
-    // only the others; and with no others there is nothing to open, so it is a
-    // plain line rather than a button that does nothing (design critic, round 1).
-    const others = view.versions.filter((v) => v.version_id !== sync.versionId);
     versionBtn.textContent = `Version ${here.round}${view.isLatest ? ' (current)' : ''}`;
     versionBtn.disabled = others.length === 0;
     if (!others.length) versionsOpen = false;
@@ -1127,151 +1802,171 @@ export function mountUi(deps) {
     return 'Shared. Everyone with this page sees these comments.';
   }
 
-  function cardFor(entry, index) {
-    const { comment, status, via } = entry;
+  /** Whether someone else's comment has not been opened here yet. */
+  const isUnread = (comment) => Boolean(sync && !sync.isMine(comment.id) && store.isSeen && !store.isSeen(comment.id));
+
+  /** One row of the sheet: number, chip, who and where, the first line. */
+  function entryFor(entry, index) {
+    const { comment, status } = entry;
+    const own = !sync || sync.isMine(comment.id);
+    const author = authorOf(comment);
     const meta = el('div', { class: 'gm-meta' });
     // Shared mode: who said it comes first, because with several people on one
     // page that is the first thing a reader needs. Always set as text, never as
     // markup: a name is whatever a stranger with the page key typed.
-    const own = !sync || sync.isMine(comment.id);
-    if (sync) meta.appendChild(el('span', { class: authorClass(comment.author), text: own ? nameOf(comment.author) + ' (you)' : nameOf(comment.author) }));
+    if (sync) meta.appendChild(el('span', { class: authorClass(comment.author), text: own ? `${nameOf(comment.author)} (you)` : nameOf(comment.author) }));
     if (comment.intent.tag) meta.appendChild(el('span', { class: 'gm-tag', text: comment.intent.tag }));
-    const screen = comment.state.screen && comment.state.screen.name;
-    if (screen) meta.appendChild(el('span', { text: screen }));
-    if (status === 'hidden') meta.appendChild(el('span', { class: 'gm-flag', text: 'on another screen' }));
-    if (status === 'orphaned') meta.appendChild(el('span', { class: 'gm-flag', text: 'orphaned' }));
-    // The exact element is gone and only its container was found, so the pin is
-    // approximate. Saying so beats pointing confidently at the wrong thing.
-    if ((via === 'ancestor' || via === 'quote-loose') && status !== 'orphaned') {
-      meta.appendChild(el('span', { class: 'gm-flag', text: 'nearby' }));
-    }
-    // What the author or their agent did with it. Read-only here: a status is
-    // set from the command line. 'open' is the default and says nothing, so it
-    // is not drawn.
-    if (comment.status && comment.status !== 'open') {
-      meta.appendChild(el('span', { class: 'gm-status', text: comment.status }));
-    }
-    if (sync && sync.isUnshared(comment.id)) meta.appendChild(el('span', { class: 'gm-flag', text: 'not shared yet' }));
+    // No screen name here: the row sits under a group label that says it.
+    flagsFor(entry).forEach((f) => meta.appendChild(f));
+    if (comment.status && comment.status !== 'open') meta.appendChild(el('span', { class: 'gm-status', text: comment.status }));
+    const when = ago(comment.time);
+    if (when) meta.appendChild(el('span', { class: 'gm-time', text: when }));
 
-    const body = el('div', { class: 'body' }, [meta]);
-
-    if (editingId === comment.id) {
-      const area = el('textarea', {});
-      area.value = comment.intent.text;
-      const save = el('button', { type: 'button', text: 'Save' });
-      const cancel = el('button', { type: 'button', text: 'Cancel' });
-      save.addEventListener('click', () => {
-        const text = area.value.trim();
-        if (text) store.update(comment.id, { intent: { ...comment.intent, text } });
-        editingId = null;
-        render(true);
-      });
-      cancel.addEventListener('click', () => {
-        editingId = null;
-        render(true);
-      });
-      body.append(area, el('div', { class: 'gm-card-actions' }, [save, cancel]));
-    } else {
-      const edit = el('button', { type: 'button', text: 'Edit', 'data-focus': `edit:${comment.id}` });
-      const del = el('button', { type: 'button', class: 'gm-del', text: 'Delete', 'data-focus': `del:${comment.id}` });
-      edit.addEventListener('click', (e) => {
-        e.stopPropagation();
-        editingId = comment.id;
-        render(true);
-      });
-      // Two steps, in place. A comment is the reviewer's own prose and nothing
-      // keeps a copy once it is gone, so one mis-aimed click should not be
-      // enough - Delete sits next to Edit in the same muted type (review R17).
-      del.addEventListener('click', (e) => {
-        e.stopPropagation();
-        if (del.dataset.armed !== 'yes') {
-          del.dataset.armed = 'yes';
-          del.textContent = 'Delete?';
-          return;
-        }
-        store.remove(comment.id);
-        render(true);
-      });
-      const reply = el('button', { type: 'button', text: 'Reply', 'data-focus': `reply:${comment.id}` });
-      reply.addEventListener('click', (e) => {
-        e.stopPropagation();
-        // A reply half-written on another card is work, like a comment is (review R15).
-        if (replyingId && replyingId !== comment.id && replyDraft.trim() && !replyDiscardArmed) {
-          replyDiscardArmed = true;
-          render(true);
-          return;
-        }
-        replyDiscardArmed = false;
-        replyingId = comment.id;
-        editingReplyId = null;
-        replyDraft = '';
-        render(true);
-      });
-      // Edit and Delete only on what this browser wrote. Without sign-in that is
-      // all 'your own' can mean; the service enforces the same rule with the
-      // edit token, so hiding the buttons is a courtesy, not the lock.
-      const actions = [...(sync ? [reply] : []), ...(own ? [edit, del] : [])];
-      body.append(
-        el('p', { class: 'gm-text', text: comment.intent.text }),
-        ...(actions.length ? [el('div', { class: 'gm-card-actions' }, actions)] : [])
-      );
-    }
-
-    const replies = repliesFor(comment);
-    if (replies) body.append(replies);
-
-    const row = el('div', { class: 'gm-card' }, [el('div', { class: 'num', text: String(index + 1) }), body]);
+    const row = el('div', {
+      class: 'gm-card',
+      role: 'button',
+      tabindex: '0',
+      'data-focus': `card:${comment.id}`,
+      'aria-label': `Comment ${index + 1}${status === 'found' ? '' : status === 'hidden' ? ', on another screen' : ', orphaned'}${isUnread(comment) ? ', unread' : ''}: ${comment.intent.text}`,
+    }, [
+      el('div', { class: 'num', text: String(index + 1) }),
+      avatar(author),
+      el('div', { class: 'body' }, [meta, el('p', { class: 'gm-text', text: comment.intent.text })]),
+      isUnread(comment) ? el('span', { class: 'dot', 'aria-hidden': 'true' }) : null,
+    ]);
     row.classList.toggle('is-selected', selectedId === comment.id);
-    row.addEventListener('click', () => {
-      selectedId = selectedId === comment.id ? null : comment.id;
-      render();
-      // Selecting from the panel should show the thing being framed.
-      if (selectedId === comment.id && entry.element && entry.status === 'found') {
-        entry.element.scrollIntoView({ block: 'center', behavior: 'smooth' });
-      }
+    row.classList.toggle('is-hot', hotId === comment.id);
+    const activate = () => {
+      if (selectedId === comment.id) closeThread();
+      else openThread(comment.id, { scroll: true, from: 'card' });
+    };
+    row.addEventListener('click', activate);
+    row.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      e.preventDefault();
+      activate();
+    });
+    // The row under the pointer lights its pin on the page: the link between
+    // the list and the spot, without reading the row's words.
+    row.addEventListener('pointerenter', () => {
+      hotId = comment.id;
+      const pin = pins.get(comment.id);
+      if (pin) pin.classList.add('is-hot');
+    });
+    row.addEventListener('pointerleave', () => {
+      if (hotId === comment.id) hotId = null;
+      const pin = pins.get(comment.id);
+      if (pin) pin.classList.remove('is-hot');
     });
     return row;
   }
 
-  /** Rebuild the comment list. Skipped while an edit is open (see renderPanel). */
+  /** What the list is built from, so a scroll or a poll that changed nothing rebuilds nothing (review of #21, R1). */
+  function listSignature(resolved) {
+    return JSON.stringify([
+      filter,
+      sync ? store.reviewer() : '',
+      resolved.map((e) => [e.comment.id, e.status, e.via, e.comment.intent, e.comment.author, e.comment.status, e.comment.state.screen, isUnread(e.comment), sync && sync.isUnshared(e.comment.id), e.comment.time]),
+    ]);
+  }
+
+  /** Rebuild the sheet's list: grouped by screen, this screen first. */
   function renderList(resolved) {
     // Whatever control in here has the keyboard is about to be destroyed. On a
     // shared page the list is rebuilt whenever anyone comments, so without this a
-    // keyboard user lost their place every few seconds (review R14, and the
-    // broader case its test exposed). An explicit request, set by the action that
-    // caused the rebuild, wins over where focus happened to be.
+    // keyboard user lost their place every few seconds (review R14). An explicit
+    // request, set by the action that caused the rebuild, wins.
     const active = shadow.activeElement;
     if (!focusAfterRender && active && list.contains(active) && active.dataset.focus) focusAfterRender = active.dataset.focus;
     list.textContent = '';
     cards.clear();
+
+    const shown = resolved.filter((entry) => {
+      if (filter === 'unread') return isUnread(entry.comment);
+      if (filter === 'mine') return !sync || sync.isMine(entry.comment.id);
+      return true;
+    });
+
     if (!resolved.length) {
-      list.appendChild(
-        el('div', {
-          class: 'gm-empty',
-          text:
-            'No comments yet. Turn on comment mode, then click anything on the page. ' +
-            'With a keyboard: select some text or tab to a control, then press C.',
-        })
-      );
+      list.appendChild(el('div', { class: 'gm-empty', text: 'No comments yet. To leave one, press C or the Comment button, then click anything on the page.' }));
+    } else if (!shown.length) {
+      list.appendChild(el('div', { class: 'gm-empty', text: filter === 'unread' ? 'Nothing unread.' : 'None of these are yours.' }));
     }
-    resolved.forEach((entry, index) => {
-      const row = cardFor(entry, index);
-      cards.set(entry.comment.id, { row });
-      list.appendChild(row);
+
+    // Groups keep the comments' own order; the group that has a pin on this
+    // screen comes first, and every other screen after it, named.
+    const groups = new Map();
+    shown.forEach((entry) => {
+      const screen = (entry.comment.state.screen && entry.comment.state.screen.name) || '';
+      // Hidden means another screen; orphaned is on this one, with nowhere to point (review of #21, R17).
+      const here = entry.status !== 'hidden';
+      const key = `${here ? 'here' : 'there'}:${screen}`;
+      if (!groups.has(key)) groups.set(key, { screen, here, entries: [] });
+      groups.get(key).entries.push(entry);
+    });
+    const ordered = [...groups.values()].sort((a, b) => Number(b.here) - Number(a.here));
+    const oneGroup = ordered.length === 1 && ordered[0].here;
+    ordered.forEach((group) => {
+      if (!oneGroup) {
+        const label = group.screen ? `${group.screen}${group.here ? '' : ' · another screen'}` : group.here ? 'This screen' : 'Elsewhere';
+        list.appendChild(el('div', { class: 'gm-group', text: label }));
+      }
+      group.entries.forEach((entry) => {
+        const row = entryFor(entry, resolved.indexOf(entry));
+        cards.set(entry.comment.id, row);
+        list.appendChild(row);
+      });
     });
     restoreFocus();
   }
 
+  function renderChrome(resolved) {
+    const count = resolved.length;
+    badgeCount.textContent = String(count);
+    listCount.textContent = String(count);
+    const unread = resolved.filter((entry) => isUnread(entry.comment)).length;
+    badgeBtn.title = `${count === 1 ? '1 comment' : `${count} comments`}${unread ? `, ${unread} unread` : ''}`;
+    badgeDot.hidden = !unread;
+    // The line under the pill: trouble first, then a newer version, then the
+    // way to Send until the reviewer has found the sheet; nothing while the
+    // sheet is open, because the sheet says all of it.
+    let say = '';
+    if (!sheetOpen && sync) {
+      const view = sync.view();
+      if (view.problem || view.state === 'offline' || view.state === 'locked') say = sharedLine();
+      else if (!view.isLatest && view.versions.some((v) => v.version_id === view.latest)) say = 'A newer version of this page exists. Open the comments to see it.';
+    } else if (!sheetOpen && !sync && count && !sheetOpenedOnce && store.hasUnexportedWork()) {
+      say = store.storageOk() === false ? 'Not saved in this browser. Send to author is under the count.' : 'Kept in this browser. Send to author is under the count.';
+    }
+    noticeSay = say;
+    paintNotice();
+    filterBtns.forEach((b) => {
+      const on = b.dataset.filter === filter;
+      b.classList.toggle('is-on', on);
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+    // The chip on a page with no sign-in: the typed name's initials.
+    if (!sync || sync.view().identity.mode === 'none') renderChip({ name: store.reviewer() });
+  }
+
   function renderPanel(resolved, force) {
-    // The LIST is rebuilt wholesale, except while a card is being edited: that
-    // textarea lives inside it, so rebuilding replaces what is being typed with
-    // the original text, and a scroll or a ticking prototype is enough to
-    // trigger it (review R7). Everything outside the list still updates, so the
-    // count and the saved notice do not freeze behind an open edit.
-    // A reply being written gets the same protection, and needs it more: in
-    // shared mode the list changes whenever anyone else comments.
-    if (force || (editingId === null && replyingId === null) || !list.childElementCount) renderList(resolved);
+    // The list holds no field, so it is rebuilt whenever what it shows has
+    // changed and never otherwise: not on a scroll, and not because a reply
+    // is parked in a closed thread (review of #21, R1 and R2). The thread
+    // guards its own typing (renderThread).
+    const signature = listSignature(resolved);
+    if (force || signature !== listDrawn || !list.childElementCount) {
+      listDrawn = signature;
+      renderList(resolved);
+    } else {
+      cards.forEach((row, id) => {
+        row.classList.toggle('is-selected', selectedId === id);
+        row.classList.toggle('is-hot', hotId === id);
+      });
+    }
+    renderThread(resolved, force);
     renderShared();
+    renderChrome(resolved);
 
     // Storage is best effort on a local file, so say which way it went rather
     // than leaving the reviewer to guess whether closing the tab is safe.
@@ -1286,16 +1981,11 @@ export function mountUi(deps) {
           ? 'Kept in this browser until you send it.'
           : '';
 
-    const count = resolved.length;
-    rail.textContent = count ? `${count} comment${count === 1 ? '' : 's'}` : 'gitmargin';
-    listCount.textContent = count ? String(count) : '0';
-    if (document.activeElement !== host || shadow.activeElement !== nameInput) {
-      if (shadow.activeElement !== nameInput) nameInput.value = store.reviewer();
-      if (shadow.activeElement !== overall) overall.value = store.overallNote();
-      if (store.overallNote() && overall.hidden) {
-        overall.hidden = false;
-        noteToggle.textContent = 'A note about the whole thing';
-      }
+    if (shadow.activeElement !== nameInput) nameInput.value = store.reviewer();
+    if (shadow.activeElement !== overall) overall.value = store.overallNote();
+    if (store.overallNote() && overall.hidden) {
+      overall.hidden = false;
+      noteToggle.textContent = 'A note about the whole thing';
     }
   }
 
@@ -1304,9 +1994,13 @@ export function mountUi(deps) {
       const { element, status, via } = resolve(comment.anchor);
       return { comment, element, status, via };
     });
+    resolvedNow = resolved;
     renderPanel(resolved, force);
     renderPins(resolved);
+    placeThread();
+    renderPreview();
     placeTarget(); // scroll, resize and page changes move the framed element too
+    restoreFocus(); // a thread that just closed, a Delete that just armed: focus lands after the rebuild
   }
 
   // One re-layout per frame, however many things changed.
@@ -1324,6 +2018,11 @@ export function mountUi(deps) {
     // Ignore our own mutations: the overlay lives in a shadow root, but the host
     // element itself is a child of <body>.
     if (records.every((r) => r.target === host || host.contains(r.target))) return;
+    // Deliberately NOT re-measuring the theme here (review of #21, R14): a
+    // prototype that swaps in a dark screen after load keeps the light chrome
+    // until the next resize. Measuring on every mutation costs a hit-test per
+    // frame on an animated page, and it changed what a part-1 test asserts,
+    // which is a part-1 behaviour change and the owner's call.
     schedule();
   }).observe(document.body, { childList: true, subtree: true, attributes: true, characterData: true });
 
@@ -1337,7 +2036,16 @@ export function mountUi(deps) {
   });
 
   window.addEventListener('scroll', schedule, true);
-  window.addEventListener('resize', schedule);
+  window.addEventListener('resize', () => {
+    applyTheme();
+    schedule();
+  });
+  // The page under the viewport centre may only be reached by scrolling: a
+  // dark app behind a light hero, say. One more measurement, then.
+  window.addEventListener('scroll', () => {
+    applyTheme();
+    schedule();
+  }, { once: true, capture: true });
   store.subscribe(schedule);
 
   render();
@@ -1345,12 +2053,15 @@ export function mountUi(deps) {
   return {
     setCommentMode: setMode,
     isCommentMode: () => commentMode,
-    openPanel,
+    openPanel: openSheet,
+    closePanel: closeSheet,
+    openThread,
     render,
     isBoxOpen: () => !box.hidden,
     // Read by the test suite: the element the target preview is on, so a test
     // can compare it by identity with what a click then anchors (issue #10).
     target: () => framed,
+    theme: () => theme,
     shadow,
   };
 }

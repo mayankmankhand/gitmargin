@@ -40,6 +40,10 @@ const state = {
   reviewer: '',
   overallNote: '',
   path: '',
+  // Ids of other people's comments whose thread this browser has opened: the
+  // sheet's Unread filter (issue #21). Kept beside the comments so it is saved
+  // and lost together with them; never exported, never sent to the service.
+  seen: [],
 };
 
 /**
@@ -96,6 +100,7 @@ export function load(versionId) {
       state.comments = saved.comments;
       state.reviewer = typeof saved.reviewer === 'string' ? saved.reviewer : '';
       state.overallNote = typeof saved.overallNote === 'string' ? saved.overallNote : '';
+      state.seen = Array.isArray(saved.seen) ? saved.seen.filter((id) => typeof id === 'string') : [];
     }
   } catch {
     /* unreadable storage is the same as empty storage */
@@ -128,6 +133,19 @@ export const overallNote = () => state.overallNote;
 
 export function setReviewer(name) {
   state.reviewer = String(name || '');
+  announce();
+}
+
+/** Whether this browser has opened `id`'s thread (the Unread filter, issue #21). */
+export const isSeen = (id) => state.seen.includes(id);
+
+/**
+ * Remember that `id`'s thread was opened here. Announces without `touched()`:
+ * reading someone's comment is not unexported work of mine.
+ */
+export function markSeen(id) {
+  if (!id || state.seen.includes(id)) return;
+  state.seen.push(id);
   announce();
 }
 

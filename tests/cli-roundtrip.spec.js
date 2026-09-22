@@ -72,6 +72,8 @@ test('attach, comment, send back, pull: the batch names the version and the scre
   await expect(page.locator('#step-3')).toHaveClass(/active/);
   await comment(page, '#step-3 .next', 'I expected to be able to pick more than one.', 'bug');
 
+  await page.click('.gm-badge'); // Send lives in the sheet (issue #21)
+
   const [download] = await Promise.all([
     page.waitForEvent('download'),
     page.click('.gm-send .gm-btn.primary'),
@@ -119,6 +121,8 @@ test('the file a reviewer sends back carries the overlay whole', async ({ page }
   await page.waitForFunction(() => !!window.__gitmargin);
   await comment(page, '#step-1 .next', 'Does the overlay survive?', 'question');
 
+  await page.click('.gm-badge'); // Send lives in the sheet (issue #21)
+
   const [download] = await Promise.all([
     page.waitForEvent('download'),
     page.click('.gm-send .gm-btn.primary'),
@@ -152,7 +156,10 @@ test('two reviewers on the same version become one batch', async ({ page }, test
     await page.waitForFunction(() => !!window.__gitmargin);
 
     await comment(page, '#step-1 h2', what, 'question');
+    await page.click('.gm-id'); // the name field is under the identity chip (issue #21)
     await page.fill('.gm-who input', who);
+
+    await page.click('.gm-badge'); // Send lives in the sheet (issue #21)
 
     const [download] = await Promise.all([
       page.waitForEvent('download'),
@@ -181,6 +188,7 @@ test('the clipboard block pulls back as a lossier batch of the same comments', a
 
   // Read what the overlay put on the clipboard from its own report: a file://
   // page cannot be relied on to read the clipboard back in every engine.
+  await page.click('.gm-badge'); // Copy lives in the sheet (issue #21)
   await page.click('.gm-send .gm-btn:not(.primary)');
   const block = await page.evaluate(() => window.__gitmargin.lastCopy);
   expect(block).toContain('gitmargin batch v0.1');
@@ -204,6 +212,8 @@ test('a reviewed file can be attached again for a second round', async ({ page }
   await page.goto(pathToFileURL(attached).href);
   await page.waitForFunction(() => !!window.__gitmargin);
   await comment(page, '#step-1 .next', 'Round one.', 'change');
+
+  await page.click('.gm-badge'); // Send lives in the sheet (issue #21)
 
   const [download] = await Promise.all([
     page.waitForEvent('download'),
@@ -266,8 +276,12 @@ test('a reviewer who gives a name gets it in the file name, so two reviewers do 
   await page.goto(pathToFileURL(attached).href);
   await page.waitForFunction(() => !!window.__gitmargin);
 
+  await page.click('.gm-id'); // the name field is under the identity chip (issue #21)
+
   await page.fill('#gm-reviewer', 'José Ríos');
   await comment(page, '#step-1 h2', 'Anything.');
+
+  await page.click('.gm-badge'); // Send lives in the sheet (issue #21)
 
   const [download] = await Promise.all([
     page.waitForEvent('download'),
