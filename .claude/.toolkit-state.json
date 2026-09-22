@@ -1,10 +1,10 @@
 {
-  "version": "7.3.0",
+  "version": "7.4.1",
   "path": "copy-migrated",
-  "at": "2026-09-17T00:28:38.086Z",
+  "at": "2026-09-22T10:49:21.488Z",
   "marketplace": "llm-peer-review",
   "plugin": "tk",
   "previousVersion": "6.3.2",
-  "auditedVersion": "7.3.0",
-  "auditedAt": "2026-09-22T10:38:06.621Z"
+  "auditedVersion": "7.4.1",
+  "auditedAt": "2026-09-22T10:49:39.407Z"
 }
