@@ -125,6 +125,14 @@
 - **A stacking order is part of "the pill sits above the sheet", not a detail of it.**
 - **Measure the thing the fix is about, in the browser, before calling it fixed.**
 
+### gitmargin: comments keep their screen (issue #24, 2026-09-22)
+- **Issues a cycle files about itself are leads, not findings: reproduce each on a real page before planning it.**
+- **A fallback must wait until the primary pointer is gone, not merely hidden.**
+- **A fixture whose labels are all unique hides every bug that lives in repeated labels.**
+- **A helper that names what is on screen now gives wrong answers about hidden things.**
+- **A cost reason for leaving something unfixed is a guess until it is timed.**
+- **Two rules that cover the same fixture hide each other from its tests; break each one alone.**
+
 ## Mistakes to Avoid
 
 - **Fill a plan's Outcomes by replacing the template placeholder, not inserting above it.**
