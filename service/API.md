@@ -264,7 +264,9 @@ is only ever text.
 
 **"Your own", for both kinds of comment.** A comment or reply keeps the rule it was created under. Written under
 sign-in, it belongs to that verified person (provider plus `sub`): they can edit or delete it from any browser, and no
-one else can, whatever token they send. Written under a typed name before sign-in was switched on, it carries no
+one else can, whatever token they send. Known limit: the wire carries the username and not `sub`, so a panel decides
+what to draw by username (or by having written the comment itself); after a username change, older comments on
+another browser show no Edit until the wire carries a permanent id. Written under a typed name before sign-in was switched on, it carries no
 `provider` and no `verified`, and still belongs to the token that created it; while sign-in is on, that browser also
 needs a valid pass, like every write. The author secret can always remove any comment.
 

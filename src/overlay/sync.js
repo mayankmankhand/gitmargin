@@ -619,7 +619,11 @@ export function startSync({
     isMine(id) {
       const author = authorOf(id);
       if (author && author.verified === true) {
-        return Boolean(session && session.identity.provider === author.provider && session.identity.username === author.username);
+        // By person first; failing that, by this browser having written it. The
+        // service compares a permanent id the wire does not carry, so after a
+        // username change the two can disagree on another browser (review of #18,
+        // R17, a stated limit in API.md); on this browser they cannot.
+        return mine.has(id) || Boolean(session && session.identity.provider === author.provider && session.identity.username === author.username);
       }
       return mine.has(id);
     },
