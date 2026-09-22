@@ -102,6 +102,10 @@
 - **A list that rebuilds on every change costs keyboard users their place on a live page.**
 - **Look at git status after every vendor install: an installer can write agent instruction files into your repo.**
 
+### gitmargin: toolkit upgrade to 7.4.1 (issue #23, 2026-09-22)
+- **An upgrade audit reports missing permission rows but never adds them; only re-running setup does.**
+- **A finder's severity is a claim and its receipt is the evidence, so write the expectation from what the command really prints.**
+
 ### gitmargin: sign in with GitLab (issue #18, 2026-09-21)
 - **A hand-rolled primitive gets a reference test before anything is built on it.**
 - **Trust comes from the carrier, never from the shape of the data.**
