@@ -20,7 +20,7 @@ import { initialsOf, authorHue } from './author.js';
 const TAGS = ['change', 'bug', 'question', 'like'];
 const SHEET_WIDTH = 320;
 const PIN = 26; // the pin's box; it grows from its point when selected, so the point stays put
-const THREAD_WIDTH = 320;
+const THREAD_WIDTH = 300;
 
 /** Small DOM helper: el('div', { class: 'x' }, [children]). */
 function el(tag, props = {}, children = []) {
@@ -175,7 +175,6 @@ export function mountUi(deps) {
   let selectionAtDown = ''; // the selection's text when the pointer went down
   let sheetOpen = false;
   let filter = 'all'; // all | unread | mine
-  let menuOpen = false;
   let identityOpen = false;
   let previewId = null; // the pin under the pointer
   let hotId = null; // the sheet row under the pointer, whose pin lights up
@@ -188,7 +187,7 @@ export function mountUi(deps) {
     role: 'switch',
     'aria-checked': 'false',
     title: 'Comment mode. While this is on, clicking marks a spot instead of using the page. C turns it on, Escape off.',
-  }, [icon(BUBBLE), el('span', { class: 'label', text: 'Comment' }), el('kbd', { text: 'C' })]);
+  }, [icon(BUBBLE), el('span', { class: 'label', text: 'Comment' })]);
   const badgeCount = el('span', { class: 'count', text: '0' });
   const badgeDot = el('span', { class: 'dot', hidden: 'hidden' });
   const badgeBtn = el('button', { class: 'gm-badge', type: 'button', 'aria-expanded': 'false', title: 'All comments' }, [
@@ -197,8 +196,7 @@ export function mountUi(deps) {
   const idAvatar = el('span', { class: 'gm-avatar', 'aria-hidden': 'true' });
   const idText = el('span', { class: 'label', hidden: 'hidden' });
   const idBtn = el('button', { class: 'gm-id', type: 'button', 'aria-expanded': 'false', 'aria-label': 'Your name' }, [idAvatar, idText]);
-  const moreBtn = el('button', { class: 'gm-more', type: 'button', 'aria-expanded': 'false', 'aria-label': 'More', text: '···' });
-  const bar = el('div', { class: 'gm-bar', role: 'toolbar', 'aria-label': 'gitmargin' }, [switchBtn, badgeBtn, idBtn, moreBtn]);
+  const bar = el('div', { class: 'gm-bar', role: 'toolbar', 'aria-label': 'gitmargin' }, [switchBtn, badgeBtn, idBtn]);
   shadow.appendChild(bar);
 
   // ---- the identity popover: the typed name, or the sign-in states ---------
@@ -230,14 +228,6 @@ export function mountUi(deps) {
   ]);
   shadow.appendChild(idPop);
 
-  // ---- the menu: the actions that are not about one spot ------------------
-  const menuSend = el('button', { type: 'button', class: 'gm-menu-item', text: 'Send to author' });
-  const menuCopy = el('button', { type: 'button', class: 'gm-menu-item', text: 'Copy for author' });
-  const menuNote = el('button', { type: 'button', class: 'gm-menu-item', text: 'A note about the whole thing' });
-  const menuSaid = el('div', { class: 'gm-menu-said', role: 'status', 'aria-live': 'polite' });
-  const menu = el('div', { class: 'gm-pop gm-menu', hidden: 'hidden', role: 'menu' }, [menuSend, menuCopy, menuNote, menuSaid]);
-  shadow.appendChild(menu);
-
   // ---- the sheet: every comment, grouped by screen ------------------------
   const listCount = el('span', { class: 'count', text: '0' });
   const sheetTitle = el('div', { class: 'gm-section' }, [el('span', { text: 'Comments' }), listCount]);
@@ -259,6 +249,7 @@ export function mountUi(deps) {
     'aria-label': 'A note about the whole thing',
     hidden: 'hidden',
   });
+  // Drawn as a field, because it is one: pressing it opens the real textarea.
   const noteToggle = el('button', { class: 'gm-note-toggle', type: 'button', text: 'Add a note about the whole thing' });
   const sendBtn = el('button', { class: 'gm-btn primary', type: 'button', text: 'Send to author' });
   const copyBtn = el('button', { class: 'gm-btn ghost', type: 'button', text: 'Copy for author' });
@@ -279,16 +270,18 @@ export function mountUi(deps) {
     role: 'complementary',
     'aria-label': 'gitmargin comments',
   }, [
-    el('div', { class: 'gm-sheet-head' }, [sheetTitle, el('div', { class: 'gm-spacer' }), closeBtn]),
+    el('div', { class: 'gm-sheet-head' }, [
+      el('div', { class: 'gm-sheet-title' }, [sheetTitle, el('div', { class: 'gm-spacer' }), closeBtn]),
+      keepNote,
+      ...(sync ? [sharedHead] : []),
+    ]),
     filters,
     list,
     el('div', { class: 'gm-foot' }, [
-      ...(sync ? [sharedHead] : []),
       noteToggle,
       overall,
       el('div', { class: 'gm-send' }, [sendBtn, copyBtn]),
       said,
-      keepNote,
     ]),
   ]);
   shadow.appendChild(sheet);
@@ -305,18 +298,14 @@ export function mountUi(deps) {
   function layoutChrome() {
     bar.classList.toggle('is-shifted', sheetOpen);
     idPop.classList.toggle('is-shifted', sheetOpen);
-    menu.classList.toggle('is-shifted', sheetOpen);
     sheet.hidden = !sheetOpen;
     badgeBtn.setAttribute('aria-expanded', sheetOpen ? 'true' : 'false');
     idPop.hidden = !identityOpen;
     idBtn.setAttribute('aria-expanded', identityOpen ? 'true' : 'false');
-    menu.hidden = !menuOpen;
-    moreBtn.setAttribute('aria-expanded', menuOpen ? 'true' : 'false');
   }
   const openSheet = () => {
     if (sheetOpen) return;
     sheetOpen = true;
-    menuOpen = false;
     identityOpen = false;
     layoutChrome();
     render(true);
@@ -328,8 +317,7 @@ export function mountUi(deps) {
     render();
   };
   function closePopovers() {
-    if (!menuOpen && !identityOpen) return;
-    menuOpen = false;
+    if (!identityOpen) return;
     identityOpen = false;
     layoutChrome();
   }
@@ -384,14 +372,8 @@ export function mountUi(deps) {
   });
   idBtn.addEventListener('click', () => {
     identityOpen = !identityOpen;
-    menuOpen = false;
     layoutChrome();
     if (identityOpen && !whoRow.hidden) nameInput.focus();
-  });
-  moreBtn.addEventListener('click', () => {
-    menuOpen = !menuOpen;
-    identityOpen = false;
-    layoutChrome();
   });
   function showNote() {
     overall.hidden = false;
@@ -406,18 +388,11 @@ export function mountUi(deps) {
     }
     showNote();
   });
-  menuNote.addEventListener('click', () => {
-    openSheet();
-    showNote();
-  });
   nameInput.addEventListener('input', () => store.setReviewer(nameInput.value));
   overall.addEventListener('input', () => store.setOverallNote(overall.value));
 
-  // Send and Copy are reachable from the sheet's foot and from the menu, and
-  // say what happened in whichever place was used.
   function tell(message) {
     said.textContent = message;
-    menuSaid.textContent = message;
   }
   function doSend() {
     const name = batch.download();
@@ -435,8 +410,6 @@ export function mountUi(deps) {
   }
   sendBtn.addEventListener('click', doSend);
   copyBtn.addEventListener('click', doCopy);
-  menuSend.addEventListener('click', doSend);
-  menuCopy.addEventListener('click', doCopy);
 
   // ---- comment box --------------------------------------------------------
   const boxWhere = el('div', { class: 'where' });
@@ -638,7 +611,7 @@ export function mountUi(deps) {
       closeThread();
       return;
     }
-    if (menuOpen || identityOpen) {
+    if (identityOpen) {
       e.preventDefault();
       closePopovers();
       return;
@@ -911,11 +884,64 @@ export function mountUi(deps) {
     return Boolean(range && exact && collapse(element.textContent).length > exact.length);
   }
 
+  /**
+   * The extent of an element's visible text: a heading is a block as wide as
+   * its column, but its words end long before that, and the thread should sit
+   * beside the words. Null when there is nothing to measure.
+   */
+  function textExtent(element) {
+    try {
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      const rects = Array.from(range.getClientRects()).filter((r) => r.width && r.height);
+      if (!rects.length) return null;
+      return { left: Math.min(...rects.map((r) => r.left)), right: Math.max(...rects.map((r) => r.right)) };
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Whether a pin drawn at (left, top) would cover something. The page is asked
+   * what sits under the pin's centre: the page's own ground, the element the
+   * pin is about, or a box that contains it, is free; anything else (a
+   * neighbouring control, another pin, the sheet) is taken.
+   */
+  function pinSpotFree(left, top, element) {
+    // The centre and the four corners: a pin whose centre is on the ground
+    // while one corner clips a neighbouring button is not free.
+    const inset = 1;
+    const points = [
+      [left + PIN / 2, top + PIN / 2],
+      [left + inset, top + inset],
+      [left + PIN - inset, top + inset],
+      [left + inset, top + PIN - inset],
+      [left + PIN - inset, top + PIN - inset],
+    ];
+    for (const [x, y] of points) {
+      let hit = null;
+      try {
+        hit = document.elementFromPoint(x, y);
+      } catch {
+        return true;
+      }
+      if (!hit || hit === document.body || hit === document.documentElement) continue;
+      if (hit === host) return false;
+      if (hit === element || hit.contains(element)) continue;
+      return false;
+    }
+    return true;
+  }
+
   function renderPins(resolved) {
     lineLayer.textContent = '';
     pinPos.clear();
     const seen = new Set();
-    const stacks = new Map(); // "where a pin sits" -> how many sit there already
+    const placed = []; // the pins drawn so far this frame, so the next one can avoid them
+    // While the pins are being placed they let the pointer through, so the
+    // free-spot probe sees the page and not a pin's own position from the
+    // last frame; each one takes the pointer back once it is placed.
+    for (const pin of pins.values()) pin.style.pointerEvents = 'none';
 
     resolved.forEach(({ comment, status, element }, index) => {
       if (status !== 'found' || !element) return;
@@ -950,15 +976,9 @@ export function mountUi(deps) {
         ? { x: rects[rects.length - 1].right, top: rects[rects.length - 1].top, bottom: rects[rects.length - 1].bottom }
         : { x: rect.left, top: rect.top, bottom: rect.bottom };
 
-      // Comments on one spot stack: each one steps to the right of the last,
-      // in comment order, rather than landing on top of it.
-      const stackKey = `${highlight ? 'q' : 'e'}:${Math.round(spot.x)}:${Math.round(spot.top)}`;
-      const stacked = stacks.get(stackKey) || 0;
-      stacks.set(stackKey, stacked + 1);
-
       let pin = pins.get(comment.id);
       if (!pin) {
-        pin = el('button', { class: 'gm-pin', type: 'button' }, [el('span', { class: 'initials' }), el('span', { class: 'n', 'aria-hidden': 'true' })]);
+        pin = el('button', { class: 'gm-pin', type: 'button' }, [el('span', { class: 'initials' })]);
         pin.addEventListener('click', (e) => {
           e.stopPropagation();
           if (selectedId === comment.id) closeThread();
@@ -983,7 +1003,6 @@ export function mountUi(deps) {
       const author = authorOf(comment);
       pin.style.setProperty('--gm-author', authorHue(author));
       pin.firstChild.textContent = initialsOf(author && author.name);
-      pin.lastChild.textContent = String(index + 1);
       pin.title = comment.intent.text;
       // The visible label is initials and a digit, and the comment text lives
       // in a title a keyboard or touch user never sees (review R21).
@@ -991,55 +1010,100 @@ export function mountUi(deps) {
       pin.classList.toggle('is-selected', selectedId === comment.id);
       pin.classList.toggle('is-hot', hotId === comment.id);
 
-      // Selecting a comment frames the thing it is about. This is the whole
+      // Selecting a comment frames the thing it is about, in the author's own
+      // colour, so the frame and the pin read as one mark. This is the whole
       // claim of the tool made visible: here is where the reviewer was.
+      // The frame hugs the words, not the block: a heading's box runs the
+      // width of its column, and a frame that wide reads as a form field.
+      const text = textExtent(element);
+      const box = text
+        ? { left: Math.max(rect.left, text.left - 2), right: Math.min(rect.right, text.right + 2) }
+        : { left: rect.left, right: rect.right };
       if (selectedId === comment.id) {
         lineLayer.appendChild(
           el('div', {
             class: 'gm-frame',
-            style: `left:${rect.left - 3}px;top:${rect.top - 3}px;width:${rect.width + 6}px;height:${rect.height + 6}px`,
+            style: `left:${box.left - 3}px;top:${rect.top - 3}px;width:${box.right - box.left + 6}px;height:${rect.height + 6}px`,
           })
         );
       }
 
       // The point of the teardrop touches the spot and the body hangs off the
       // element, never on it: on it would read as damage to the prototype.
-      // An element's pin sits in the gutter to its upper left, point on the
-      // corner, which on a centred prototype covers nothing at all; with no
-      // gutter it goes above the corner instead. A highlight's pin hangs off
-      // the end of its words, up and to the right. Below, point turned up,
-      // when the top of the window is in the way. Comments on one spot stack
-      // outwards along the same edge, in comment order.
+      // The places to try, in order: for an element, the gutter to its upper
+      // left with the point on the corner (on a centred prototype that covers
+      // nothing at all), then above the corner, then below it; for a
+      // highlight, above the end of its words, then below. A place is taken
+      // when the page has something else there (a neighbouring control, an
+      // earlier pin), and a pin that has to step away from its spot draws a
+      // line back to it, so the map of comments never reads as clutter.
       const OVERLAP = 4; // how far the point reaches onto the spot
-      const step = stacked * (PIN - 4);
-      const left = !highlight && spot.x - PIN + OVERLAP - step >= 2;
-      const wantLeft = left ? spot.x - PIN + OVERLAP - step : spot.x - 2 + step;
-      let wantTop = left ? spot.top - PIN + OVERLAP : spot.top - PIN - OVERLAP;
-      const below = wantTop < 2;
-      if (below) wantTop = left ? spot.bottom - OVERLAP : spot.bottom + OVERLAP;
-      const pinLeft = clamp(wantLeft, 2, usableRight() - PIN - 2);
-      const pinTop = clamp(wantTop, 2, window.innerHeight - PIN - 2);
+      const STEP = PIN - 4;
+      const places = highlight
+        ? [
+            { left: spot.x - 2, top: spot.top - PIN - OVERLAP, cls: '', dir: 1, at: [spot.x, spot.top] },
+            { left: spot.x - 2, top: spot.bottom + OVERLAP, cls: 'is-below', dir: 1, at: [spot.x, spot.bottom] },
+          ]
+        : [
+            { left: spot.x - PIN + OVERLAP, top: spot.top - PIN + OVERLAP, cls: 'is-left', dir: -1, at: [spot.x, spot.top] },
+            { left: spot.x - PIN + OVERLAP, top: spot.top - OVERLAP, cls: 'is-below is-left', dir: -1, at: [spot.x, spot.top] },
+            { left: spot.x - 2, top: spot.top - PIN - OVERLAP, cls: '', dir: 1, at: [spot.x, spot.top] },
+            { left: spot.x - 2, top: spot.bottom + OVERLAP, cls: 'is-below', dir: 1, at: [spot.x, spot.bottom] },
+            { left: spot.x - PIN + OVERLAP, top: spot.bottom - OVERLAP, cls: 'is-below is-left', dir: -1, at: [spot.x, spot.bottom] },
+          ];
+      const maxLeft = usableRight() - PIN - 2;
+      const maxTop = window.innerHeight - PIN - 2;
+      const overlaps = (l, t) => placed.some((p) => l < p.right + 6 && l + PIN > p.left - 6 && t < p.bottom + 6 && t + PIN > p.top - 6);
+      let pick = null;
+      for (const place of places) {
+        for (let step = 0; step <= 3 && !pick; step += 1) {
+          const l = place.left + step * STEP * place.dir;
+          const t = place.top;
+          if (l < 2 || l > maxLeft || t < 2 || t > maxTop) continue;
+          if (overlaps(l, t) || !pinSpotFree(l, t, element)) continue;
+          pick = { ...place, left: l, top: t };
+        }
+        if (pick) break;
+      }
+      // Nowhere is free: the first place, kept inside the window, and stepped
+      // clear of earlier pins at least.
+      if (!pick) {
+        let l = clamp(places[0].left, 2, maxLeft);
+        const t = clamp(places[0].top, 2, maxTop);
+        for (let step = 0; step < 4 && overlaps(l, t); step += 1) l = clamp(l + STEP * places[0].dir, 2, maxLeft);
+        pick = { ...places[0], left: l, top: t };
+      }
+      const pinLeft = pick.left;
+      const pinTop = pick.top;
+      const isLeft = pick.cls.includes('is-left');
+      const below = pick.cls.includes('is-below');
       pin.style.left = `${pinLeft}px`;
       pin.style.top = `${pinTop}px`;
-      pin.classList.toggle('is-left', left);
+      pin.style.pointerEvents = '';
+      pin.classList.toggle('is-left', isLeft);
       pin.classList.toggle('is-below', below);
-      pinPos.set(comment.id, { left: pinLeft, top: pinTop, below, rect });
+      placed.push({ left: pinLeft, top: pinTop, right: pinLeft + PIN, bottom: pinTop + PIN });
+      pinPos.set(comment.id, { left: pinLeft, top: pinTop, below, rect, textRight: box.right, frameRight: box.right + 3 });
 
-      // The pin could not sit at the spot (an edge got in the way): a line
-      // says which element it is about.
-      const moved = Math.abs(pinTop - wantTop) > 4;
-      if (moved) {
-        const from = below ? pinTop : pinTop + PIN;
-        const to = below ? spot.bottom : spot.top;
-        const gap = Math.abs(to - from);
-        if (gap > 0 && gap < 60) {
-          const x = left ? pinLeft + PIN - 3 : pinLeft + 1; // under the point
-          lineLayer.appendChild(el('div', { class: 'gm-leader', style: `left:${x}px;top:${Math.min(from, to)}px;height:${gap}px` }));
-        }
+      // Where the point is, against where the spot is: a pin that had to step
+      // away gets a line from its point to the spot.
+      const pointX = isLeft ? pinLeft + PIN : pinLeft;
+      const pointY = below ? pinTop : pinTop + PIN;
+      const dx = pick.at[0] - pointX;
+      const dy = pick.at[1] - pointY;
+      const length = Math.hypot(dx, dy);
+      if (length > 8 && length < 240) {
+        const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
+        lineLayer.appendChild(el('div', { class: 'gm-leader', style: `left:${pointX}px;top:${pointY}px;width:${length}px;transform:rotate(${angle}deg)` }));
       }
 
-      for (const r of rects) {
-        lineLayer.appendChild(el('div', { class: 'gm-underline', style: `left:${r.left}px;top:${r.bottom}px;width:${r.width}px` }));
+      // The pencil mark under the quoted words, for a highlight only: an
+      // element's whole text underlined next to its pin says nothing the pin
+      // does not, and the frame says the rest when the thread is open.
+      if (highlight) {
+        for (const r of rects) {
+          lineLayer.appendChild(el('div', { class: 'gm-underline', style: `left:${r.left}px;top:${r.bottom}px;width:${r.width}px` }));
+        }
       }
     });
 
@@ -1087,7 +1151,7 @@ export function mountUi(deps) {
   function repliesFor(comment) {
     const replies = Array.isArray(comment.replies) ? comment.replies : [];
     const writing = sync && replyingId === comment.id;
-    if (!replies.length && !writing) return null;
+    if (!replies.length || (writing && editingReplyId && replies.length === 1)) return null;
     const wrap = el('div', { class: 'gm-replies' });
 
     replies.forEach((r) => {
@@ -1100,8 +1164,8 @@ export function mountUi(deps) {
         el('p', { class: 'gm-text', text: String(r.text || '') }),
       ]);
       if (mine) {
-        const edit = el('button', { type: 'button', text: 'Edit', 'data-focus': `redit:${r.id}` });
-        const del = el('button', { type: 'button', class: 'gm-del', text: 'Delete', 'data-focus': `rdel:${r.id}` });
+        const edit = el('button', { type: 'button', class: 'gm-quiet', text: 'Edit', 'data-focus': `redit:${r.id}` });
+        const del = el('button', { type: 'button', class: 'gm-del gm-quiet', text: 'Delete', 'data-focus': `rdel:${r.id}` });
         edit.addEventListener('click', () => {
           replyingId = comment.id;
           editingReplyId = r.id;
@@ -1123,8 +1187,13 @@ export function mountUi(deps) {
       }
       wrap.appendChild(row);
     });
+    return wrap;
+  }
 
-    if (writing) {
+  /** The one-line reply field, with the name ask beside it when a name is needed. */
+  function replyComposer(comment) {
+    const wrap = el('div', { class: 'gm-reply-write' });
+    {
       const field = el('input', { type: 'text', class: 'gm-reply-field', 'aria-label': 'Your reply', placeholder: 'Reply', maxlength: '4000' });
       field.value = replyDraft;
       const askingName = replyNameAsk && !store.reviewer().trim();
@@ -1250,7 +1319,8 @@ export function mountUi(deps) {
     const ctx = el('div', { class: 'gm-thread-ctx' }, [
       el('span', { class: 'where' }, [
         el('b', { text: `#${index + 1}` }),
-        el('span', { text: `${screen ? `${screen} · ` : ''}${describe(comment.anchor, element)}` }),
+        screen ? el('span', { class: 'gm-screen', text: screen }) : null,
+        el('span', { class: 'gm-quote', text: describe(comment.anchor, element) }),
       ]),
       ...flagsFor(entry),
       // What the author or their agent did with it. Read-only here: a status is
@@ -1279,8 +1349,8 @@ export function mountUi(deps) {
       });
       body.append(area, el('div', { class: 'gm-card-actions' }, [save, cancel]));
     } else {
-      const edit = el('button', { type: 'button', text: 'Edit', 'data-focus': `edit:${comment.id}` });
-      const del = el('button', { type: 'button', class: 'gm-del', text: 'Delete', 'data-focus': `del:${comment.id}` });
+      const edit = el('button', { type: 'button', class: 'gm-quiet', text: 'Edit', 'data-focus': `edit:${comment.id}` });
+      const del = el('button', { type: 'button', class: 'gm-del gm-quiet', text: 'Delete', 'data-focus': `del:${comment.id}` });
       edit.addEventListener('click', () => {
         editingId = comment.id;
         render(true);
@@ -1297,7 +1367,25 @@ export function mountUi(deps) {
         store.remove(comment.id);
         render(true);
       });
-      const reply = el('button', { type: 'button', text: 'Reply', 'data-focus': `reply:${comment.id}` });
+      // Edit and Delete only on what this browser wrote. Without sign-in that is
+      // all 'your own' can mean; the service enforces the same rule with the
+      // edit token, so hiding the buttons is a courtesy, not the lock.
+      const actions = own ? [edit, del] : [];
+      body.append(
+        el('p', { class: 'gm-text', text: comment.intent.text }),
+        ...(actions.length ? [el('div', { class: 'gm-card-actions' }, actions)] : [])
+      );
+    }
+    const replies = repliesFor(comment);
+    if (replies) body.appendChild(replies);
+
+    // Reply is the thread's own action, so it sits at the foot, after the
+    // replies; while one is being written, the field takes its place.
+    const foot = el('div', { class: 'gm-thread-foot' });
+    if (sync && replyingId === comment.id) {
+      foot.appendChild(replyComposer(comment));
+    } else if (sync) {
+      const reply = el('button', { type: 'button', class: 'gm-reply-btn', text: 'Reply', 'data-focus': `reply:${comment.id}` });
       reply.addEventListener('click', () => {
         // A reply half-written elsewhere is work, like a comment is (review R15).
         if (replyingId && replyingId !== comment.id && replyDraft.trim() && !replyDiscardArmed) {
@@ -1311,19 +1399,10 @@ export function mountUi(deps) {
         replyDraft = '';
         render(true);
       });
-      // Edit and Delete only on what this browser wrote. Without sign-in that is
-      // all 'your own' can mean; the service enforces the same rule with the
-      // edit token, so hiding the buttons is a courtesy, not the lock.
-      const actions = [...(sync ? [reply] : []), ...(own ? [edit, del] : [])];
-      body.append(
-        el('p', { class: 'gm-text', text: comment.intent.text }),
-        ...(actions.length ? [el('div', { class: 'gm-card-actions' }, actions)] : [])
-      );
+      foot.appendChild(reply);
     }
-    const replies = repliesFor(comment);
-    if (replies) body.appendChild(replies);
 
-    thread.append(ctx, body);
+    thread.append(ctx, body, foot);
     thread.hidden = false;
     thread.dataset.id = comment.id;
     thread.dataset.status = status;
@@ -1347,17 +1426,35 @@ export function mountUi(deps) {
       thread.style.top = '52px';
       return;
     }
-    const { rect } = at;
+    const { rect, textRight, frameRight } = at;
     let left;
     let top = at.top - 8;
-    if (rect.right + 12 + THREAD_WIDTH <= right - 8) left = rect.right + 12;
-    else if (rect.left - 12 - THREAD_WIDTH >= 8) left = rect.left - 12 - THREAD_WIDTH;
-    else {
+    let beside = false;
+    if (rect.right + 12 + THREAD_WIDTH <= right - 8) {
+      left = rect.right + 12;
+      beside = true;
+    } else if (textRight + 14 + THREAD_WIDTH <= right - 8) {
+      left = textRight + 14;
+      beside = true;
+    } else if (rect.left - 14 - THREAD_WIDTH >= 8) {
+      left = rect.left - 14 - THREAD_WIDTH;
+    } else {
       left = at.left;
       top = rect.bottom + 10;
     }
+    const finalTop = clamp(top, 8, Math.max(8, window.innerHeight - height - 8));
     thread.style.left = `${clamp(left, 8, Math.max(8, right - THREAD_WIDTH - 8))}px`;
-    thread.style.top = `${clamp(top, 8, Math.max(8, window.innerHeight - height - 8))}px`;
+    thread.style.top = `${finalTop}px`;
+    // A caret on the thread's edge, level with the frame, and a hairline
+    // across any gap between the two, so the frame and the card that explains
+    // it read as one object.
+    thread.classList.toggle('is-beside', beside);
+    const middle = (rect.top + rect.bottom) / 2;
+    thread.style.setProperty('--gm-caret', `${clamp(middle - finalTop, 12, Math.max(12, height - 12))}px`);
+    const finalLeft = clamp(left, 8, Math.max(8, right - THREAD_WIDTH - 8));
+    if (beside && finalLeft - 6 - frameRight > 12 && middle > finalTop && middle < finalTop + height) {
+      lineLayer.appendChild(el('div', { class: 'gm-tie', style: `left:${frameRight + 1}px;top:${middle}px;width:${finalLeft - 6 - frameRight - 1}px` }));
+    }
   }
 
   // ---- shared mode: versions ---------------------------------------------
@@ -1466,7 +1563,6 @@ export function mountUi(deps) {
     // refusal, a blocked window): the popover opens itself.
     if (attention && !identityOpen) {
       identityOpen = true;
-      menuOpen = false;
       layoutChrome();
     }
     // Pressing Sign in swaps the button for Cancel. Focus follows to whichever is there now.
@@ -1489,13 +1585,12 @@ export function mountUi(deps) {
     const view = sync.view();
     renderIdentity(view);
     const here = view.versions.find((v) => v.version_id === sync.versionId) || null;
-    sharedHead.hidden = !here;
+    // Shown only when there is another version to know about: a page with one
+    // version has nothing to say here (design critic, #21).
+    const others = here ? view.versions.filter((v) => v.version_id !== sync.versionId) : [];
+    sharedHead.hidden = !here || (others.length === 0 && view.isLatest);
     if (!here) return;
 
-    // The sheet's foot says which version this page is, and the list holds
-    // only the others; with no others there is nothing to open, so it is a
-    // plain line rather than a button that does nothing (design critic, #15).
-    const others = view.versions.filter((v) => v.version_id !== sync.versionId);
     versionBtn.textContent = `Version ${here.round}${view.isLatest ? ' (current)' : ''}`;
     versionBtn.disabled = others.length === 0;
     if (!others.length) versionsOpen = false;
@@ -1596,8 +1691,7 @@ export function mountUi(deps) {
     // markup: a name is whatever a stranger with the page key typed.
     if (sync) meta.appendChild(el('span', { class: authorClass(comment.author), text: own ? `${nameOf(comment.author)} (you)` : nameOf(comment.author) }));
     if (comment.intent.tag) meta.appendChild(el('span', { class: 'gm-tag', text: comment.intent.tag }));
-    const screen = comment.state.screen && comment.state.screen.name;
-    if (screen) meta.appendChild(el('span', { text: screen }));
+    // No screen name here: the row sits under a group label that says it.
     flagsFor(entry).forEach((f) => meta.appendChild(f));
     if (comment.status && comment.status !== 'open') meta.appendChild(el('span', { class: 'gm-status', text: comment.status }));
     const when = ago(comment.time);

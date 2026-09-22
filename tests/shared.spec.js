@@ -528,7 +528,7 @@ test('a typed reply is not thrown away by one Escape, a composing Enter does not
     await field.pressSequentially('Half a thought');
 
     await field.press('Escape');
-    await expect(card.locator('.gm-replies .gm-boxwarn')).toHaveText('Press again to discard what you typed.');
+    await expect(card.locator('.gm-boxwarn')).toHaveText('Press again to discard what you typed.'); // the reply field sits in the thread's foot (issue #21)
     await expect(field).toHaveValue('Half a thought');
 
     // Enter that belongs to an input method is not Enter that sends.
