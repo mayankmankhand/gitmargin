@@ -72,6 +72,21 @@ async function comment(page, selector, text, name = '') {
   await page.click('.gm-switch');
 }
 
+/**
+ * Open the thread of the `nth` comment (issue #21): the rows live in the sheet
+ * behind the count badge, and a row opens its thread, which is where Reply,
+ * Edit, Delete and the replies themselves are. Returns the thread.
+ */
+async function openThread(page, nth = 0) {
+  if (!(await page.locator('.gm-sheet').isVisible())) await page.click('.gm-badge');
+  const row = page.locator('.gm-card').nth(nth);
+  const id = (await row.getAttribute('data-focus')).slice('card:'.length);
+  const thread = page.locator('.gm-thread');
+  if (!(await thread.isVisible()) || (await thread.getAttribute('data-id')) !== id) await row.click();
+  await expect(thread).toBeVisible();
+  return thread;
+}
+
 /** A shared page open in two separate browsers, plus the service behind it. */
 async function twoPeople(browser, testInfo, options = {}) {
   const service = await startService(options);
@@ -202,12 +217,13 @@ test('replies, own-only controls, and a status the author sets', async ({ browse
     await expect(samCard).toHaveCount(1, SLOW);
     await expect(samCard.locator('.gm-author').first()).toHaveText('Priya');
 
-    // Sam may reply to it but not edit or delete it.
-    await samCard.hover();
-    await expect(samCard.getByRole('button', { name: 'Reply' })).toBeVisible();
-    await expect(samCard.getByRole('button', { name: 'Edit' })).toHaveCount(0);
-    await expect(samCard.getByRole('button', { name: 'Delete' })).toHaveCount(0);
-    await samCard.getByRole('button', { name: 'Reply' }).click();
+    // Sam may reply to it but not edit or delete it. The controls are in the
+    // thread, which opens from the row (issue #21).
+    const samThread = await openThread(t.sam);
+    await expect(samThread.getByRole('button', { name: 'Reply' })).toBeVisible();
+    await expect(samThread.getByRole('button', { name: 'Edit' })).toHaveCount(0);
+    await expect(samThread.getByRole('button', { name: 'Delete' })).toHaveCount(0);
+    await samThread.getByRole('button', { name: 'Reply' }).click();
     await t.sam.fill('.gm-reply-field', 'Agreed, it needs a Back button.');
     await t.sam.keyboard.press('Enter');
     // The name is asked for right there, beside the reply, and Enter in it sends (review R11).
@@ -215,14 +231,14 @@ test('replies, own-only controls, and a status the author sets', async ({ browse
     await t.sam.locator('.gm-reply-name').fill('Sam');
     await t.sam.locator('.gm-reply-name').press('Enter');
     await expect(t.sam.locator('#gm-reviewer')).toHaveValue('Sam');
-    await expect(samCard.locator('.gm-reply')).toHaveCount(1);
+    await expect(samThread.locator('.gm-reply')).toHaveCount(1);
 
     const priyaCard = t.priya.locator('.gm-card');
-    await expect(priyaCard.locator('.gm-reply .gm-text')).toHaveText('Agreed, it needs a Back button.', SLOW);
-    await expect(priyaCard.locator('.gm-reply .gm-author')).toHaveText('Sam');
-    await expect(priyaCard.locator('.gm-reply').getByRole('button', { name: 'Delete' })).toHaveCount(0);
-    await priyaCard.hover();
-    await expect(priyaCard.getByRole('button', { name: 'Edit' })).toBeVisible();
+    const priyaThread = await openThread(t.priya);
+    await expect(priyaThread.locator('.gm-reply .gm-text')).toHaveText('Agreed, it needs a Back button.', SLOW);
+    await expect(priyaThread.locator('.gm-reply .gm-author')).toHaveText('Sam');
+    await expect(priyaThread.locator('.gm-reply').getByRole('button', { name: 'Delete' })).toHaveCount(0);
+    await expect(priyaThread.getByRole('button', { name: 'Edit' })).toBeVisible();
 
     // The author marks it applied from the command line; both see the badge.
     const id = await t.priya.evaluate(() => window.__gitmargin.export().comments[0].id);
@@ -231,11 +247,10 @@ test('replies, own-only controls, and a status the author sets', async ({ browse
     await expect(priyaCard.locator('.gm-status')).toHaveText('applied', SLOW);
     await expect(samCard.locator('.gm-status')).toHaveText('applied', SLOW);
 
-    // Sam takes his reply back; it leaves Priya's panel too.
-    await samCard.locator('.gm-reply').hover();
-    await samCard.locator('.gm-reply').getByRole('button', { name: 'Delete' }).click();
-    await samCard.locator('.gm-reply').getByRole('button', { name: 'Delete?' }).click();
-    await expect(priyaCard.locator('.gm-reply')).toHaveCount(0, SLOW);
+    // Sam takes his reply back; it leaves Priya's thread too.
+    await samThread.locator('.gm-reply').getByRole('button', { name: 'Delete' }).click();
+    await samThread.locator('.gm-reply').getByRole('button', { name: 'Delete?' }).click();
+    await expect(priyaThread.locator('.gm-reply')).toHaveCount(0, SLOW);
 
     // What a reviewer sends by file carries the conversation in the format's own slot.
     const exported = await t.priya.evaluate(() => window.__gitmargin.export());
@@ -271,10 +286,14 @@ test('names, comments and replies from other people are drawn as text and run no
 
     const card = t.priya.locator('.gm-card');
     await expect(card).toHaveCount(1, SLOW);
-    await expect(card.locator('.gm-reply')).toHaveCount(1, SLOW);
     await expect(card.locator('.gm-text').first()).toHaveText(hostile);
-    await expect(card.locator('.gm-reply .gm-text')).toHaveText(hostile);
+    const thread = await openThread(t.priya);
+    await expect(thread.locator('.gm-reply')).toHaveCount(1, SLOW);
+    await expect(thread.locator('.gm-text').first()).toHaveText(hostile);
+    await expect(thread.locator('.gm-reply .gm-text')).toHaveText(hostile);
     expect(await card.locator('img, script').count()).toBe(0);
+    expect(await thread.locator('img, script').count()).toBe(0);
+    expect(await t.priya.locator('.gm-pin img, .gm-pin script').count()).toBe(0);
     expect(await t.priya.evaluate(() => window.__pwned)).toBeUndefined();
     expect(t.errors).toEqual([]);
   } finally {
@@ -308,10 +327,9 @@ test('a reply being typed is not wiped when someone else\'s comment arrives', as
   const t = await twoPeople(browser, testInfo);
   try {
     await comment(t.priya, '#step-1 .next', 'Reply to me.', 'Priya');
-    const samCard = t.sam.locator('.gm-card').first();
-    await expect(samCard).toBeVisible(SLOW);
-    await samCard.hover();
-    await samCard.getByRole('button', { name: 'Reply' }).click();
+    await expect(t.sam.locator('.gm-card').first()).toHaveCount(1, SLOW);
+    const samThread = await openThread(t.sam);
+    await samThread.getByRole('button', { name: 'Reply' }).click();
     await t.sam.locator('.gm-reply-field').pressSequentially('Half a thou');
     // Mark the element itself. The draft text is restored after a rebuild, so
     // the text alone cannot tell whether the field was torn down mid-keystroke;
@@ -329,7 +347,8 @@ test('a reply being typed is not wiped when someone else\'s comment arrives', as
     await t.sam.locator('.gm-reply-name').fill('Sam');
     await t.sam.locator('.gm-reply-name').press('Enter');
     await expect(t.sam.locator('.gm-card')).toHaveCount(2, SLOW); // and the list catches up after
-    await expect(t.priya.locator('.gm-reply .gm-text')).toHaveText('Half a thought.', SLOW);
+    const priyaThread = await openThread(t.priya);
+    await expect(priyaThread.locator('.gm-reply .gm-text')).toHaveText('Half a thought.', SLOW);
   } finally {
     await t.service.close();
   }
@@ -361,6 +380,7 @@ test('a new version opens clean, and an older version with no stored page is rea
     await expect(onV2.locator('.gm-card')).toHaveCount(0);
 
     // By keyboard: the accordion is a button, and so is the older version's row.
+    await onV2.click('.gm-badge'); // the Version line is in the sheet's foot (issue #21)
     await onV2.locator('.gm-version').focus();
     await onV2.keyboard.press('Enter');
     const row = onV2.locator('.gm-vrow', { hasText: 'Version 1' });
@@ -421,6 +441,7 @@ test('from a file, from the stored page, and from a web address: three people, o
     }
 
     // Inside the sandbox the two ways out still work: the file, and the clipboard or its fallback.
+    await onStored.click('.gm-badge'); // Send and Copy live in the sheet (issue #21)
     const [download] = await Promise.all([onStored.waitForEvent('download'), onStored.click('.gm-send .gm-btn.primary')]);
     expect(download.suggestedFilename()).toMatch(/\.reviewed.*\.html$/);
     await onStored.click('.gm-send .gm-btn.ghost');
@@ -449,6 +470,7 @@ test('the accordion opens an older version\'s stored page, with its comments pin
     const onV2 = await context.newPage();
     await open(onV2, v1.url);
     await expect(onV2.locator('.gm-version')).toHaveText('Version 2 (current)', SLOW);
+    await onV2.click('.gm-badge'); // the Version line is in the sheet's foot (issue #21)
     await onV2.click('.gm-version');
     const row = onV2.locator('a.gm-vrow', { hasText: 'Version 1' });
     await expect(row).toContainText('open');
@@ -500,8 +522,7 @@ test('a typed reply is not thrown away by one Escape, a composing Enter does not
   const t = await twoPeople(browser, testInfo);
   try {
     await comment(t.priya, '#step-1 .next', 'Reply to me.', 'Priya');
-    const card = t.priya.locator('.gm-card').first();
-    await card.hover();
+    const card = await openThread(t.priya); // the thread, where Reply and the replies live (issue #21)
     await card.getByRole('button', { name: 'Reply' }).click();
     const field = t.priya.locator('.gm-reply-field').first();
     await field.pressSequentially('Half a thought');

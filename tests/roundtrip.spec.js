@@ -112,6 +112,8 @@ test('Send to author downloads the page with the comments in it, and hostile tex
   // A reviewer who types markup must not be able to end the JSON block early.
   await comment(page, '#step-3 .continue', 'Use </script> and <!-- here, please.', 'change');
 
+  await page.click('.gm-badge'); // Send lives in the sheet (issue #21)
+
   const [download] = await Promise.all([
     page.waitForEvent('download'),
     page.click('.gm-send .gm-btn.primary'),
@@ -146,7 +148,10 @@ test('Copy for author puts the markdown batch on the clipboard', async ({ page }
   await openFixture(page);
   await walkTo(page, 3);
   await comment(page, '#step-3 .continue', 'Expected this to stay disabled.', 'bug');
+  await page.click('.gm-id'); // the name field is under the identity chip (issue #21)
   await page.fill('.gm-who input', 'Priya');
+
+  await page.click('.gm-badge'); // Copy lives in the sheet (issue #21)
 
   await page.click('.gm-send .gm-btn.ghost');
   const { text, ok } = await page.evaluate(() => ({
@@ -181,6 +186,7 @@ test('comments survive closing the tab', async ({ page }) => {
 
   await walkTo(page, 3);
   await comment(page, '#step-3 .continue', 'Should still be here after a reload.', 'question');
+  await page.click('.gm-id'); // the name field is under the identity chip (issue #21)
   await page.fill('.gm-who input', 'Priya');
 
   await page.reload();
@@ -259,7 +265,10 @@ test('a returned file can be reopened and re-sent without losing its comments', 
   await openFixture(page);
   await walkTo(page, 3);
   await comment(page, '#step-3 .continue', 'Expected this to stay disabled.', 'bug');
+  await page.click('.gm-id'); // the name field is under the identity chip (issue #21)
   await page.fill('.gm-who input', 'Priya');
+
+  await page.click('.gm-badge'); // Send lives in the sheet (issue #21)
 
   const [download] = await Promise.all([
     page.waitForEvent('download'),
@@ -301,6 +310,8 @@ test('the returned file closes its body tag properly when the page holds non-ASC
   await openFixture(page);
   await walkTo(page, 3);
   await comment(page, '#step-3 .continue', 'Checking the closing tag survives.', 'change');
+
+  await page.click('.gm-badge'); // Send lives in the sheet (issue #21)
 
   const [download] = await Promise.all([
     page.waitForEvent('download'),
@@ -392,6 +403,7 @@ test('two unstamped prototypes do not share a comment store', async ({ page }) =
   await page.click('main .go');
   await page.fill('.gm-box textarea', 'This belongs to prototype a.');
   await page.click('.gm-box-actions .gm-btn.primary');
+  await page.click('.gm-id'); // the name field is under the identity chip (issue #21)
   await page.fill('.gm-who input', 'Priya');
   await expect(page.locator('.gm-card')).toHaveCount(1);
 
@@ -471,6 +483,7 @@ test('deleting a comment takes two clicks', async ({ page }) => {
   await openFixture(page);
   await walkTo(page, 3);
   await comment(page, '#step-3 .continue', 'A comment worth several minutes.', 'bug');
+  await page.click('.gm-badge'); // the row is in the sheet; clicking it opens the thread (issue #21)
   await page.click('.gm-card');
 
   await page.click('.gm-card-actions .gm-del');
@@ -512,12 +525,20 @@ test('a comment can be made and dismissed with the keyboard alone', async ({ pag
   expect(await page.evaluate(() => window.__gitmargin.ui.isCommentMode())).toBe(false);
 });
 
-test('collapsing the panel cannot leave the prototype frozen', async ({ page }) => {
+test('closing the comments list cannot leave the prototype frozen', async ({ page }) => {
+  // Since issue #21 the list is a sheet and the switch lives in a pill that is
+  // always on screen, so closing the list never hides the way out of comment
+  // mode; the promise the old collapse test made is kept by construction.
   await openFixture(page);
   await page.click('.gm-switch');
   expect(await page.evaluate(() => window.__gitmargin.ui.isCommentMode())).toBe(true);
 
+  await page.click('.gm-badge');
+  await expect(page.locator('.gm-sheet')).toBeVisible();
   await page.click('.gm-close');
+  await expect(page.locator('.gm-sheet')).toBeHidden();
+  await expect(page.locator('.gm-switch')).toBeVisible();
+  await page.keyboard.press('Escape');
   expect(await page.evaluate(() => window.__gitmargin.ui.isCommentMode())).toBe(false);
   // And the prototype answers clicks again.
   await page.click('#step-1 .next');
@@ -556,6 +577,8 @@ test('card actions are revealed by keyboard focus, not only by hover', async ({ 
   await openFixture(page);
   await walkTo(page, 3);
   await comment(page, '#step-3 .continue', 'Checking focus reveal.', 'change');
+  await page.click('.gm-badge'); // the actions live in the thread, opened from the row (issue #21)
+  await page.click('.gm-card');
 
   await page.evaluate(() => {
     const root = document.getElementById('gitmargin-root').shadowRoot;
@@ -605,15 +628,16 @@ test('an open edit survives a re-render of the page', async ({ page }) => {
   await openFixture(page);
   await walkTo(page, 3);
   await comment(page, '#step-3 .continue', 'The original text.', 'change');
+  await page.click('.gm-badge'); // the row is in the sheet; clicking it opens the thread (issue #21)
   await page.click('.gm-card');
   await page.click('.gm-card-actions button');
 
-  await page.fill('.gm-card textarea', 'A careful rewrite in progress');
+  await page.fill('.gm-thread textarea', 'A careful rewrite in progress');
   // Anything the prototype does triggers the observer: a clock, a carousel, a
   // scroll. Here, a DOM change stands in for all of them.
   await page.evaluate(() => document.querySelector('#step-3 h2').append(' '));
   await page.waitForTimeout(120);
-  await expect(page.locator('.gm-card textarea')).toHaveValue('A careful rewrite in progress');
+  await expect(page.locator('.gm-thread textarea')).toHaveValue('A careful rewrite in progress');
 });
 
 test('a dialog names the screen it belongs to', async ({ page }) => {
@@ -682,9 +706,10 @@ test('the panel keeps updating while a comment is being edited', async ({ page }
   await openFixture(page);
   await walkTo(page, 3);
   await comment(page, '#step-3 .continue', 'The original text.', 'change');
+  await page.click('.gm-badge'); // the row is in the sheet; clicking it opens the thread (issue #21)
   await page.click('.gm-card');
   await page.click('.gm-card-actions button');
-  await page.fill('.gm-card textarea', 'A careful rewrite in progress');
+  await page.fill('.gm-thread textarea', 'A careful rewrite in progress');
 
   // The saved notice and the count live outside the list, so guarding the list
   // against rebuilds must not freeze them too.
@@ -692,7 +717,7 @@ test('the panel keeps updating while a comment is being edited', async ({ page }
   await expect(page.locator('.gm-section .count')).toHaveText('1');
   await page.evaluate(() => document.querySelector('#step-3 h2').append(' '));
   await page.waitForTimeout(120);
-  await expect(page.locator('.gm-card textarea')).toHaveValue('A careful rewrite in progress');
+  await expect(page.locator('.gm-thread textarea')).toHaveValue('A careful rewrite in progress');
   await expect(page.locator('.gm-section .count')).toHaveText('1');
 });
 
@@ -935,7 +960,7 @@ test('no frame with comment mode off, none over the panel, and page furniture op
   await page.hover('#step-1 .next');
   await settle(page);
   expect(await frameHidden(page)).toBe(false);
-  await page.hover('.gm-panel');
+  await page.hover('.gm-bar'); // the overlay's own chrome (issue #21)
   await settle(page);
   expect(await frameHidden(page)).toBe(true);
 

@@ -1,6 +1,15 @@
-/* Hairline: the overlay is drawn in one-pixel strokes and almost nothing else,
-   so it reads over any prototype without competing with it. One accent, no
-   shadows, no gradients, no cards that hold nothing.
+/* Marker on a light prototype, Graphite on a dark one (issue #21).
+
+   The overlay is drawn the way the comment tools people already use draw
+   theirs: a pin with initials at the spot, the thread opening right there, a
+   list on demand, and one small floating chrome for the controls. One accent,
+   one colour per person, real shadows so a card reads as a layer over any
+   page, and the same 13px system type as before.
+
+   Which of the two token sets applies is MEASURED from the page's own ground
+   (src/overlay/theme.js), never taken from the browser's colour-scheme
+   preference: the pins sit on the prototype, and a dark prototype is dark on
+   a light-mode machine too. `gm-dark` on the host switches the set.
 
    Everything lives inside a shadow root, so the prototype's CSS cannot reach in
    and ours cannot reach out. `all: initial` on the host blocks the inherited
@@ -8,97 +17,148 @@
 
 :host {
   all: initial;
-  --gm-accent: #363a9c;      /* deep ink indigo: the only colour in the overlay */
-  --gm-accent-soft: rgba(54, 58, 156, 0.14);
-  --gm-line: rgba(20, 20, 30, 0.16);        /* decorative dividers only */
-  --gm-line-strong: rgba(20, 20, 30, 0.32);
+  --gm-accent: #7c3aed;                    /* fills: the armed button, the send arrow */
+  --gm-accent-ink: #7c3aed;                /* lines and text in the accent: frame, ring, underline */
+  --gm-accent-soft: rgba(124, 58, 237, 0.12);
+  --gm-surface: #ffffff;                   /* a card, the sheet, the chrome */
+  --gm-surface-2: #f4f4f6;                 /* a hovered row, a field's ground */
+  --gm-text: #1e1e1e;
+  --gm-muted: #6b6b6b;
+  --gm-line: #e7e7ea;                      /* decorative dividers only */
   /* The boundary of anything a person operates: a field, a chip, a button.
-     WCAG 1.4.11 asks 3:1 for that, and the two tokens above measure 1.4:1 and
-     2.1:1 on white. Same one-pixel stroke, darker value (review R26). */
-  --gm-field-line: rgba(20, 20, 30, 0.50);
-  --gm-bg: #ffffff;
-  --gm-panel: #f5f5f8;       /* the panel's own ground: a layer, not more page */
-  --gm-text: #17171b;
-  --gm-muted: #6a6a76;
+     WCAG 1.4.11 asks 3:1 for that (review R26 of the #3 cycle). */
+  --gm-field-line: rgba(30, 30, 30, 0.5);
+  --gm-ring: #ffffff;                      /* the ring around a pin, the frame's outer line */
+  --gm-ring-width: 1px;                    /* the frame's outer line: one hairline on light, two on dark */
+  --gm-neutral: #6b7280;                   /* the chip of a person with no name */
+  --gm-danger: #e5484d;                    /* the unread dot */
+  --gm-shadow: 0 12px 32px rgba(0, 0, 0, 0.2);
+  --gm-shadow-soft: 0 2px 14px rgba(0, 0, 0, 0.16);
+  --gm-pin-shadow: 0 2px 8px rgba(0, 0, 0, 0.28);
 
   position: fixed;
   inset: 0;
   z-index: 2147483647;
-  pointer-events: none;      /* the page keeps its clicks; our own bits opt back in */
+  pointer-events: none;                    /* the page keeps its clicks; our own bits opt back in */
   font: 13px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   color: var(--gm-text);
   -webkit-font-smoothing: antialiased;
 }
 
-/* As a popover the root joins the top layer, so the panel stays reachable when
-   the prototype opens a modal <dialog>. Popovers come with a border, padding
-   and a background of their own; all three go. */
+/* Graphite: the same overlay on a dark page. Surfaces go near-black with light
+   type, the accent lightens so it still reads as text, and the ring around a
+   pin and the frame's outer line go light and one pixel wider, which is what
+   keeps a pin from vanishing into a dark prototype. */
+:host(.gm-dark) {
+  --gm-accent-ink: #b39cf7;
+  --gm-accent-soft: rgba(179, 156, 247, 0.18);
+  --gm-surface: #1f1f23;
+  --gm-surface-2: #2a2a30;
+  --gm-text: #f4f4f5;
+  --gm-muted: #a1a1aa;
+  --gm-line: #35353c;
+  --gm-field-line: rgba(244, 244, 245, 0.5);
+  --gm-ring: #f4f4f5;
+  --gm-ring-width: 2px;
+  --gm-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
+  --gm-shadow-soft: 0 2px 14px rgba(0, 0, 0, 0.45);
+  --gm-pin-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+}
+
 /* Comment mode is a modal state layered over someone else's page: every click
-   goes to the overlay instead of the prototype. This border is the one cue that
-   survives collapsing the panel. */
+   goes to the overlay instead of the prototype. This edge is the one cue that
+   is visible wherever the reviewer looks. */
 :host(.gm-armed)::after {
   content: '';
   position: fixed;
   inset: 0;
-  border: 2px solid var(--gm-accent);
-  opacity: 0.5;
+  border: 2px solid var(--gm-accent-ink);
+  opacity: 0.55;
   pointer-events: none;
 }
 
+/* As a popover the root joins the top layer, so the overlay stays reachable
+   when the prototype opens a modal <dialog>. Popovers come with a border,
+   padding and a background of their own; all three go. */
 :host(:popover-open) { border: 0; padding: 0; margin: 0; background: transparent; width: auto; height: auto; }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 
 /* One focus rule for the whole overlay. The fields below replace the browser
-   ring with a 1px hue change, which is not a perceivable indicator on its own
+   ring with a hue change, which is not a perceivable indicator on its own
    (review R18 and the R19 split note); this restores a real one for keyboard
-   use without bringing rings back for the mouse. */
-/* The pair below is the fallback for an engine that runs the bundle but cannot
-   parse the rule after it. :where() needs Chrome 88 and :focus-visible needs
-   Safari 15.4, while the bundle itself parses from Chrome 80 and Safari 13.1,
-   so those in-between versions dropped the overlay's ONLY focus indicator and
-   kept all three outline:none declarations: keyboard use with nothing to see.
-   First line gives every engine a ring; second takes it back for the mouse on
-   engines that can tell the two apart, and is itself discarded as invalid by
-   the engines that cannot. */
-button:focus, input:focus, textarea:focus, [tabindex]:focus {
-  outline: 2px solid var(--gm-accent);
+   use without bringing rings back for the mouse. The pair below is the
+   fallback for an engine that runs the bundle but cannot parse the rule after
+   it (:where() needs Chrome 88, :focus-visible needs Safari 15.4). */
+button:focus, input:focus, textarea:focus, [tabindex]:focus, a:focus {
+  outline: 2px solid var(--gm-accent-ink);
   outline-offset: 2px;
-  border-radius: 3px;
+  border-radius: 6px;
 }
 button:focus:not(:focus-visible), input:focus:not(:focus-visible),
-textarea:focus:not(:focus-visible), [tabindex]:focus:not(:focus-visible) {
+textarea:focus:not(:focus-visible), [tabindex]:focus:not(:focus-visible), a:focus:not(:focus-visible) {
   outline: none;
 }
-:where(button, input, textarea, [tabindex]):focus-visible {
-  outline: 2px solid var(--gm-accent);
+:where(button, input, textarea, [tabindex], a):focus-visible {
+  outline: 2px solid var(--gm-accent-ink);
   outline-offset: 2px;
-  border-radius: 3px;
+  border-radius: 6px;
 }
 button { font: inherit; color: inherit; cursor: pointer; background: none; border: 0; padding: 0; }
 input, textarea { font: inherit; color: inherit; }
+.gm-icon { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; flex: none; }
 
 /* ---------- pins ---------- */
 
+/* A teardrop with its point at the bottom left, sitting on the spot: initials
+   on the author's colour, a ring in the page's ground colour, a shadow. The
+   selected one grows from its point, so the point stays where it was. */
 .gm-pin {
   position: fixed;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  border: 1px solid var(--gm-accent);
-  background: var(--gm-bg);
-  color: var(--gm-accent);
+  width: 26px;
+  height: 26px;
+  border-radius: 50% 50% 50% 4px;
+  background: var(--gm-author, var(--gm-neutral));
+  color: #fff;
   font-size: 10px;
-  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  letter-spacing: 0.02em;
   line-height: 1;
   display: flex;
   align-items: center;
   justify-content: center;
+  border: 2px solid var(--gm-ring);
+  box-shadow: var(--gm-pin-shadow);
   pointer-events: auto;
+  transform-origin: 0 100%;
+  transition: transform 120ms ease;
   animation: gm-pin-in 200ms cubic-bezier(0.2, 0.9, 0.3, 1.25);
 }
-.gm-pin:hover { background: var(--gm-accent-soft); }
-.gm-pin.is-selected { background: var(--gm-accent); color: #fff; }
+/* Where the point is says where the spot is: bottom left by default (the pin
+   hangs up and to the right of its spot), bottom right for a pin in the left
+   gutter, and the top corners when the pin had to go below the spot. */
+.gm-pin.is-left { border-radius: 50% 50% 4px 50%; transform-origin: 100% 100%; }
+.gm-pin.is-below { border-radius: 4px 50% 50% 50%; transform-origin: 0 0; }
+.gm-pin.is-below.is-left { border-radius: 50% 4px 50% 50%; transform-origin: 100% 0; }
+.gm-pin:hover, .gm-pin.is-hot { transform: scale(1.12); }
+.gm-pin.is-selected { transform: scale(1.22); box-shadow: 0 0 0 3px var(--gm-accent-soft), var(--gm-pin-shadow); }
+.gm-pin .n {
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  z-index: 1;
+  min-width: 14px;
+  padding: 1px 4px;
+  border-radius: 999px;
+  background: var(--gm-text);
+  color: var(--gm-surface);
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 1.3;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
 
 @keyframes gm-pin-in {
   from { transform: scale(0.4); opacity: 0; }
@@ -106,276 +166,372 @@ input, textarea { font: inherit; color: inherit; }
   to   { transform: scale(1); opacity: 1; }
 }
 
-/* The pencil mark under quoted text: drawn, never written into the page. */
+/* The frame around the element a comment is about: drawn, never written into
+   the page. The outer line in the ground colour is what keeps it readable on
+   a page whose colour nobody chose (review R8 of the #10 cycle). */
 .gm-frame {
   position: fixed;
-  border: 1px solid var(--gm-accent);
-  border-radius: 3px;
+  border: 2px solid var(--gm-accent-ink);
+  border-radius: 6px;
   pointer-events: none;
-  /* One more hairline, in the ground colour, just outside the stroke. On a
-     white page it is invisible; on a dark prototype it is what keeps a 2:1
-     indigo line from vanishing now that the frame is the only pre-click cue
-     (review R8, #10 cycle). A line, not a shadow. */
-  outline: 1px solid var(--gm-bg);
+  outline: var(--gm-ring-width) solid var(--gm-ring);
 }
 /* The same frame, drawn BEFORE the click around what the click would attach
    to (issue #10). Same stroke, same offset, so the preview and the selected
-   comment's frame are one mark at two moments. Hidden between targets. */
+   comment's frame are one mark at two moments. */
 .gm-target[hidden] { display: none; }
 
-.gm-leader {
+.gm-leader { position: fixed; width: 2px; background: var(--gm-accent-ink); opacity: 0.5; pointer-events: none; }
+.gm-underline { position: fixed; height: 2px; background: var(--gm-accent-ink); opacity: 0.5; pointer-events: none; }
+
+/* ---------- the chrome ---------- */
+
+/* One pill, top right, where the comment tools people already use keep theirs.
+   It floats over the page rather than pushing it down, because the page is
+   someone else's. When the sheet is open the pill moves left, out of its way. */
+.gm-bar {
   position: fixed;
-  width: 1px;
-  background: var(--gm-accent);
-  opacity: 0.6;
-  pointer-events: none;
-}
-
-.gm-underline {
-  position: fixed;
-  height: 1px;
-  background: var(--gm-accent);
-  opacity: 0.45;
-  pointer-events: none;
-}
-
-/* ---------- panel ---------- */
-
-.gm-panel {
-  position: fixed;
-  top: 0;
-  right: 0;
-  height: 100%;
-  width: 12px;                    /* a hairline to look at, 12px to hit */
-  /* Its own ground, not the prototype's. This strip is the only way back into
-     the overlay, and the page behind it is unknown by definition: over a dark
-     band or a photograph, muted grey on transparent disappears (review R24). */
-  background: var(--gm-panel);
-  border-left: 1px solid var(--gm-field-line);
-  pointer-events: auto;
-  transition: width 150ms ease, background-color 150ms ease;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-.gm-panel.is-open {
-  width: 320px;
-  background: var(--gm-panel);
-  border-left: 1px solid var(--gm-line-strong);
-}
-@media (prefers-reduced-motion: reduce) { .gm-panel { transition: none; } .gm-pin { animation: none; } }
-
-/* Collapsed: a rail you can grab, with the count so it is not invisible. */
-.gm-rail {
-  position: absolute;
-  inset: 0;
+  top: 12px;
+  right: 16px;
   display: flex;
   align-items: center;
-  justify-content: center;
-  writing-mode: vertical-rl;
-  font-size: 10px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--gm-text);
-  background: transparent;
-  width: 100%;
-}
-.gm-panel.is-open .gm-rail { display: none; }
-.gm-rail:hover { background: var(--gm-accent-soft); }
-
-.gm-panel-inner { display: none; flex-direction: column; height: 100%; }
-.gm-panel.is-open .gm-panel-inner { display: flex; }
-
-.gm-label, .gm-section {
-  font-size: 10px;
-  font-weight: 400;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--gm-muted);
-}
-
-.gm-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 12px 10px 14px;
-  border-bottom: 1px solid var(--gm-line);
-}
-.gm-switch {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 4px 9px 4px 5px;
-  border: 1px solid var(--gm-field-line);
+  gap: 2px;
+  padding: 4px;
+  background: var(--gm-surface);
   border-radius: 999px;
+  box-shadow: var(--gm-shadow-soft);
+  pointer-events: auto;
+  transition: right 150ms ease;
+}
+.gm-bar.is-shifted { right: 336px; }
+.gm-bar > button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 999px;
+  color: var(--gm-text);
   white-space: nowrap;
 }
-.gm-switch:hover { border-color: var(--gm-accent); }
-.gm-switch .dot {
-  width: 8px; height: 8px; border-radius: 50%;
-  border: 1px solid var(--gm-field-line);
-  background: transparent;
+.gm-bar > button:hover { background: var(--gm-surface-2); }
+.gm-switch kbd {
+  font: 600 10px/1 ui-sans-serif, system-ui, sans-serif;
+  border: 1px solid currentColor;
+  opacity: 0.7;
+  border-radius: 4px;
+  padding: 2px 4px;
 }
-.gm-switch.is-on { border-color: var(--gm-accent); color: var(--gm-accent); }
-.gm-switch.is-on .dot { background: var(--gm-accent); border-color: var(--gm-accent); }
-.gm-spacer { flex: 1; }
-.gm-close { color: var(--gm-muted); padding: 2px 5px; font-size: 15px; line-height: 1; border-radius: 3px; }
-.gm-close:hover { background: rgba(20, 20, 30, 0.05); }
-.gm-close:hover { color: var(--gm-text); }
-
-.gm-who { padding: 9px 14px 10px; border-bottom: 1px solid var(--gm-line); }
-.gm-who label { display: block; margin-bottom: 2px; }
-.gm-who input {
-  width: 100%;
-  border: 0;
-  border-bottom: 1px solid var(--gm-field-line);
-  padding: 3px 0;
-  background: transparent;
-  outline: none;
-}
-.gm-who input:focus { border-bottom-color: var(--gm-accent); }
-.gm-who input::placeholder { color: var(--gm-muted); }
-
-.gm-section { display: flex; align-items: baseline; gap: 8px; padding: 12px 14px 6px; }
-.gm-section .count { font-variant-numeric: tabular-nums; }
-
-.gm-list { flex: 0 1 auto; min-height: 0; overflow-y: auto; }
-/* Holds the panel's ground BELOW the composer, so a short list keeps the whole
-   column top-aligned instead of stranding the buttons across a void. With a
-   long list this collapses to nothing and the composer returns to the bottom. */
-.gm-fill { flex: 1; min-height: 0; }
-.gm-list:not(:empty) { border-top: 1px solid var(--gm-line); border-bottom: 1px solid var(--gm-line); }
-.gm-empty { padding: 16px 14px; color: var(--gm-muted); background: var(--gm-bg); }
-
-.gm-card {
-  padding: 11px 14px;
-  border-bottom: 1px solid var(--gm-line);
-  display: flex;
-  gap: 9px;
-  background: var(--gm-bg);
-}
-.gm-card:hover { background: #fff; box-shadow: inset 2px 0 0 var(--gm-line-strong); }
-.gm-card.is-selected { box-shadow: inset 2px 0 0 var(--gm-accent); }
-.gm-card .num {
-  flex: none;
-  width: 18px; height: 18px;
-  border: 1px solid var(--gm-accent);
+.gm-switch.is-on { background: var(--gm-accent); color: #fff; }
+.gm-switch.is-on:hover { background: #6d28d9; }
+.gm-badge { font-weight: 600; font-variant-numeric: tabular-nums; position: relative; }
+.gm-badge .dot {
+  position: absolute;
+  top: 5px;
+  right: 8px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
-  color: var(--gm-accent);
-  font-size: 10px;
-  font-variant-numeric: tabular-nums;
-  display: flex; align-items: center; justify-content: center;
+  background: var(--gm-danger);
+  border: 1.5px solid var(--gm-surface);
 }
-.gm-card .body { flex: 1; min-width: 0; }
-.gm-meta { color: var(--gm-muted); font-size: 10.5px; display: flex; flex-wrap: wrap; gap: 7px; align-items: baseline; }
-.gm-tag { color: var(--gm-accent); font-size: 10px; letter-spacing: 0.07em; text-transform: uppercase; }
-.gm-flag { color: var(--gm-muted); border: 1px solid var(--gm-line-strong); border-radius: 3px; padding: 0 4px; font-size: 10px; }
-.gm-text { margin: 5px 0 0; font-size: 13.5px; line-height: 1.5; overflow-wrap: anywhere; }
-.gm-card-actions { display: flex; gap: 12px; margin-top: 7px; opacity: 0; transition: opacity 120ms ease; }
-.gm-card:hover .gm-card-actions,
-.gm-card:focus-within .gm-card-actions,
-.gm-card.is-selected .gm-card-actions { opacity: 1; }
-.gm-card-actions button { color: var(--gm-muted); font-size: 11px; }
-.gm-card-actions button:hover { color: var(--gm-accent); }
-.gm-card-actions .gm-del[data-armed='yes'] { color: var(--gm-accent); font-weight: 600; }
-@media (prefers-reduced-motion: reduce) { .gm-card-actions { transition: none; } }
-.gm-card textarea { width: 100%; border: 1px solid var(--gm-field-line); border-radius: 4px; padding: 6px; resize: vertical; outline: none; }
-.gm-card textarea:focus { border-color: var(--gm-accent); }
+.gm-id { width: 34px; padding: 0 4px; justify-content: center; }
+.gm-id.is-text { width: auto; padding: 0 12px; }
+.gm-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--gm-author, var(--gm-neutral));
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+}
+.gm-more { width: 30px; padding: 0; justify-content: center; color: var(--gm-muted); font-size: 15px; letter-spacing: 1px; }
+.gm-spacer { flex: 1; }
 
-.gm-foot { border-top: 1px solid var(--gm-line); padding: 10px 14px 12px; background: var(--gm-panel); }
-.gm-note-toggle {
+/* ---------- popovers under the chrome: identity, menu, preview ---------- */
+
+.gm-pop {
+  position: fixed;
+  top: 52px;
+  right: 16px;
+  width: 300px;
+  padding: 12px 14px;
+  background: var(--gm-surface);
+  border-radius: 12px;
+  box-shadow: var(--gm-shadow);
+  pointer-events: auto;
+  transition: right 150ms ease;
+}
+.gm-pop.is-shifted { right: 336px; }
+.gm-menu { width: 240px; padding: 6px; }
+.gm-menu-item {
   display: block;
   width: 100%;
   text-align: left;
-  padding-bottom: 9px;
-  font-size: 11px;
-  color: var(--gm-muted);
+  padding: 8px 10px;
+  border-radius: 8px;
 }
-.gm-note-toggle:hover { color: var(--gm-accent); text-decoration: underline; text-underline-offset: 3px; }
-.gm-note-toggle:hover { color: var(--gm-accent); }
-.gm-foot textarea[hidden] { display: none; }
-.gm-foot textarea {
+.gm-menu-item:hover { background: var(--gm-surface-2); }
+.gm-menu-said { color: var(--gm-muted); font-size: 11px; padding: 4px 10px 6px; }
+.gm-menu-said:empty { display: none; }
+
+.gm-preview {
+  position: fixed;
+  width: 220px;
+  padding: 8px 10px;
+  background: var(--gm-surface);
+  border-radius: 8px;
+  box-shadow: var(--gm-shadow);
+  font-size: 12px;
+  pointer-events: none;
+}
+.gm-preview b { display: block; font-weight: 600; }
+.gm-preview span { color: var(--gm-muted); display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---------- the thread, at the spot ---------- */
+
+.gm-thread {
+  position: fixed;
+  width: 320px;
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--gm-surface);
+  border-radius: 12px;
+  box-shadow: var(--gm-shadow);
+  pointer-events: auto;
+}
+.gm-thread-ctx {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px 0;
+  color: var(--gm-muted);
+  font-size: 12px;
+}
+.gm-thread-ctx .where { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gm-thread-ctx b { color: var(--gm-text); font-weight: 700; margin-right: 6px; }
+.gm-thread-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 4px 14px 12px; }
+.gm-thread-foot { flex: none; padding: 0 14px 12px; }
+.gm-thread-foot:empty { display: none; }
+
+.gm-meta { color: var(--gm-muted); font-size: 12px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.gm-who-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; min-width: 0; }
+.gm-who-row .gm-avatar { width: 20px; height: 20px; font-size: 9px; }
+.gm-who-row .gm-meta { flex: 1; min-width: 0; flex-wrap: nowrap; overflow: hidden; }
+.gm-who-row .gm-meta > * { white-space: nowrap; }
+.gm-author { color: var(--gm-text); font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; }
+.gm-handle { overflow: hidden; text-overflow: ellipsis; }
+.gm-time { flex: none; }
+.gm-tag { color: var(--gm-accent-ink); font-size: 10px; letter-spacing: 0.07em; text-transform: uppercase; font-weight: 600; }
+.gm-flag { color: var(--gm-muted); border: 1px solid var(--gm-line); border-radius: 4px; padding: 0 5px; font-size: 10px; }
+/* A status is information, not an alert: the accent, small caps. */
+.gm-status { color: var(--gm-accent-ink); border: 1px solid var(--gm-accent-ink); border-radius: 999px; padding: 0 7px; font-size: 10px; font-weight: 600; letter-spacing: 0.04em; flex: none; }
+.gm-text { margin: 3px 0 0 28px; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+.gm-card-actions { display: flex; gap: 12px; margin: 6px 0 0 28px; }
+.gm-card-actions button { color: var(--gm-muted); font-size: 11px; }
+.gm-card-actions button:hover { color: var(--gm-accent-ink); }
+.gm-card-actions .gm-del[data-armed='yes'] { color: var(--gm-accent-ink); font-weight: 600; }
+.gm-thread textarea, .gm-box textarea, .gm-foot textarea {
   width: 100%;
-  min-height: 44px;
-  background: var(--gm-bg);
+  min-height: 62px;
+  background: var(--gm-surface-2);
+  color: var(--gm-text);
   border: 1px solid var(--gm-field-line);
-  border-radius: 4px;
-  padding: 6px 7px;
+  border-radius: 8px;
+  padding: 7px 9px;
   resize: vertical;
   outline: none;
 }
-.gm-foot textarea:focus { border-color: var(--gm-accent); }
-.gm-foot textarea::placeholder { color: var(--gm-muted); }
-.gm-send { display: flex; gap: 10px; align-items: center; margin-top: 10px; }
+.gm-thread textarea { margin: 6px 0 0 28px; width: calc(100% - 28px); }
+.gm-thread textarea:focus, .gm-box textarea:focus, .gm-foot textarea:focus { border-color: var(--gm-accent-ink); }
+textarea::placeholder, input::placeholder { color: var(--gm-muted); }
+
+.gm-replies { margin: 8px 0 0 28px; padding-left: 10px; border-left: 2px solid var(--gm-line); }
+.gm-reply + .gm-reply { margin-top: 6px; }
+.gm-reply .gm-who-row { margin-top: 2px; }
+.gm-reply .gm-text { font-size: 12.5px; }
+.gm-reply .gm-card-actions { margin-top: 3px; }
+.gm-reply-ask { margin-top: 8px; }
+.gm-reply-ask .gm-reply-field { width: 100%; }
+.gm-reply-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.gm-reply-field {
+  flex: 1;
+  min-width: 0;
+  background: var(--gm-surface-2);
+  color: var(--gm-text);
+  border: 1px solid var(--gm-field-line);
+  border-radius: 8px;
+  padding: 6px 10px;
+  outline: none;
+}
+.gm-reply-field:focus { border-color: var(--gm-accent-ink); }
+.gm-reply-row button { color: var(--gm-muted); font-size: 11px; }
+.gm-reply-row .gm-reply-send { color: var(--gm-accent-ink); font-weight: 600; }
+.gm-boxwarn { color: var(--gm-accent-ink); font-size: 11px; margin-top: 7px; }
+.gm-boxwarn:empty { display: none; }
+
+/* ---------- the sheet: every comment, on demand ---------- */
+
+.gm-sheet {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 320px;
+  display: flex;
+  flex-direction: column;
+  background: var(--gm-surface);
+  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.12);
+  pointer-events: auto;
+}
+.gm-sheet-head { display: flex; align-items: center; gap: 10px; padding: 14px 16px 8px; }
+.gm-section { display: flex; align-items: baseline; gap: 6px; font-weight: 700; font-size: 14px; }
+.gm-section .count { color: var(--gm-muted); font-weight: 500; font-variant-numeric: tabular-nums; }
+.gm-close { color: var(--gm-muted); width: 26px; height: 26px; border-radius: 6px; font-size: 14px; display: grid; place-items: center; }
+.gm-close:hover { background: var(--gm-surface-2); color: var(--gm-text); }
+.gm-filters { display: flex; gap: 6px; padding: 0 16px 10px; }
+.gm-filter { padding: 3px 10px; border-radius: 999px; border: 1px solid var(--gm-line); color: var(--gm-muted); font-size: 12px; }
+.gm-filter:hover { border-color: var(--gm-field-line); color: var(--gm-text); }
+.gm-filter.is-on { background: var(--gm-text); color: var(--gm-surface); border-color: var(--gm-text); }
+
+.gm-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; border-top: 1px solid var(--gm-line); }
+.gm-group {
+  padding: 10px 16px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--gm-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.gm-group + .gm-card { margin-top: 2px; }
+.gm-card {
+  display: flex;
+  gap: 10px;
+  padding: 8px 16px;
+  cursor: pointer;
+  position: relative;
+}
+.gm-card:hover, .gm-card.is-hot { background: var(--gm-surface-2); }
+.gm-card.is-selected { background: var(--gm-accent-soft); }
+.gm-card .num { flex: none; width: 16px; color: var(--gm-muted); font-size: 12px; font-variant-numeric: tabular-nums; padding-top: 3px; }
+.gm-card .gm-avatar { width: 22px; height: 22px; border-radius: 50% 50% 50% 3px; font-size: 9px; margin-top: 1px; }
+.gm-card .body { flex: 1; min-width: 0; }
+.gm-card .gm-author { font-size: 12.5px; }
+.gm-card .gm-text { margin: 1px 0 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gm-card .dot { position: absolute; right: 16px; top: 12px; width: 7px; height: 7px; border-radius: 50%; background: var(--gm-danger); }
+.gm-empty { padding: 16px; color: var(--gm-muted); }
+
+.gm-foot { flex: none; border-top: 1px solid var(--gm-line); padding: 10px 16px 12px; }
+.gm-note-toggle { display: block; width: 100%; text-align: left; padding-bottom: 8px; font-size: 11px; color: var(--gm-muted); }
+.gm-note-toggle:hover { color: var(--gm-accent-ink); }
+.gm-foot textarea { min-height: 44px; margin-bottom: 8px; }
+.gm-send { display: flex; gap: 8px; align-items: center; margin-top: 2px; }
 .gm-btn {
   flex: none;
   border: 1px solid var(--gm-field-line);
-  border-radius: 5px;
-  padding: 7px 8px;
+  border-radius: 8px;
+  padding: 7px 10px;
   text-align: center;
   white-space: nowrap;
 }
-.gm-btn:hover { border-color: var(--gm-accent); color: var(--gm-accent); }
-.gm-btn.primary { flex: 1; background: var(--gm-accent); border-color: var(--gm-accent); color: #fff; }
-.gm-btn.ghost { border-color: transparent; color: var(--gm-muted); padding: 7px 2px; }
-.gm-btn.ghost:hover { border-color: transparent; color: var(--gm-accent); }
-.gm-btn.primary:hover { background: #2c3086; color: #fff; }
+.gm-btn:hover { border-color: var(--gm-accent-ink); color: var(--gm-accent-ink); }
+.gm-btn.primary { flex: 1; background: var(--gm-accent); border-color: var(--gm-accent); color: #fff; font-weight: 600; }
+.gm-btn.primary:hover { background: #6d28d9; color: #fff; }
+.gm-btn.ghost { border-color: transparent; color: var(--gm-muted); padding: 7px 4px; }
+.gm-btn.ghost:hover { color: var(--gm-accent-ink); }
 .gm-said { color: var(--gm-muted); font-size: 11px; margin-top: 7px; min-height: 14px; }
-.gm-keep { color: var(--gm-muted); font-size: 10px; margin-top: 5px; }
+.gm-keep { color: var(--gm-muted); font-size: 10.5px; margin-top: 5px; }
 .gm-keep:empty { display: none; }
 
 /* ---------- comment box ---------- */
 
 .gm-box {
   position: fixed;
-  width: 268px;
-  background: var(--gm-bg);
-  border: 1px solid var(--gm-line-strong);
-  border-radius: 6px;
-  padding: 10px;
+  width: 300px;
+  background: var(--gm-surface);
+  border-radius: 12px;
+  box-shadow: var(--gm-shadow);
+  padding: 12px 14px;
   pointer-events: auto;
 }
-.gm-box .where { color: var(--gm-muted); font-size: 11px; margin-bottom: 7px; overflow-wrap: anywhere; }
-.gm-box textarea {
-  width: 100%;
-  min-height: 62px;
-  border: 1px solid var(--gm-field-line);
-  border-radius: 4px;
-  padding: 6px 7px;
-  resize: vertical;
-  outline: none;
-}
-.gm-box textarea:focus { border-color: var(--gm-accent); }
-.gm-box textarea::placeholder { color: var(--gm-muted); }
+.gm-box .where { color: var(--gm-muted); font-size: 12px; margin-bottom: 8px; overflow-wrap: anywhere; }
 .gm-chips { display: flex; gap: 5px; margin: 8px 0; }
-.gm-chip { border: 1px solid var(--gm-field-line); border-radius: 999px; padding: 2px 9px; font-size: 11px; color: var(--gm-muted); }
-.gm-chip:hover { border-color: var(--gm-accent); color: var(--gm-accent); }
+.gm-chip { border: 1px solid var(--gm-line); border-radius: 999px; padding: 2px 9px; font-size: 11px; color: var(--gm-muted); }
+.gm-chip:hover { border-color: var(--gm-accent-ink); color: var(--gm-accent-ink); }
 .gm-chip.is-on { border-color: var(--gm-accent); background: var(--gm-accent); color: #fff; }
 .gm-box-actions { display: flex; gap: 7px; }
-.gm-boxwarn { color: var(--gm-accent); font-size: 11px; margin-top: 7px; }
-.gm-boxwarn:empty { display: none; }
-.gm-box-actions .gm-btn { padding: 5px 8px; }
+.gm-box-actions .gm-btn { padding: 6px 10px; }
+.gm-box-name { margin-top: 8px; }
+.gm-box-name-why { color: var(--gm-muted); font-size: 11px; margin-bottom: 4px; }
+/* No outline reset here. Focus is MOVED to this field by the first Save, so it
+   is the one place a ring matters most (review R27). */
+.gm-box-name input, .gm-who input {
+  width: 100%;
+  background: var(--gm-surface-2);
+  color: var(--gm-text);
+  border: 1px solid var(--gm-field-line);
+  border-radius: 8px;
+  padding: 6px 10px;
+}
+.gm-box-name input:focus, .gm-who input:focus { border-color: var(--gm-accent-ink); }
 
-/* ---- shared mode (issue #15) ---------------------------------------------
-   Drawn only on a page attached with --service. Same tokens, same one-pixel
-   strokes, no new colour: who said it, what became of it, the conversation
-   under it, and which version of the page this is. */
+/* ---------- the name row and the identity states (issue #18) ---------- */
+/* Both live in the popover under the identity chip. */
 
-.gm-shared { border-bottom: 1px solid var(--gm-line); background: var(--gm-bg); }
+.gm-who label { display: block; margin-bottom: 4px; color: var(--gm-muted); font-size: 12px; }
+.gm-identity + .gm-who { margin-top: 10px; }
+.gm-identity-says { display: block; color: var(--gm-text); }
+.gm-identity-code {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 2px 10px;
+  border: 1px solid var(--gm-field-line);
+  border-radius: 6px;
+  font: 600 14px ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  letter-spacing: 0.06em;
+}
+.gm-identity-actions { display: flex; align-items: center; gap: 12px; margin-top: 8px; }
+.gm-identity-live[hidden] + .gm-identity-actions { margin-top: 0; }
+.gm-identity-btn {
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: var(--gm-accent);
+  color: #fff;
+  font-weight: 600;
+}
+.gm-identity-btn:hover { background: #6d28d9; }
+.gm-identity-quiet { color: var(--gm-muted); border-bottom: 1px solid var(--gm-line); }
+.gm-identity-quiet:hover { color: var(--gm-text); border-bottom-color: var(--gm-text); }
+.gm-identity.is-row { display: flex; align-items: center; gap: 10px; }
+.gm-identity.is-row .gm-identity-live { flex: 1; min-width: 0; }
+.gm-identity.is-row .gm-identity-says { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gm-identity.is-row .gm-identity-actions { margin-top: 0; }
+/* A name the comment service vouched for, against a typed one: same type, one step stronger. */
+.gm-author.is-verified { font-weight: 700; }
+
+/* ---------- versions (issue #15), in the sheet's foot ---------- */
+
+.gm-shared { padding-bottom: 8px; }
 .gm-version {
   text-align: left;
-  text-decoration: none;
   display: flex; align-items: baseline; gap: 6px;
   width: 100%;
-  padding: 8px 14px;
-  font: inherit; font-size: 12px;
+  padding: 4px 0;
+  font-size: 12px;
   color: var(--gm-text);
-  cursor: pointer;
 }
 .gm-version::after { content: '▾'; color: var(--gm-muted); font-size: 10px; margin-left: auto; }
 .gm-version[aria-expanded='true']::after { content: '▴'; }
-.gm-version:hover { color: var(--gm-accent); }
-.gm-versions { padding: 0 14px 8px; max-height: 40vh; overflow-y: auto; }
+.gm-version:hover { color: var(--gm-accent-ink); }
+.gm-version:disabled { cursor: default; color: var(--gm-muted); }
+.gm-version:disabled::after { content: none; }
+.gm-versions { padding: 0 0 4px; max-height: 40vh; overflow-y: auto; }
 .gm-vrow {
   text-align: left;
   text-decoration: none;
@@ -383,114 +539,23 @@ input, textarea { font: inherit; color: inherit; }
   width: 100%;
   padding: 5px 0;
   border-top: 1px solid var(--gm-line);
-  font: inherit; font-size: 11.5px;
+  font-size: 12px;
   color: var(--gm-text);
   cursor: pointer;
 }
-a.gm-vrow:hover, button.gm-vrow:hover { color: var(--gm-accent); }
-.gm-version:disabled { cursor: default; color: var(--gm-text); }
-.gm-version:disabled::after { content: none; }
-.gm-vrow:first-child { border-top: 0; }
-.gm-newer { padding: 0 14px 8px; font-size: 11.5px; color: var(--gm-text); }
+a.gm-vrow:hover, button.gm-vrow:hover { color: var(--gm-accent-ink); }
+.gm-newer { padding: 2px 0 6px; font-size: 12px; color: var(--gm-text); }
 .gm-newer:empty { display: none; }
-.gm-newer a { color: var(--gm-accent); }
-/* Links are new to the overlay, and the one focus rule above names only
-   buttons and fields. Same ring, so a keyboard user can see where they are. */
-.gm-shared a:focus { outline: 2px solid var(--gm-accent); outline-offset: 2px; border-radius: 3px; }
-.gm-shared a:focus:not(:focus-visible) { outline: none; }
-
-.gm-older-list { padding: 2px 0 6px 10px; border-left: 1px solid var(--gm-line-strong); margin: 0 0 6px; }
+.gm-newer a { color: var(--gm-accent-ink); }
+.gm-older-list { padding: 2px 0 6px 10px; border-left: 2px solid var(--gm-line); margin: 0 0 6px; }
 .gm-older { padding: 5px 0; }
 .gm-older + .gm-older { border-top: 1px solid var(--gm-line); }
+.gm-older .gm-meta { font-size: 11.5px; }
 .gm-older-quote { color: var(--gm-muted); font-size: 11px; margin-top: 3px; overflow-wrap: anywhere; }
-.gm-older .gm-text { font-size: 12.5px; margin-top: 3px; }
+.gm-older .gm-text { font-size: 12.5px; margin: 3px 0 0; }
 .gm-older-note { color: var(--gm-muted); font-size: 11px; padding: 4px 0; }
 
-.gm-author { color: var(--gm-text); font-size: 11px; }
-/* A status is information, not an alert: the accent, in the tag's small caps. */
-.gm-status { color: var(--gm-accent); border: 1px solid var(--gm-accent); border-radius: 3px; padding: 0 4px; font-size: 10px; letter-spacing: 0.04em; }
-
-.gm-replies { margin-top: 8px; padding-left: 10px; border-left: 1px solid var(--gm-line-strong); }
-.gm-reply + .gm-reply { margin-top: 7px; }
-.gm-reply .gm-text { margin-top: 1px; font-size: 12.5px; }
-.gm-reply-ask { margin-top: 8px; }
-.gm-reply-ask .gm-reply-field { width: 100%; }
-.gm-replies .gm-boxwarn { margin-top: 4px; }
-.gm-reply-row { display: flex; align-items: baseline; gap: 10px; margin-top: 8px; }
-.gm-reply-field {
-  flex: 1; min-width: 0;
-  font: inherit; font-size: 12.5px;
-  color: var(--gm-text);
-  background: transparent;
-  border: 0; border-bottom: 1px solid var(--gm-field-line);
-  padding: 3px 0;
-  outline: none;
+@media (prefers-reduced-motion: reduce) {
+  .gm-pin { animation: none; transition: none; }
+  .gm-bar, .gm-pop { transition: none; }
 }
-.gm-reply-field:focus { border-bottom-color: var(--gm-accent); }
-.gm-reply-row button { color: var(--gm-muted); font-size: 11px; }
-.gm-reply-row .gm-reply-send { color: var(--gm-accent); }
-
-.gm-box-name { margin-top: 8px; }
-.gm-box-name-why { color: var(--gm-muted); font-size: 11px; margin-bottom: 4px; }
-/* No outline reset here. Focus is MOVED to this field by the first Save, so it
-   is the one place a ring matters most, and an outline:none at this specificity
-   ties with the overlay's input:focus ring rule and, coming later, won (review R27). */
-.gm-box-name input {
-  width: 100%;
-  font: inherit;
-  color: var(--gm-text);
-  background: transparent;
-  border: 0; border-bottom: 1px solid var(--gm-field-line);
-  padding: 3px 0;
-}
-.gm-box-name input:focus { border-bottom-color: var(--gm-accent); }
-
-/* ---- sign-in (issue #18) ----
-   One line in place of the typed-name row, in the same tokens: a one-pixel
-   stroke, the one accent, 13px type, no shadow. Text only: no brand colour and
-   no profile picture (DESIGN-PROFILE: stay inside the system). */
-.gm-identity { padding: 9px 14px 10px; border-bottom: 1px solid var(--gm-line); }
-.gm-identity[hidden], .gm-identity [hidden] { display: none; }
-.gm-identity-says { display: block; color: var(--gm-text); }
-.gm-identity-code {
-  display: inline-block;
-  margin-top: 4px;
-  padding: 1px 8px;
-  border: 1px solid var(--gm-field-line);
-  font: 600 14px ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  letter-spacing: 0.06em;
-}
-.gm-identity-actions { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
-.gm-identity-live[hidden] + .gm-identity-actions { margin-top: 0; }
-.gm-identity-btn {
-  font: inherit;
-  padding: 5px 12px;
-  border: 1px solid var(--gm-accent);
-  background: var(--gm-bg);
-  color: var(--gm-accent);
-  cursor: pointer;
-}
-.gm-identity-btn:hover { background: var(--gm-accent-soft); }
-.gm-identity-quiet {
-  font: inherit;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--gm-muted);
-  text-decoration: underline;
-  cursor: pointer;
-}
-.gm-identity-quiet:hover { color: var(--gm-text); }
-.gm-identity-btn:focus, .gm-identity-quiet:focus { outline: 2px solid var(--gm-accent); outline-offset: 2px; }
-/* Signed in: one row, the name on the left and the quiet action on the right (design critic, round 1). */
-.gm-identity.is-row { display: flex; align-items: baseline; gap: 10px; }
-.gm-identity-live { display: block; }
-.gm-identity-live[hidden] { display: none; }
-.gm-identity.is-row .gm-identity-live { flex: 1; min-width: 0; }
-.gm-identity.is-row .gm-identity-says { display: block; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.gm-identity.is-row .gm-identity-quiet { white-space: nowrap; }
-.gm-identity.is-row .gm-identity-actions { margin-top: 0; }
-.gm-identity-quiet { text-decoration: none; border-bottom: 1px solid var(--gm-line-strong); }
-.gm-identity-quiet:hover { border-bottom-color: var(--gm-text); }
-/* A name the comment service vouched for, against a typed one: same type, one step stronger. */
-.gm-author.is-verified { color: var(--gm-text); font-weight: 600; }

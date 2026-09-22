@@ -59,8 +59,14 @@ async function open(page, url) {
   return errors;
 }
 
+/** The identity states live in a popover under the chip in the chrome (issue #21). */
+async function openIdentity(page) {
+  if (!(await page.locator('.gm-idpop').isVisible())) await page.click('.gm-id');
+}
+
 /** Press Sign in, and do in the pop-up what a person does. Returns the code the confirm page showed. */
 async function signIn(page, { press = '#gm-continue' } = {}) {
+  await openIdentity(page);
   await expect(page.locator('.gm-identity-btn')).toBeVisible(SLOW);
   const [popup] = await Promise.all([page.context().waitForEvent('page'), page.click('.gm-identity-btn')]);
   await popup.waitForLoadState();
@@ -128,6 +134,7 @@ test('from a web address, two people: one signs in and comments, the other sees 
   await comment(priya, '#step-1 h2', 'Seen by both?');
 
   await expect(watcher.locator('.gm-card .gm-author').first()).toHaveText('Priya Shah @priya · GitLab', SLOW);
+  await openIdentity(watcher);
   await expect(watcher.locator('.gm-identity-btn')).toBeVisible();
 
   // Signed in is remembered on a page with a real address: a reload asks for nothing.
@@ -135,6 +142,7 @@ test('from a web address, two people: one signs in and comments, the other sees 
   await priya.waitForFunction(() => !!window.__gitmargin);
   await expect(priya.locator('.gm-identity-says')).toHaveText('Commenting as Priya Shah @priya · GitLab', SLOW);
 
+  await openIdentity(priya);
   await priya.click('.gm-identity-quiet');
   await expect(priya.locator('.gm-identity-btn')).toBeVisible(SLOW);
   site.close();
@@ -146,6 +154,7 @@ test('a comment written signed out is kept, says so, and goes when the person si
   const w = await world(testInfo);
   const page = await (await browser.newContext()).newPage();
   await open(page, w.disk);
+  await openIdentity(page);
   await expect(page.locator('.gm-identity-btn')).toBeVisible(SLOW);
   await comment(page, '#step-1 h2', 'Typed before signing in.');
   await expect(page.locator('.gm-identity-btn')).toHaveText('Sign in with GitLab to send 1 comment', SLOW);
@@ -188,6 +197,7 @@ test('a blocked pop-up says what to do', async ({ browser }, testInfo) => {
     window.open = () => null; // what a pop-up blocker does
   });
   await open(page, w.disk);
+  await openIdentity(page);
   await page.click('.gm-identity-btn');
   await expect(page.locator('.gm-identity-says')).toHaveText('Your browser blocked the sign-in window. Allow pop-ups for this page, then try again.');
   await expect(page.locator('.gm-identity-btn')).toHaveText('Sign in with GitLab');
@@ -199,6 +209,7 @@ test('the identity line is reachable and operable by keyboard alone', async ({ b
   const w = await world(testInfo);
   const page = await (await browser.newContext()).newPage();
   await open(page, w.disk);
+  await openIdentity(page);
   await expect(page.locator('.gm-identity-btn')).toBeVisible(SLOW);
   await page.locator('.gm-identity-btn').focus();
   const [popup] = await Promise.all([page.context().waitForEvent('page'), page.keyboard.press('Enter')]);
@@ -221,6 +232,7 @@ test('with sign-in off the panel is exactly the old one and no /auth address is 
   page.on('request', (r) => asked.push(r.url()));
   await open(page, w.disk);
   await page.waitForTimeout(6000); // one full check-in
+  await openIdentity(page);
   await expect(page.locator('.gm-identity')).toBeHidden();
   await expect(page.locator('.gm-who')).toBeVisible();
   expect(asked.filter((u) => u.includes('/auth'))).toEqual([]);
@@ -282,7 +294,7 @@ test('strict reading, a file on disk: the panel is locked and says so; signing i
   const errors = await open(reader, w.disk);
   await expect(reader.locator('.gm-identity-btn')).toHaveText('Sign in with GitLab to see comments', SLOW);
   await expect(reader.locator('.gm-card')).toHaveCount(0);
-  await expect(reader.locator('.gm-panel')).toContainText('for members only');
+  await expect(reader.locator('.gm-keep')).toContainText('for members only'); // the sheet's status line (issue #21)
   expect(errors).toEqual([]);
   await w.service.close();
   await w.fake.close();
