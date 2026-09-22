@@ -22,6 +22,19 @@ export default async function handler(req, res) {
       now: () => new Date(),
       secret: process.env.GITMARGIN_SECRET || '',
       log: (error) => console.error(error),
+      // Sign-in (issue #18): the provider's settings and the network call arrive
+      // from outside, like the database and the clock. `origin` is this service's
+      // own address, used to build the one callback the provider will accept; a
+      // forged Host only produces an address the provider refuses.
+      fetch: (...args) => fetch(...args),
+      origin: `https://${req.headers['x-forwarded-host'] || req.headers.host}`,
+      providers: {
+        gitlab: {
+          url: process.env.GITMARGIN_GITLAB_URL || 'https://gitlab.com',
+          id: process.env.GITMARGIN_GITLAB_ID || '',
+          secret: process.env.GITMARGIN_GITLAB_SECRET || '',
+        },
+      },
     },
   );
   res.statusCode = answer.status;

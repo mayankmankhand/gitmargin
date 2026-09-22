@@ -4,18 +4,20 @@ The batch is the whole point of part 1. A reviewer leaves comments on a prototyp
 coding agent reads them and makes the edits. For the agent to do that without the author explaining anything, each
 comment has to say **where** the reviewer was and **why** they stopped, in a form the agent can act on.
 
-**Status: v0.5, 2026-09-18.** Draft v0.1 was written before any code existed; v0.2 followed the part-1 overlay
+**Status: v0.6, 2026-09-21.** Draft v0.1 was written before any code existed; v0.2 followed the part-1 overlay
 build, answering the open points in section 8; v0.3 follows the `attach` and `pull` commands (issue #5) and records
 what they settled; v0.4 records which element a click anchors (issue #10); v0.5 records what shared comments add (issue #15): who
-wrote a comment, replies that are no longer an empty slot, and the comment service as a fourth carrier. The shape it
+wrote a comment, replies that are no longer an empty slot, and the comment service as a fourth carrier; v0.6 records what
+sign-in adds (issue #18): an author the service has verified. The shape it
 belongs to is in [v0-split.md](v0-split.md).
 
-The **document** revision is v0.5. The **wire format** stays `0.1`, in the envelope's `gitmargin` field and in the
+The **document** revision is v0.6. The **wire format** stays `0.1`, in the envelope's `gitmargin` field and in the
 first line of the markdown block, because the shape of what the overlay writes has not changed. What v0.3 added is on
 the reading side: how `pull` prints a batch (section 1), what it adds when it merges several (section 5a), and where
 the agent rules now travel (section 6). What v0.4 adds is one rule in section 3: which element a click anchors. What v0.5 adds is optional and additive: `author` on a comment, filled `replies`, and a per-comment `version_id`, each
 written only when the page is shared, so a plain file's batch is byte for byte the shape it was. `replies` was
-reserved in v0.1 precisely so that filling it would not be a format change, and it is not one. The two version
+reserved in v0.1 precisely so that filling it would not be a format change, and it is not one. What v0.6 adds is three
+optional fields on `author`, written only for a comment made under sign-in. The two version
 numbers are deliberately not the same thing.
 
 ## 1. Where the batch lives
@@ -168,7 +170,12 @@ someone else's input exactly as a comment is: `pull` rebuilds each one field by 
 the markdown rendering.
 
 **author** and **version_id** appear on a comment only when the page is shared. `author.name` is what that person
-typed, possibly empty; there is no sign-in, so it identifies nobody. A plain file names its one reviewer once, on the
+typed, possibly empty, and identifies nobody. When the author has switched sign-in on for the prototype, the comment
+service fills `author` from the sign-in instead and ignores whatever the page sent:
+`{ "name": "Priya Shah", "provider": "gitlab", "username": "priya", "verified": true }`. `verified` is only ever
+written by the service, and `pull` keeps it only on comments that arrive from the service, whatever a file says: a
+returned file cannot promote a typed name by adding the fields, even all of them. A thread can mix both kinds, because a comment keeps the rule it was written
+under, and each is marked for what it is. A plain file names its one reviewer once, on the
 envelope, and its comments carry neither key. `version_id` says which version of the page the comment is about:
 comments belong to a version, a new version starts with none, and `pull --live` reads the version of the copy it is
 pointed at unless told `--version <id>` or `--all`.
@@ -257,8 +264,10 @@ or ten, the shape is the same.
   <id>` names another and `--all` takes every version. The source's `carrier` is `service` and it is not lossy.
   Anything listed after the attached copy is an ordinary source and merges by id as above, so a file someone sent
   by hand and the service's copy of the same comment become one. Reading needs only the key, so `--live` needs no
-  author secret. In the markdown rendering a shared comment gains up to three kinds of line beneath its text, each
-  only when there is something to say: `From <name>.`, `Status: <status>.` when it is no longer open, and one
+  author secret, unless the author limited reading to members (`identity ... --read members`): then it sends the
+  secret, and only to an address the author typed themselves. In the markdown rendering a shared comment gains up to three kinds of line beneath its text, each
+  only when there is something to say: `From <name>.`, or `From <name> (GitLab, verified).` for an author the service
+  verified, `Status: <status>.` when it is no longer open, and one
   `Reply from <name>: "<text>"` per reply. Names and replies are folded to one line like the comment text, for the
   same reason.
 - Everything is printed on stdout and nothing else is: warnings, notes and errors go to stderr, so the output stays

@@ -444,3 +444,53 @@ a.gm-vrow:hover, button.gm-vrow:hover { color: var(--gm-accent); }
   padding: 3px 0;
 }
 .gm-box-name input:focus { border-bottom-color: var(--gm-accent); }
+
+/* ---- sign-in (issue #18) ----
+   One line in place of the typed-name row, in the same tokens: a one-pixel
+   stroke, the one accent, 13px type, no shadow. Text only: no brand colour and
+   no profile picture (DESIGN-PROFILE: stay inside the system). */
+.gm-identity { padding: 9px 14px 10px; border-bottom: 1px solid var(--gm-line); }
+.gm-identity[hidden], .gm-identity [hidden] { display: none; }
+.gm-identity-says { display: block; color: var(--gm-text); }
+.gm-identity-code {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 1px 8px;
+  border: 1px solid var(--gm-field-line);
+  font: 600 14px ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  letter-spacing: 0.06em;
+}
+.gm-identity-actions { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
+.gm-identity-live[hidden] + .gm-identity-actions { margin-top: 0; }
+.gm-identity-btn {
+  font: inherit;
+  padding: 5px 12px;
+  border: 1px solid var(--gm-accent);
+  background: var(--gm-bg);
+  color: var(--gm-accent);
+  cursor: pointer;
+}
+.gm-identity-btn:hover { background: var(--gm-accent-soft); }
+.gm-identity-quiet {
+  font: inherit;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--gm-muted);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.gm-identity-quiet:hover { color: var(--gm-text); }
+.gm-identity-btn:focus, .gm-identity-quiet:focus { outline: 2px solid var(--gm-accent); outline-offset: 2px; }
+/* Signed in: one row, the name on the left and the quiet action on the right (design critic, round 1). */
+.gm-identity.is-row { display: flex; align-items: baseline; gap: 10px; }
+.gm-identity-live { display: block; }
+.gm-identity-live[hidden] { display: none; }
+.gm-identity.is-row .gm-identity-live { flex: 1; min-width: 0; }
+.gm-identity.is-row .gm-identity-says { display: block; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gm-identity.is-row .gm-identity-quiet { white-space: nowrap; }
+.gm-identity.is-row .gm-identity-actions { margin-top: 0; }
+.gm-identity-quiet { text-decoration: none; border-bottom: 1px solid var(--gm-line-strong); }
+.gm-identity-quiet:hover { border-bottom-color: var(--gm-text); }
+/* A name the comment service vouched for, against a typed one: same type, one step stronger. */
+.gm-author.is-verified { color: var(--gm-text); font-weight: 600; }

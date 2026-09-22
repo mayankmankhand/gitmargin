@@ -253,7 +253,7 @@ function readSource(input) {
  * put in the file. A missing `intent` used to crash the renderer with a raw
  * stack trace, while the neighbouring reads were guarded (review R13).
  */
-function normalise(comment, label, position) {
+function normalise(comment, label, position, vouched = false) {
   if (!comment || typeof comment !== 'object') return null;
   const intent = comment.intent && typeof comment.intent === 'object' ? comment.intent : null;
   if (!intent || typeof intent.text !== 'string') return null;
@@ -283,17 +283,39 @@ function normalise(comment, label, position) {
       screenshot: typeof state.screenshot === 'string' ? state.screenshot : null,
     },
     status: typeof comment.status === 'string' ? comment.status : 'open',
-    replies: Array.isArray(comment.replies) ? comment.replies.map(normaliseReply).filter(Boolean) : [],
+    replies: Array.isArray(comment.replies) ? comment.replies.map((r) => normaliseReply(r, vouched)).filter(Boolean) : [],
     // Shared mode only (issue #15): who wrote this comment, and which version
     // of the page it is about. A file from one reviewer names its reviewer once,
     // on the envelope, so these keys are added only when the comment has them
     // and a part-1 batch keeps exactly the shape it had.
     ...(comment.author && typeof comment.author === 'object' && typeof comment.author.name === 'string'
-      ? { author: { name: comment.author.name } }
+      ? { author: cleanAuthor(comment.author, undefined, vouched) }
       : {}),
     ...(typeof comment.version_id === 'string' ? { version_id: comment.version_id } : {}),
   };
 }
+
+/**
+ * Who wrote a comment or reply, field by field. A typed name is `{ name }`, as
+ * it always was. A name the comment service vouched for (sign-in, issue #18)
+ * also says which provider and which username, and is marked `verified`. The
+ * mark is kept only when the SOURCE is the comment service (`vouched`): a
+ * returned file or a pasted block is written by whoever sends it, and two
+ * added fields in one must not turn a typed name into a verified one (review
+ * of the #18 cycle, R6). Even then it needs `true` exactly and a provider.
+ */
+function cleanAuthor(author, fallbackName, vouched = false) {
+  const name = author && typeof author === 'object' && typeof author.name === 'string' ? author.name : fallbackName;
+  if (vouched && author && author.verified === true && typeof author.provider === 'string' && author.provider) {
+    return { name, provider: author.provider, username: typeof author.username === 'string' ? author.username : '', verified: true };
+  }
+  return { name };
+}
+
+/** "GitLab, verified" for the markdown. The provider is someone else's string too. */
+const PROVIDER_LABELS = { gitlab: 'GitLab', github: 'GitHub' };
+const authorLine = (author) =>
+  author.verified === true ? `${oneLine(author.name)} (${PROVIDER_LABELS[author.provider] || oneLine(author.provider)}, verified)` : oneLine(author.name);
 
 /**
  * One reply, field by field, or null when it has no text.
@@ -301,12 +323,12 @@ function normalise(comment, label, position) {
  * Replies were passed through whole while the array was always empty. Now that
  * other people fill it, a reply is the same untrusted input a comment is.
  */
-function normaliseReply(reply) {
+function normaliseReply(reply, vouched = false) {
   if (!reply || typeof reply !== 'object' || typeof reply.text !== 'string') return null;
   return {
     id: typeof reply.id === 'string' ? reply.id : null,
     time: typeof reply.time === 'string' ? reply.time : null,
-    author: { name: reply.author && typeof reply.author.name === 'string' ? reply.author.name : null },
+    author: cleanAuthor(reply.author, null, vouched),
     text: reply.text,
   };
 }
@@ -331,7 +353,8 @@ export function merge(sources) {
       // trust boundary, so its shape is not something to assume. Spreading a
       // raw object also carried every key the sender chose into the batch an
       // agent reads (review R13).
-      const clean = normalise(comment, source.label, position);
+      // Only the comment service can vouch for an author; a file or a block cannot.
+      const clean = normalise(comment, source.label, position, source.carrier === 'service');
       if (!clean) {
         malformed.push(`${source.label} #${position + 1}`);
         return;
@@ -430,10 +453,10 @@ export function toMarkdown(batch) {
     // part-1 batch renders exactly as before. Names and replies go through
     // `oneLine` like the comment text: they are other people's input too.
     const extras = [];
-    if (c.author && c.author.name) extras.push(`   From ${oneLine(c.author.name)}.`);
+    if (c.author && c.author.name) extras.push(`   From ${authorLine(c.author)}.`);
     if (c.status && c.status !== 'open') extras.push(`   Status: ${oneLine(c.status)}.`);
     for (const r of c.replies || []) {
-      extras.push(`   Reply${r.author && r.author.name ? ` from ${oneLine(r.author.name)}` : ''}: "${oneLine(r.text)}"`);
+      extras.push(`   Reply${r.author && r.author.name ? ` from ${authorLine(r.author)}` : ''}: "${oneLine(r.text)}"`);
     }
 
     return [`${i + 1}. ${tag}${bits.join(', ')}: ${target}${selector}${flag}.\n   "${oneLine(c.intent.text)}"`, ...extras].join('\n');

@@ -31,6 +31,8 @@ const MAX_BACKOFF_MS = 60_000;
 const SINCE_OVERLAP_MS = 5_000;
 
 /** What a refusal means to the person looking at the panel. */
+import { sha256hex } from './sha256.js';
+
 const PROBLEMS = {
   full: 'This prototype has reached its comment limit. Your comment is saved here but not shared.',
   replies_full: 'This comment has reached its reply limit. Your reply is saved here but not shared.',
@@ -86,6 +88,27 @@ function safeStorage(getStorage) {
 }
 
 /**
+ * The code a strict stored copy arrives with, taken OUT of the address at once:
+ * it works once, and a prototype's own script that reads the hash for its
+ * screens should not find ours in it. Null anywhere else.
+ */
+function arrivalCodeFromAddress() {
+  try {
+    const found = /(?:^#|&)gm_claim=([0-9a-f]{32})(?:&|$)/.exec(window.location.hash);
+    if (!found) return null;
+    const rest = window.location.hash.replace(/(^#|&)gm_claim=[0-9a-f]{32}/, '$1').replace(/^#&?$/, '');
+    try {
+      window.history.replaceState(null, '', window.location.pathname + window.location.search + rest);
+    } catch {
+      /* the code is spent on first use either way */
+    }
+    return found[1];
+  } catch {
+    return null;
+  }
+}
+
+/**
  * @param {object} deps
  * @param {{service: ?string, key: ?string, versionId: ?string}} deps.stamp
  * @param {object} deps.store  src/overlay/store.js
@@ -100,6 +123,19 @@ export function startSync({
   isHidden = () => typeof document !== 'undefined' && document.visibilityState === 'hidden',
   onVisible = (fn) => typeof document !== 'undefined' && document.addEventListener('visibilitychange', fn),
   storage = null,
+  // Sign-in (issue #18). Opening the pop-up is injectable so the node tests can
+  // play the person; in a browser it must run inside the click, which is why
+  // everything before it in `signIn` is synchronous.
+  openWindow = (url) => window.open(url, 'gitmargin-signin', 'popup,width=520,height=680'),
+  // Strict reading: a stored copy opened through the service's sign-in page
+  // arrives with a one-time code after the `#` (API.md, "Strict reading").
+  takeArrivalCode = arrivalCodeFromAddress,
+  // A page opened from disk shares one storage area with EVERY other local file
+  // in Chromium, so a pass written there could be read by any HTML file opened
+  // later. The pass then lives in memory for this tab only, as the design says
+  // (review of the #18 cycle, R7). The edit token was always shared this way;
+  // it opens only what this browser wrote, a pass opens a person's name.
+  sharedStorage = () => typeof location !== 'undefined' && location.protocol === 'file:',
 }) {
   if (!stamp || !stamp.service || !stamp.key || !stamp.versionId) return null;
 
@@ -120,6 +156,34 @@ export function startSync({
   if (typeof token !== 'string' || token.length < 16) {
     token = randomHex(16);
     disk.write(tokenKey, token);
+  }
+
+  // Sign-in. The MODE comes from the service's answers, never from the page, so
+  // an author can switch it without re-attaching. The PASS is kept like the edit
+  // token: in browser storage when there is some, for this tab only on a disk
+  // page that is refused it and inside every stored page.
+  const origin = new URL(stamp.service).origin;
+  const passKey = `gitmargin:pass:${stamp.key}`;
+  const identity = { mode: 'none', read: 'open', members: null };
+  const passDisk = sharedStorage() ? safeStorage(() => { throw new Error('tab only'); }) : disk;
+  let session = passDisk.read(passKey);
+  if (!session || typeof session.pass !== 'string' || !(Date.parse(session.expires) > now())) session = null;
+  // state: idle | waiting | blocked | not_member | failed
+  const signin = { state: 'idle', code: null, shortCode: null, who: null, timer: null, started: 0 };
+  const needsSignIn = () => identity.mode !== 'none' && !session;
+
+  function setIdentity(block) {
+    const mode = block && typeof block.identity === 'string' ? block.identity : 'none';
+    const next = { mode, read: block && block.read === 'members' ? 'members' : 'open', members: block && typeof block.members === 'string' ? block.members : null };
+    if (next.mode === identity.mode && next.read === identity.read && next.members === identity.members) return;
+    Object.assign(identity, next);
+    announce();
+  }
+  function endSession() {
+    if (!session) return;
+    session = null;
+    passDisk.write(passKey, null);
+    announce();
   }
 
   // `ops` is the queue of changes not yet acknowledged, oldest first.
@@ -151,6 +215,68 @@ export function startSync({
   let lastActivity = now();
 
   const find = (id) => store.comments().find((c) => c.id === id) || null;
+  /** The author of a comment OR a reply with this id. */
+  function authorOf(id) {
+    for (const c of store.comments()) {
+      if (c.id === id) return c.author || null;
+      const reply = (c.replies || []).find((r) => r.id === id);
+      if (reply) return reply.author || null;
+    }
+    return null;
+  }
+  /** What a new comment or reply shows locally until the service answers with the truth. */
+  const writer = () => (session ? { name: session.identity.name, provider: session.identity.provider, username: session.identity.username, verified: true } : { name: store.reviewer() || '' });
+
+  const SIGNIN_ASK_MS = 1000;
+  // The same 10 minutes the service gives an unfinished sign-in (API.md, "Limits
+  // and lifetimes"): a slower limit here left a person whose Continue landed in
+  // minute four "signed in" in the pop-up and "failed" in the panel (review of
+  // the #18 cycle, R9).
+  const SIGNIN_GIVE_UP_MS = 10 * 60 * 1000;
+  const SIGNIN_UNKNOWN_GRACE_MS = 20 * 1000;
+  function stopAsking(state, who = null) {
+    if (signin.timer !== null) timers.clear(signin.timer);
+    Object.assign(signin, { timer: null, code: null, state, who, shortCode: state === 'waiting' ? signin.shortCode : null });
+    announce();
+  }
+  /** Ask the service whether Continue has been pressed. The answer comes once. */
+  function askForPass() {
+    const code = signin.code;
+    signin.timer = timers.set(async () => {
+      signin.timer = null;
+      if (signin.code !== code) return; // cancelled, or a newer sign-in took over
+      if (now() - signin.started > SIGNIN_GIVE_UP_MS) return stopAsking('failed');
+      let answer = null;
+      let status = 0;
+      try {
+        const response = await fetchImpl(`${base.replace(/\/comments$/, '')}/auth/claim`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ code }),
+        });
+        status = response.status;
+        answer = await response.json();
+      } catch {
+        /* offline for a moment: keep asking until the time limit */
+      }
+      if (signin.code !== code) return;
+      if (status === 200 && answer && answer.member === true && typeof answer.pass === 'string') {
+        session = { pass: answer.pass, expires: answer.expires, identity: answer.identity || {} };
+        passDisk.write(passKey, session);
+        stopAsking('idle');
+        kick(); // whatever was waiting for a pass goes now
+        return undefined;
+      }
+      if (status === 200 && answer && answer.member === false) return stopAsking('not_member', { ...(answer.identity || {}), members: answer.members || null });
+      // "Unknown code" in the first moments only means the pop-up has not reached
+      // the service yet (a slow network); after that it means the sign-in was
+      // cancelled, refused at the start (the service's page says why), or is
+      // gone, and the panel says it did not finish (review of #18, R20).
+      if (status === 404 && now() - signin.started < SIGNIN_UNKNOWN_GRACE_MS) return askForPass();
+      if (status === 404 || status === 400) return stopAsking('failed');
+      return askForPass();
+    }, SIGNIN_ASK_MS);
+  }
   const pendingFor = (id) => ops.filter((o) => o.id === id);
   const hasPending = (id, op) => ops.some((o) => o.id === id && o.op === op);
 
@@ -162,11 +288,15 @@ export function startSync({
   }
 
   async function request(method, url, body) {
+    // Remembered so a refusal can end THIS pass and not one that arrived while
+    // the request was in flight (review of the #18 cycle, R8).
+    const carried = session ? session.pass : null;
     const response = await fetchImpl(url, {
       method,
       headers: {
         'content-type': 'application/json',
         ...(method === 'GET' ? {} : { 'x-gitmargin-token': token }),
+        ...(carried ? { 'x-gitmargin-pass': carried } : {}),
       },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
@@ -177,7 +307,11 @@ export function startSync({
       /* not JSON: treated as a failure of the service, below */
     }
     if (!response.ok && !(answer && typeof answer.error === 'string')) throw new Error('unreadable answer');
-    return { ok: response.ok, status: response.status, answer };
+    return { ok: response.ok, status: response.status, answer, carried };
+  }
+  /** A `sign_in` refusal ends the pass it was refused WITH; a newer pass stays. */
+  function endRefused(result) {
+    if (session && session.pass === result.carried) endSession();
   }
 
   /** The comment as the service should hold it, built from the local copy now. */
@@ -220,6 +354,13 @@ export function startSync({
       return 'done';
     }
     const code = result.answer.error;
+    // Sign-in is on and this browser has no pass the service accepts. Keep the
+    // change and wait: it is sent the moment someone signs in. Never dropped.
+    if (code === 'sign_in') {
+      setIdentity({ identity: result.answer.provider, read: identity.read, members: identity.members });
+      endRefused(result);
+      return 'later';
+    }
     // The service already holds this id under someone else's token. That is
     // what a reviewer's returned file looks like when the author opens it in a
     // shared copy: the comments inside are other people's, already shared, and
@@ -248,6 +389,8 @@ export function startSync({
   }
 
   async function flush() {
+    // Nothing can be accepted without a pass, so do not knock every five seconds.
+    if (needsSignIn()) return ops.length === 0;
     while (ops.length) {
       const entry = ops[0];
       // From here the service may hold it, whatever answer comes back. remove()
@@ -342,6 +485,7 @@ export function startSync({
     const answered = Date.parse(answer.server_time);
     if (!Number.isNaN(answered)) since = new Date(answered - SINCE_OVERLAP_MS).toISOString();
     save();
+    setIdentity(answer.prototype);
     setView({
       versions: Array.isArray(answer.versions) ? answer.versions : [],
       latest: answer.latest || null,
@@ -359,7 +503,17 @@ export function startSync({
       const full = since === null;
       const url = `${base}?version=${encodeURIComponent(stamp.versionId)}${full ? '' : `&since=${encodeURIComponent(since)}`}`;
       const listed = await request('GET', url);
-      if (!listed.ok) {
+      if (!listed.ok && listed.answer.error === 'sign_in') {
+        // Strict reading, and this browser holds no pass the service accepts.
+        // Not a failure: the service is fine and said exactly what it wants. The
+        // next answer that does come must be a full one, whoever signs in.
+        setIdentity({ identity: listed.answer.provider, read: 'members', members: identity.members });
+        endRefused(listed);
+        since = null;
+        failures = 0;
+        // A pass that arrived meanwhile is about to be used by the cycle `kick()` queued: not locked yet.
+        if (!session) setView({ state: 'locked', problem: null });
+      } else if (!listed.ok) {
         // The service answered, and the answer is "not this page". Polling on
         // would only repeat it; the comments stay local and say why.
         failures += 1;
@@ -385,6 +539,9 @@ export function startSync({
 
   function delay() {
     if (failures > 0) return Math.min(POLL_MS * 2 ** failures, MAX_BACKOFF_MS);
+    // Locked out of reading: only a sign-in (which kicks) or the author changing
+    // the rule can change the answer, so ask rarely.
+    if (view.state === 'locked') return QUIET_POLL_MS;
     return now() - lastActivity >= QUIET_AFTER_MS ? QUIET_POLL_MS : POLL_MS;
   }
 
@@ -415,17 +572,94 @@ export function startSync({
     }
   });
 
+  /** Swap an arrival code for a pass, once, before the first list is asked for. */
+  async function claimArrival(code) {
+    try {
+      const response = await fetchImpl(`${base.replace(/\/comments$/, '')}/auth/claim`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ code }),
+      });
+      const answer = await response.json();
+      if (response.status === 200 && answer && answer.member === true && typeof answer.pass === 'string') {
+        session = { pass: answer.pass, expires: answer.expires, identity: answer.identity || {} };
+        passDisk.write(passKey, session);
+      }
+    } catch {
+      /* no pass: the panel offers its own sign-in, as it would have anyway */
+    }
+  }
+
   save();
-  kick();
+  const arrival = takeArrivalCode();
+  if (arrival) claimArrival(arrival).then(kick);
+  else kick();
 
   return {
     subscribe(fn) {
       listeners.add(fn);
       return () => listeners.delete(fn);
     },
-    /** `{ state: 'connecting'|'shared'|'offline', problem, versions, latest }` */
-    view: () => ({ ...view, unsent: ops.length, isLatest: !view.latest || view.latest === stamp.versionId }),
-    isMine: (id) => mine.has(id),
+    /** `{ state: 'connecting'|'shared'|'offline'|'locked', problem, versions, latest }` */
+    view: () => ({
+      ...view,
+      unsent: ops.length,
+      isLatest: !view.latest || view.latest === stamp.versionId,
+      // Sign-in: the mode the service reported, who this browser is signed in as, and where a sign-in stands.
+      identity: { ...identity },
+      session: session ? { ...session.identity } : null,
+      signin: { state: signin.state, shortCode: signin.shortCode, who: signin.who },
+    }),
+    /**
+     * "Your own". A comment written under sign-in belongs to a person, so it is
+     * yours on any browser you are signed in on; a typed-name one belongs to the
+     * browser that wrote it. The service enforces both; this only decides
+     * whether Edit and Delete are drawn.
+     */
+    isMine(id) {
+      const author = authorOf(id);
+      if (author && author.verified === true) {
+        // By person first; failing that, by this browser having written it. The
+        // service compares a permanent id the wire does not carry, so after a
+        // username change the two can disagree on another browser (review of #18,
+        // R17, a stated limit in API.md); on this browser they cannot.
+        return mine.has(id) || Boolean(session && session.identity.provider === author.provider && session.identity.username === author.username);
+      }
+      return mine.has(id);
+    },
+
+    /**
+     * Start a sign-in. MUST be called from inside a click: everything up to
+     * `openWindow` is synchronous so the browser still counts the pop-up as the
+     * person's own doing (measured in plan step 1).
+     */
+    signIn() {
+      if (identity.mode === 'none' || signin.state === 'waiting') return;
+      const code = randomHex(16);
+      const hash = sha256hex(code);
+      const popup = openWindow(`${origin}/auth/start?key=${encodeURIComponent(stamp.key)}&code_hash=${hash}`);
+      const digits = String(parseInt(hash.slice(0, 8), 16) % 10000).padStart(4, '0');
+      Object.assign(signin, { code, shortCode: `${digits.slice(0, 2)}-${digits.slice(2)}`, who: null, started: now() });
+      // A blocked pop-up is the one thing the window reference can tell us. Once
+      // open it reads as closed at once (the provider cuts the link), so the
+      // wait below never looks at it: it has Cancel and a time limit instead.
+      signin.state = popup ? 'waiting' : 'blocked';
+      announce();
+      if (popup) askForPass();
+    },
+    cancelSignIn() {
+      stopAsking('idle');
+    },
+    async signOut() {
+      if (!session) return;
+      const pass = session.pass;
+      endSession();
+      try {
+        await fetchImpl(`${base.replace(/\/comments$/, '')}/auth/session`, { method: 'DELETE', headers: { 'x-gitmargin-pass': pass } });
+      } catch {
+        /* the pass is gone from this browser either way, and it expires on the service */
+      }
+    },
     /** A comment or reply id that other people cannot see yet, or cannot see the latest text of. */
     isUnshared: (id) => Boolean(rejected[id]) || ops.some((o) => (o.op === 'add' && o.id === id) || (o.op === 'reply-add' && o.rid === id)),
     versionId: stamp.versionId,
@@ -447,7 +681,7 @@ export function startSync({
 
     // The store's three writes, local first and then queued.
     add(comment) {
-      const added = store.add({ ...comment, author: { name: store.reviewer() || '' }, replies: [], version_id: stamp.versionId });
+      const added = store.add({ ...comment, author: writer(), replies: [], version_id: stamp.versionId });
       mine.add(added.id);
       enqueue({ op: 'add', id: added.id });
       return added;
@@ -489,7 +723,7 @@ export function startSync({
       const comment = find(commentId);
       if (!comment) return null;
       const time = isoSeconds(now());
-      const reply = { id: newReplyId(), text: String(text), author: { name: store.reviewer() || '' } };
+      const reply = { id: newReplyId(), text: String(text), author: writer() };
       store.applyRemote({ upsert: [{ ...comment, replies: [...(comment.replies || []), { ...reply, time, updated: time }] }] });
       mine.add(reply.id);
       enqueue({ op: 'reply-add', id: commentId, rid: reply.id, reply, time });

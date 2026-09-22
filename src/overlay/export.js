@@ -69,6 +69,20 @@ export function embeddedReviewer() {
 }
 
 /** The envelope an agent reads. Batch format section 2. */
+/**
+ * Who wrote it, field by field: the overlay's copy of `cleanAuthor` in
+ * src/cli/pull.js, and the two change together. A name the comment service
+ * vouched for keeps its provider, username and `verified` mark; anything else is
+ * a typed name and stays `{ name }`, the shape it always had.
+ */
+function cleanAuthor(author, fallbackName) {
+  const name = author && typeof author.name === 'string' && author.name ? author.name : fallbackName;
+  if (author && author.verified === true && typeof author.provider === 'string' && author.provider) {
+    return { name, provider: author.provider, username: typeof author.username === 'string' ? author.username : '', verified: true };
+  }
+  return { name };
+}
+
 export function envelope() {
   return {
     gitmargin: FORMAT_VERSION,
@@ -90,12 +104,12 @@ export function envelope() {
       replies: (c.replies || []).map((r) => ({
         id: r.id || null,
         time: r.time || null,
-        author: { name: (r.author && r.author.name) || null },
+        author: cleanAuthor(r.author, null),
         text: String(r.text || ''),
       })),
       // Shared mode only: who wrote it. A plain file names its one reviewer on
       // the envelope, so the key is absent there and the shape is unchanged.
-      ...(c.author && typeof c.author.name === 'string' ? { author: { name: c.author.name } } : {}),
+      ...(c.author && typeof c.author.name === 'string' ? { author: cleanAuthor(c.author, null) } : {}),
     })),
   };
 }
