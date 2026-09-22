@@ -7,6 +7,11 @@
 // The bug this guards was found on a person's first look: a comment on step 1's
 // Next button followed them to the Next button of every later step. So these
 // tests drive the Sony fixture, where every step repeats the same Next and Back.
+//
+// The second half is the overlay's own look on a page that changes under it:
+// a prototype that turns dark after load, fades to dark, or follows the
+// system's light/dark setting gets the dark look without waiting for a resize,
+// and the measurement reads the page under the overlay's own sheet.
 import { test, expect } from '@playwright/test';
 import { execFile } from 'node:child_process';
 import { copyFile, mkdir } from 'node:fs/promises';
@@ -100,6 +105,18 @@ test('a comment on a button every step repeats stays on its own step, and is lis
   expect(errors).toEqual([]);
 });
 
+test('when every step carries the same screen name, the saved element still keeps the comment on its own step', async ({ page }, testInfo) => {
+  // Guards the first rule on its own: here the screen rule cannot tell the steps
+  // apart, so only the saved element, found on its hidden step, keeps the
+  // comment off the next step's Next. A prototype whose steps share one heading does this.
+  await open(page, await attached(testInfo));
+  await page.evaluate(() => document.querySelectorAll('.step').forEach((s) => s.setAttribute('data-gm-screen', 'Setup')));
+  await comment(page, '#step-1 .next', 'Next should wait until both boxes are ticked.');
+  await next(page, 1);
+  await expect(page.locator('.gm-pin')).toHaveCount(0);
+  await expect(page.locator('.gm-card .gm-flag')).toHaveText(['on another screen']);
+});
+
 test('on a prototype that builds only the current step, a comment is not pinned to the lookalike that replaced its element', async ({ page }, testInfo) => {
   const errors = await open(page, await attached(testInfo));
   await comment(page, '#step-1 .next', 'Made on step 1.');
@@ -181,4 +198,70 @@ test('a hidden element that took over the address but not the words does not sen
   await expect(page.locator('.gm-pin')).toHaveCount(1);
   await expect.poll(() => pinDistanceTo(page, '#moved .next')).toBeLessThan(40);
   await expect(page.locator('.gm-card .gm-flag')).toHaveText(['nearby']);
+});
+
+// ---- the look follows the page ---------------------------------------------
+
+const theme = (page) => page.evaluate(() => window.__gitmargin.ui.theme());
+const NIGHT = 'body.night { background: #0e0e11; color: #e6e6ea; }';
+
+test('a light prototype that turns dark after load gets the dark look at once, switched exactly once', async ({ page }, testInfo) => {
+  await open(page, await attached(testInfo));
+  expect(await theme(page)).toBe('light');
+  await page.addStyleTag({ content: NIGHT });
+  // Count the host's class changes from here on: one switch, not a flicker or a loop.
+  await page.evaluate(() => {
+    window.__switches = 0;
+    new MutationObserver((records) => {
+      window.__switches += records.length;
+    }).observe(document.getElementById('gitmargin-root'), { attributes: true, attributeFilter: ['class'] });
+  });
+  // The prototype moves to a dark screen: a class on body, no resize, no scroll.
+  await page.evaluate(() => document.body.classList.add('night'));
+  await expect.poll(() => theme(page), { timeout: 3000 }).toBe('dark');
+  await page.waitForTimeout(1000);
+  expect(await page.evaluate(() => window.__switches)).toBe(1);
+  await page.evaluate(() => document.body.classList.remove('night'));
+  await expect.poll(() => theme(page), { timeout: 3000 }).toBe('light');
+});
+
+test('a page that fades to dark gets the dark look once the fade has finished', async ({ page }, testInfo) => {
+  // Measured when the class lands, a fade still reads light; the end of the fade is the moment to look again.
+  await open(page, await attached(testInfo));
+  await page.addStyleTag({ content: `body { transition: background-color 300ms linear; } ${NIGHT}` });
+  await page.evaluate(() => document.body.classList.add('night'));
+  await expect.poll(() => theme(page), { timeout: 3000 }).toBe('dark');
+});
+
+test('a page that animates to dark gets the dark look once the animation has finished', async ({ page }, testInfo) => {
+  await open(page, await attached(testInfo));
+  await page.addStyleTag({
+    content: '@keyframes to-night { to { background-color: #0e0e11; } } body.night { animation: to-night 300ms linear forwards; }',
+  });
+  await page.evaluate(() => document.body.classList.add('night'));
+  await expect.poll(() => theme(page), { timeout: 3000 }).toBe('dark');
+});
+
+test('a page that follows the system setting gets the dark look when the system turns dark', async ({ page }, testInfo) => {
+  // The page changes without a single change to its content, so only the setting itself can say so.
+  await page.emulateMedia({ colorScheme: 'light' });
+  await open(page, await attached(testInfo));
+  await page.addStyleTag({ content: '@media (prefers-color-scheme: dark) { body { background: #0e0e11; color: #e6e6ea; } }' });
+  expect(await theme(page)).toBe('light');
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await expect.poll(() => theme(page), { timeout: 3000 }).toBe('dark');
+});
+
+test('with the sheet over the middle of a narrow window, a dark page still reads as dark', async ({ page }, testInfo) => {
+  // The dark fixture paints its ground on a wrapper and leaves body light, so
+  // measuring body instead of the page under the sheet reads it as light.
+  await page.setViewportSize({ width: 600, height: 800 });
+  await open(page, await attached(testInfo, 'onboarding-dark.html'));
+  expect(await theme(page)).toBe('dark');
+  await page.evaluate(() => window.__gitmargin.ui.openPanel());
+  await expect(page.locator('.gm-sheet')).toBeVisible();
+  expect(await page.evaluate(() => document.elementFromPoint(innerWidth / 2, innerHeight / 2).id)).toBe('gitmargin-root');
+  await page.setViewportSize({ width: 601, height: 800 }); // a resize measures again
+  await page.waitForTimeout(300);
+  expect(await theme(page)).toBe('dark');
 });
