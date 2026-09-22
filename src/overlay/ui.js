@@ -178,7 +178,16 @@ export function mountUi(deps) {
   let identityOpen = false;
   let previewId = null; // the pin under the pointer
   let hotId = null; // the sheet row under the pointer, whose pin lights up
+  let editDraft = null; // the text in the open edit field, so a rebuild never loses it
+  let editDiscardArmed = false; // Escape or a page click pressed once over a changed edit
+  let armedDelete = null; // the comment id, or `reply:<id>`, whose Delete was pressed once
+  let sheetOpenedOnce = false; // the reviewer has found the sheet, so the hint under the pill can go
+  let openedFrom = 'pin'; // what opened the thread, so closing it hands the keyboard back there
+  let noticeSay = ''; // the line under the pill, kept here so opening a popover can stand it down
+  let listDrawn = ''; // what the sheet's rows were last built from
+  let threadDrawn = ''; // what the thread was last built from
   const pinPos = new Map(); // comment id -> { left, top, below } of its drawn pin
+  const pinCache = new Map(); // comment id -> { key, pick }: last frame's placement while the element has not moved
 
   // ---- the chrome: one pill, top right -----------------------------------
   const switchBtn = el('button', {
@@ -190,14 +199,19 @@ export function mountUi(deps) {
   }, [icon(BUBBLE), el('span', { class: 'label', text: 'Comment' })]);
   const badgeCount = el('span', { class: 'count', text: '0' });
   const badgeDot = el('span', { class: 'dot', hidden: 'hidden' });
-  const badgeBtn = el('button', { class: 'gm-badge', type: 'button', 'aria-expanded': 'false', title: 'All comments' }, [
+  const badgeBtn = el('button', { class: 'gm-badge', type: 'button', 'aria-expanded': 'false', title: 'All comments', 'data-focus': 'badge' }, [
     icon(BUBBLE), badgeCount, badgeDot,
   ]);
   const idAvatar = el('span', { class: 'gm-avatar', 'aria-hidden': 'true' });
   const idText = el('span', { class: 'label', hidden: 'hidden' });
   const idBtn = el('button', { class: 'gm-id', type: 'button', 'aria-expanded': 'false', 'aria-label': 'Your name' }, [idAvatar, idText]);
   const bar = el('div', { class: 'gm-bar', role: 'toolbar', 'aria-label': 'gitmargin' }, [switchBtn, badgeBtn, idBtn]);
-  shadow.appendChild(bar);
+  // One line under the pill for what the closed sheet would otherwise hide:
+  // where Send is, that the service is down, that a newer version exists
+  // (review of #21, R7, R8, R11). A click opens the sheet.
+  const notice = el('button', { class: 'gm-notice', type: 'button', 'aria-live': 'polite', hidden: 'hidden' });
+  notice.addEventListener('click', () => openSheet());
+  shadow.append(bar, notice);
 
   // ---- the identity popover: the typed name, or the sign-in states ---------
   const nameInput = el('input', { type: 'text', id: 'gm-reviewer', placeholder: 'optional', maxlength: '80' });
@@ -297,15 +311,28 @@ export function mountUi(deps) {
   /** The bar and the popovers move left when the sheet is open. */
   function layoutChrome() {
     bar.classList.toggle('is-shifted', sheetOpen);
+    notice.classList.toggle('is-shifted', sheetOpen);
     idPop.classList.toggle('is-shifted', sheetOpen);
     sheet.hidden = !sheetOpen;
     badgeBtn.setAttribute('aria-expanded', sheetOpen ? 'true' : 'false');
     idPop.hidden = !identityOpen;
     idBtn.setAttribute('aria-expanded', identityOpen ? 'true' : 'false');
+    paintNotice();
+  }
+
+  /**
+   * The line under the pill. It shares that spot with the identity popover and
+   * is covered by the sheet, so it stands down for either rather than fighting
+   * for the space.
+   */
+  function paintNotice() {
+    if (notice.textContent !== noticeSay) notice.textContent = noticeSay;
+    notice.hidden = !noticeSay || identityOpen || sheetOpen;
   }
   const openSheet = () => {
     if (sheetOpen) return;
     sheetOpen = true;
+    sheetOpenedOnce = true;
     identityOpen = false;
     layoutChrome();
     render(true);
@@ -321,8 +348,9 @@ export function mountUi(deps) {
     identityOpen = false;
     layoutChrome();
   }
-  function openThread(id, { scroll = false } = {}) {
+  function openThread(id, { scroll = false, from = 'pin' } = {}) {
     selectedId = id;
+    openedFrom = from;
     previewId = null;
     closePopovers();
     // Reading someone else's comment is what Unread means by "read".
@@ -334,16 +362,53 @@ export function mountUi(deps) {
       entry.element.scrollIntoView({ block: 'center', behavior: 'smooth' });
     }
   }
+  /** The text the open edit started from, so a change can be told from a look. */
+  function editOriginal() {
+    const c = store.comments().find((x) => x.id === editingId);
+    return c ? c.intent.text : '';
+  }
+  /**
+   * Close, but not silently over a changed edit: the same two-press rule the
+   * comment box and a typed reply already follow (review of #21, R3).
+   */
+  function closeThreadGuarded() {
+    if (editingId !== null && editDraft !== null && editDraft !== editOriginal() && !editDiscardArmed) {
+      editDiscardArmed = true;
+      render(true);
+      return false;
+    }
+    closeThread();
+    return true;
+  }
   function closeThread() {
     if (selectedId === null) return;
+    const closing = selectedId;
     selectedId = null;
     editingId = null;
+    editDraft = null;
+    editDiscardArmed = false;
+    armedDelete = null;
     // A typed reply is work; it stays put for when the thread opens again.
     if (!replyDraft.trim()) {
       replyingId = null;
       editingReplyId = null;
     }
     render(true);
+    // The keyboard goes back to where the thread was opened from: its pin, its
+    // row in the sheet, or the badge (review of #21, R10). Moved directly
+    // rather than through the focus token, because that one steps aside when
+    // anything still holds focus, and here the thing holding it is the control
+    // this close just hid.
+    focusBack(closing);
+  }
+
+  /** Put the keyboard back on whatever opened the thread: its row, its pin, else the badge. */
+  function focusBack(id) {
+    const pin = pins.get(id);
+    const row = sheetOpen ? cards.get(id) : null;
+    const live = (node) => node && node.isConnected && node;
+    const back = openedFrom === 'card' ? live(row) || live(pin) : live(pin) || live(row);
+    (back || badgeBtn).focus();
   }
 
   const setMode = (on) => {
@@ -608,7 +673,7 @@ export function mountUi(deps) {
     // frozen prototype and no explanation.
     if (selectedId !== null) {
       e.preventDefault();
-      closeThread();
+      closeThreadGuarded();
       return;
     }
     if (identityOpen) {
@@ -786,7 +851,7 @@ export function mountUi(deps) {
       // popovers. The sheet stays; it is closed on purpose, from its own X.
       if (!inOverlay) {
         closePopovers();
-        if (selectedId !== null && (box.hidden || commentMode)) closeThread();
+        if (selectedId !== null && (box.hidden || commentMode)) closeThreadGuarded();
       }
       if (!commentMode) return;
       if (!raw || raw.nodeType !== 1 || inOverlay) return;
@@ -830,7 +895,7 @@ export function mountUi(deps) {
    * keys, because the selection was only ever stashed on mouseup (review R20).
    */
   document.addEventListener('keydown', (event) => {
-    if (!commentMode || !box.hidden) return;
+    if (!box.hidden) return;
     if (event.key !== 'c' && event.key !== 'C') return;
     if (event.metaKey || event.ctrlKey || event.altKey) return;
 
@@ -842,6 +907,13 @@ export function mountUi(deps) {
     }
     // Never steal the key from something the reviewer is typing into.
     if (active && (active.isContentEditable || active.matches('input, textarea, select'))) return;
+    // With the mode off, C turns it on, which is what the button's tooltip and
+    // the empty sheet promise (review of #21, R9).
+    if (!commentMode) {
+      event.preventDefault();
+      setMode(true);
+      return;
+    }
 
     const selection = window.getSelection();
     const hasText = selection && !selection.isCollapsed && selection.toString().trim();
@@ -978,7 +1050,7 @@ export function mountUi(deps) {
 
       let pin = pins.get(comment.id);
       if (!pin) {
-        pin = el('button', { class: 'gm-pin', type: 'button' }, [el('span', { class: 'initials' })]);
+        pin = el('button', { class: 'gm-pin', type: 'button', 'data-focus': `pin:${comment.id}` }, [el('span', { class: 'initials' })]);
         pin.addEventListener('click', (e) => {
           e.stopPropagation();
           if (selectedId === comment.id) closeThread();
@@ -1010,9 +1082,9 @@ export function mountUi(deps) {
       pin.classList.toggle('is-selected', selectedId === comment.id);
       pin.classList.toggle('is-hot', hotId === comment.id);
 
-      // Selecting a comment frames the thing it is about, in the author's own
-      // colour, so the frame and the pin read as one mark. This is the whole
-      // claim of the tool made visible: here is where the reviewer was.
+      // Selecting a comment frames the thing it is about, in the accent (the
+      // author's colour belongs to the pin and the chip alone). This is the
+      // whole claim of the tool made visible: here is where the reviewer was.
       // The frame hugs the words, not the block: a heading's box runs the
       // width of its column, and a frame that wide reads as a form field.
       const text = textExtent(element);
@@ -1054,8 +1126,14 @@ export function mountUi(deps) {
       const maxLeft = usableRight() - PIN - 2;
       const maxTop = window.innerHeight - PIN - 2;
       const overlaps = (l, t) => placed.some((p) => l < p.right + 6 && l + PIN > p.left - 6 && t < p.bottom + 6 && t + PIN > p.top - 6);
-      let pick = null;
-      for (const place of places) {
+      // Probing the page is the expensive part, so last frame's place is kept
+      // while the element has not moved and the window has not changed
+      // (review of #21, R15). A neighbour that appears under a resting pin
+      // is caught the next time the element moves.
+      const cacheKey = `${Math.round(spot.x)},${Math.round(spot.top)},${Math.round(spot.bottom)},${maxLeft},${maxTop},${highlight ? 1 : 0}`;
+      const cached = pinCache.get(comment.id);
+      let pick = cached && cached.key === cacheKey && !overlaps(cached.pick.left, cached.pick.top) ? cached.pick : null;
+      for (const place of pick ? [] : places) {
         for (let step = 0; step <= 3 && !pick; step += 1) {
           const l = place.left + step * STEP * place.dir;
           const t = place.top;
@@ -1073,6 +1151,7 @@ export function mountUi(deps) {
         for (let step = 0; step < 4 && overlaps(l, t); step += 1) l = clamp(l + STEP * places[0].dir, 2, maxLeft);
         pick = { ...places[0], left: l, top: t };
       }
+      pinCache.set(comment.id, { key: cacheKey, pick });
       const pinLeft = pick.left;
       const pinTop = pick.top;
       const isLeft = pick.cls.includes('is-left');
@@ -1111,6 +1190,7 @@ export function mountUi(deps) {
       if (!seen.has(id)) {
         pin.remove();
         pins.delete(id);
+        pinCache.delete(id);
       }
     }
   }
@@ -1173,12 +1253,21 @@ export function mountUi(deps) {
           render(true);
         });
         // Two steps, like a comment's Delete, for the same reason (review R17).
+        // The armed step is state, not a mark on the button: the thread is
+        // rebuilt whenever anyone comments, and a mark on the button went with
+        // it (review of #21, R5).
+        if (armedDelete === `reply:${r.id}`) {
+          del.textContent = 'Delete?';
+          del.dataset.armed = 'yes';
+        }
         del.addEventListener('click', () => {
-          if (del.dataset.armed !== 'yes') {
-            del.dataset.armed = 'yes';
-            del.textContent = 'Delete?';
+          if (armedDelete !== `reply:${r.id}`) {
+            armedDelete = `reply:${r.id}`;
+            focusAfterRender = `rdel:${r.id}`;
+            render(true);
             return;
           }
+          armedDelete = null;
           sync.removeReply(comment.id, r.id);
           focusAfterRender = `reply:${comment.id}`;
           render(true);
@@ -1304,12 +1393,18 @@ export function mountUi(deps) {
       thread.hidden = true;
       return;
     }
-    if (!force && (editingId !== null || replyingId !== null) && thread.childElementCount) return;
-
     const { comment, status, element } = entry;
     const own = !sync || sync.isMine(comment.id);
     const screen = comment.state.screen && comment.state.screen.name;
     const index = resolved.indexOf(entry);
+    // Rebuilt only when what it shows has changed, never on a scroll (review of
+    // #21, R1), and never at all while its own text or a reply is being typed
+    // in it (review R7): that field lives inside it. The typed draft is not
+    // part of the signature, so typing itself never triggers a rebuild.
+    const busy = editingId === comment.id || replyingId === comment.id;
+    const signature = JSON.stringify([comment, status, entry.via, own, index, screen, editingId, replyingId, editingReplyId, replyNameAsk, replyDiscardArmed, editDiscardArmed, armedDelete, store.reviewer()]);
+    if (!force && thread.childElementCount && (busy || signature === threadDrawn)) return;
+    threadDrawn = signature;
 
     // Whatever control in here has the keyboard is about to be destroyed (review R14).
     const active = shadow.activeElement;
@@ -1333,39 +1428,61 @@ export function mountUi(deps) {
     if (comment.intent.tag) body.appendChild(el('div', { class: 'gm-meta', style: 'margin-left:28px' }, [el('span', { class: 'gm-tag', text: comment.intent.tag })]));
 
     if (editingId === comment.id) {
-      const area = el('textarea', {});
-      area.value = comment.intent.text;
+      const area = el('textarea', { 'data-focus': `editing:${comment.id}` });
+      area.value = editDraft === null ? comment.intent.text : editDraft;
+      area.addEventListener('input', () => {
+        editDraft = area.value;
+        editDiscardArmed = false;
+      });
       const save = el('button', { type: 'button', text: 'Save' });
       const cancel = el('button', { type: 'button', text: 'Cancel' });
+      const done = () => {
+        editingId = null;
+        editDraft = null;
+        editDiscardArmed = false;
+        focusAfterRender = `edit:${comment.id}`;
+        render(true);
+      };
       save.addEventListener('click', () => {
         const text = area.value.trim();
         if (text) store.update(comment.id, { intent: { ...comment.intent, text } });
-        editingId = null;
-        render(true);
+        done();
       });
-      cancel.addEventListener('click', () => {
-        editingId = null;
-        render(true);
-      });
-      body.append(area, el('div', { class: 'gm-card-actions' }, [save, cancel]));
+      cancel.addEventListener('click', done);
+      body.append(
+        area,
+        el('div', { class: 'gm-card-actions' }, [save, cancel]),
+        el('div', { class: 'gm-boxwarn', role: 'status', text: editDiscardArmed ? 'Press again to discard what you typed.' : '' })
+      );
     } else {
       const edit = el('button', { type: 'button', class: 'gm-quiet', text: 'Edit', 'data-focus': `edit:${comment.id}` });
       const del = el('button', { type: 'button', class: 'gm-del gm-quiet', text: 'Delete', 'data-focus': `del:${comment.id}` });
       edit.addEventListener('click', () => {
         editingId = comment.id;
+        editDraft = comment.intent.text;
+        editDiscardArmed = false;
+        focusAfterRender = `editing:${comment.id}`;
         render(true);
       });
       // Two steps, in place. A comment is the reviewer's own prose and nothing
       // keeps a copy once it is gone, so one mis-aimed click should not be
-      // enough (review R17).
+      // enough (review R17). The armed step is state, so a rebuild between
+      // the two clicks does not reset it (review of #21, R5).
+      if (armedDelete === comment.id) {
+        del.textContent = 'Delete?';
+        del.dataset.armed = 'yes';
+      }
       del.addEventListener('click', () => {
-        if (del.dataset.armed !== 'yes') {
-          del.dataset.armed = 'yes';
-          del.textContent = 'Delete?';
+        if (armedDelete !== comment.id) {
+          armedDelete = comment.id;
+          focusAfterRender = `del:${comment.id}`;
+          render(true);
           return;
         }
+        armedDelete = null;
         store.remove(comment.id);
         render(true);
+        badgeBtn.focus(); // its pin and its row are gone with it
       });
       // Edit and Delete only on what this browser wrote. Without sign-in that is
       // all 'your own' can mean; the service enforces the same rule with the
@@ -1400,6 +1517,11 @@ export function mountUi(deps) {
         render(true);
       });
       foot.appendChild(reply);
+      // The parked draft's own warning is in a thread that is not on screen, so
+      // the second press would discard it silently; say so here (review of #21, R4).
+      if (replyingId && replyingId !== comment.id && replyDiscardArmed) {
+        foot.appendChild(el('div', { class: 'gm-boxwarn', role: 'status', text: 'Press again to discard the reply you were writing elsewhere.' }));
+      }
     }
 
     thread.append(ctx, body, foot);
@@ -1569,14 +1691,17 @@ export function mountUi(deps) {
     if (hadFocus) (button ? identityBtn : quiet ? identityQuiet : identityBtn).focus();
   }
 
-  /** The chip in the chrome: initials on the person's colour. */
+  /** The chip in the chrome: initials on the person's colour, or the words that ask for a name. */
   function renderChip(person) {
-    idAvatar.hidden = false;
-    idText.hidden = true;
-    idBtn.classList.remove('is-text');
-    idAvatar.style.setProperty('--gm-author', authorHue(person));
-    idAvatar.textContent = initialsOf(person && person.name);
     const name = (person && person.name && person.name.trim()) || '';
+    // No name yet: words, not a question mark, so a new reviewer knows what
+    // the chip is for (review of #21, R18).
+    idAvatar.hidden = !name;
+    idText.hidden = Boolean(name);
+    idText.textContent = name ? '' : 'Your name';
+    idBtn.classList.toggle('is-text', !name);
+    idAvatar.style.setProperty('--gm-author', authorHue(person));
+    idAvatar.textContent = initialsOf(name);
     idBtn.setAttribute('aria-label', name ? `Your name: ${name}` : 'Your name');
   }
 
@@ -1702,7 +1827,7 @@ export function mountUi(deps) {
       role: 'button',
       tabindex: '0',
       'data-focus': `card:${comment.id}`,
-      'aria-label': `Comment ${index + 1}${status === 'found' ? '' : status === 'hidden' ? ', on another screen' : ', orphaned'}: ${comment.intent.text}`,
+      'aria-label': `Comment ${index + 1}${status === 'found' ? '' : status === 'hidden' ? ', on another screen' : ', orphaned'}${isUnread(comment) ? ', unread' : ''}: ${comment.intent.text}`,
     }, [
       el('div', { class: 'num', text: String(index + 1) }),
       avatar(author),
@@ -1713,7 +1838,7 @@ export function mountUi(deps) {
     row.classList.toggle('is-hot', hotId === comment.id);
     const activate = () => {
       if (selectedId === comment.id) closeThread();
-      else openThread(comment.id, { scroll: true });
+      else openThread(comment.id, { scroll: true, from: 'card' });
     };
     row.addEventListener('click', activate);
     row.addEventListener('keydown', (e) => {
@@ -1734,6 +1859,15 @@ export function mountUi(deps) {
       if (pin) pin.classList.remove('is-hot');
     });
     return row;
+  }
+
+  /** What the list is built from, so a scroll or a poll that changed nothing rebuilds nothing (review of #21, R1). */
+  function listSignature(resolved) {
+    return JSON.stringify([
+      filter,
+      sync ? store.reviewer() : '',
+      resolved.map((e) => [e.comment.id, e.status, e.via, e.comment.intent, e.comment.author, e.comment.status, e.comment.state.screen, isUnread(e.comment), sync && sync.isUnshared(e.comment.id), e.comment.time]),
+    ]);
   }
 
   /** Rebuild the sheet's list: grouped by screen, this screen first. */
@@ -1764,7 +1898,8 @@ export function mountUi(deps) {
     const groups = new Map();
     shown.forEach((entry) => {
       const screen = (entry.comment.state.screen && entry.comment.state.screen.name) || '';
-      const here = entry.status === 'found';
+      // Hidden means another screen; orphaned is on this one, with nowhere to point (review of #21, R17).
+      const here = entry.status !== 'hidden';
       const key = `${here ? 'here' : 'there'}:${screen}`;
       if (!groups.has(key)) groups.set(key, { screen, here, entries: [] });
       groups.get(key).entries.push(entry);
@@ -1789,8 +1924,22 @@ export function mountUi(deps) {
     const count = resolved.length;
     badgeCount.textContent = String(count);
     listCount.textContent = String(count);
-    badgeBtn.title = count === 1 ? '1 comment' : `${count} comments`;
-    badgeDot.hidden = !resolved.some((entry) => isUnread(entry.comment));
+    const unread = resolved.filter((entry) => isUnread(entry.comment)).length;
+    badgeBtn.title = `${count === 1 ? '1 comment' : `${count} comments`}${unread ? `, ${unread} unread` : ''}`;
+    badgeDot.hidden = !unread;
+    // The line under the pill: trouble first, then a newer version, then the
+    // way to Send until the reviewer has found the sheet; nothing while the
+    // sheet is open, because the sheet says all of it.
+    let say = '';
+    if (!sheetOpen && sync) {
+      const view = sync.view();
+      if (view.problem || view.state === 'offline' || view.state === 'locked') say = sharedLine();
+      else if (!view.isLatest && view.versions.some((v) => v.version_id === view.latest)) say = 'A newer version of this page exists. Open the comments to see it.';
+    } else if (!sheetOpen && !sync && count && !sheetOpenedOnce && store.hasUnexportedWork()) {
+      say = store.storageOk() === false ? 'Not saved in this browser. Send to author is under the count.' : 'Kept in this browser. Send to author is under the count.';
+    }
+    noticeSay = say;
+    paintNotice();
     filterBtns.forEach((b) => {
       const on = b.dataset.filter === filter;
       b.classList.toggle('is-on', on);
@@ -1801,12 +1950,20 @@ export function mountUi(deps) {
   }
 
   function renderPanel(resolved, force) {
-    // The list and the thread are rebuilt wholesale, except while a comment or
-    // a reply is being edited: that field lives inside them, so rebuilding
-    // replaces what is being typed with the original text, and a scroll or a
-    // ticking prototype is enough to trigger it (review R7). Everything else
-    // still updates, so the count and the saved notice do not freeze.
-    if (force || (editingId === null && replyingId === null) || !list.childElementCount) renderList(resolved);
+    // The list holds no field, so it is rebuilt whenever what it shows has
+    // changed and never otherwise: not on a scroll, and not because a reply
+    // is parked in a closed thread (review of #21, R1 and R2). The thread
+    // guards its own typing (renderThread).
+    const signature = listSignature(resolved);
+    if (force || signature !== listDrawn || !list.childElementCount) {
+      listDrawn = signature;
+      renderList(resolved);
+    } else {
+      cards.forEach((row, id) => {
+        row.classList.toggle('is-selected', selectedId === id);
+        row.classList.toggle('is-hot', hotId === id);
+      });
+    }
     renderThread(resolved, force);
     renderShared();
     renderChrome(resolved);
@@ -1843,6 +2000,7 @@ export function mountUi(deps) {
     placeThread();
     renderPreview();
     placeTarget(); // scroll, resize and page changes move the framed element too
+    restoreFocus(); // a thread that just closed, a Delete that just armed: focus lands after the rebuild
   }
 
   // One re-layout per frame, however many things changed.
@@ -1860,6 +2018,11 @@ export function mountUi(deps) {
     // Ignore our own mutations: the overlay lives in a shadow root, but the host
     // element itself is a child of <body>.
     if (records.every((r) => r.target === host || host.contains(r.target))) return;
+    // Deliberately NOT re-measuring the theme here (review of #21, R14): a
+    // prototype that swaps in a dark screen after load keeps the light chrome
+    // until the next resize. Measuring on every mutation costs a hit-test per
+    // frame on an animated page, and it changed what a part-1 test asserts,
+    // which is a part-1 behaviour change and the owner's call.
     schedule();
   }).observe(document.body, { childList: true, subtree: true, attributes: true, characterData: true });
 

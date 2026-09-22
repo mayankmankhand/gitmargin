@@ -6,7 +6,7 @@
 // shared page against the in-process service, like tests/shared.spec.js.
 import { test, expect } from '@playwright/test';
 import { execFile } from 'node:child_process';
-import { copyFile, mkdir } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { pathToFileURL } from 'node:url';
 import { resolve, join } from 'node:path';
@@ -265,5 +265,177 @@ test('on a shared page, someone else\'s comment is unread until its thread is op
     await expect(sam.locator('.gm-badge .dot')).toBeHidden();
   } finally {
     await service.close();
+  }
+});
+
+// ---- the review of the #21 cycle -------------------------------------------
+// Each test below pins one fix the review asked for. They were written against
+// the fixed overlay and checked against the one before it.
+
+test('C turns comment mode on, which is what the button and the empty sheet promise', async ({ page }, testInfo) => {
+  await open(page, await attached(testInfo, 'onboarding.html'));
+  expect(await page.evaluate(() => window.__gitmargin.ui.isCommentMode())).toBe(false);
+  await page.keyboard.press('c');
+  expect(await page.evaluate(() => window.__gitmargin.ui.isCommentMode())).toBe(true);
+  // And it still does not steal the key from a field the reviewer is typing in.
+  await page.keyboard.press('Escape');
+  await page.click('#step-1 input[type=checkbox]');
+  await page.evaluate(() => document.querySelector('#step-2 input, input[type=text]')?.focus());
+  const typed = await page.evaluate(() => {
+    const field = document.querySelector('input[type=text]');
+    if (!field) return null;
+    field.focus();
+    return document.activeElement === field;
+  });
+  if (typed) {
+    await page.keyboard.press('c');
+    expect(await page.evaluate(() => window.__gitmargin.ui.isCommentMode())).toBe(false);
+  }
+});
+
+test('an edit in progress is not thrown away by Escape or by a click on the page', async ({ page }, testInfo) => {
+  await open(page, await attached(testInfo, 'onboarding.html'));
+  await comment(page, '#step-1 h2', 'The original text.');
+  await page.click('.gm-pin');
+  await page.locator('.gm-thread').getByRole('button', { name: 'Edit' }).click();
+  await page.fill('.gm-thread textarea', 'A careful rewrite in progress');
+
+  // Escape once warns and keeps both the thread and the text.
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.gm-thread')).toBeVisible();
+  await expect(page.locator('.gm-thread .gm-boxwarn')).toHaveText('Press again to discard what you typed.');
+  await expect(page.locator('.gm-thread textarea')).toHaveValue('A careful rewrite in progress');
+
+  // A click on the page is the same gesture, and the second press goes through.
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.gm-thread')).toBeHidden();
+  const env = await page.evaluate(() => window.__gitmargin.export());
+  expect(env.comments[0].intent.text).toBe('The original text.');
+});
+
+test('an armed Delete survives a rebuild, and the thread keeps a typed edit across one', async ({ page }, testInfo) => {
+  await open(page, await attached(testInfo, 'onboarding.html'));
+  await comment(page, '#step-1 h2', 'A comment worth several minutes.');
+  await page.click('.gm-pin');
+  const del = page.locator('.gm-thread').getByRole('button', { name: 'Delete' });
+  await del.click();
+  await expect(page.locator('.gm-thread').getByRole('button', { name: 'Delete?' })).toBeVisible();
+
+  // Anything the prototype does rebuilds the thread: a clock, a carousel, a poll.
+  await page.evaluate(() => document.querySelector('#step-1 h2').append(' '));
+  await page.evaluate(() => window.__gitmargin.ui.render());
+  await page.waitForTimeout(120);
+  await expect(page.locator('.gm-thread').getByRole('button', { name: 'Delete?' })).toBeVisible();
+  await page.locator('.gm-thread').getByRole('button', { name: 'Delete?' }).click();
+  expect((await page.evaluate(() => window.__gitmargin.export())).comments).toHaveLength(0);
+});
+
+test('closing a thread puts the keyboard back on its pin, not on the page', async ({ page }, testInfo) => {
+  await open(page, await attached(testInfo, 'onboarding.html'));
+  await comment(page, '#step-1 h2', 'Focus comes back here.');
+  await page.click('.gm-pin');
+  await expect(page.locator('.gm-thread')).toBeVisible();
+  // The keyboard is inside the thread, on a control the close is about to
+  // destroy: the case where focus used to fall to the page body.
+  await page.locator('.gm-thread').getByRole('button', { name: 'Edit' }).focus();
+  await expect(page.locator('.gm-thread').getByRole('button', { name: 'Edit' })).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.gm-thread')).toBeHidden();
+  await expect(page.locator('.gm-pin')).toBeFocused();
+
+  // And from a row in the sheet, the keyboard goes back to that row.
+  await page.click('.gm-badge');
+  await page.locator('.gm-card').click();
+  await page.locator('.gm-thread').getByRole('button', { name: 'Edit' }).focus();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.gm-card')).toBeFocused();
+});
+
+test('the line under the pill says a newer version exists, before the sheet is opened', async ({ browser }, testInfo) => {
+  test.setTimeout(90_000);
+  const service = await startService();
+  try {
+    const url = await attached(testInfo, 'onboarding.html', service);
+    const page = await (await browser.newContext()).newPage();
+    await open(page, url);
+    await expect(page.locator('.gm-notice')).toBeHidden();
+
+    // The author attaches a changed prototype: this page is now the older one.
+    const dir = testInfo.outputPath('attached');
+    const source = join(dir, 'onboarding.html');
+    const html = await readFile(source, 'utf8');
+    await writeFile(source, html.replace('</h2>', ' (revised)</h2>'));
+    await gitmargin(['attach', source, '--service'], { GITMARGIN_SECRET: service.secret });
+
+    await expect(page.locator('.gm-notice')).toBeVisible(SLOW);
+    await expect(page.locator('.gm-notice')).toContainText('A newer version');
+    // Pressing it opens the sheet, where the Version line lives.
+    await page.click('.gm-notice');
+    await expect(page.locator('.gm-sheet')).toBeVisible();
+    await expect(page.locator('.gm-notice')).toBeHidden();
+  } finally {
+    await service.close();
+  }
+});
+
+test('the sheet rebuilds only when its comments changed, so a scrolling page leaves it alone', async ({ page }, testInfo) => {
+  await open(page, await attached(testInfo, 'onboarding.html'));
+  await comment(page, '#step-1 h2', 'Still the same row.');
+  await page.click('.gm-badge');
+  await page.locator('.gm-card').evaluate((row) => { row.dataset.sameElement = 'yes'; });
+
+  // A ticking prototype and a scroll: the old build threw the row away on each.
+  await page.evaluate(() => document.querySelector('#step-1 h2').append(' '));
+  await page.mouse.wheel(0, 120);
+  await page.waitForTimeout(200);
+  expect(await page.locator('.gm-card').getAttribute('data-same-element')).toBe('yes');
+
+  // A real change still rebuilds it.
+  await comment(page, '#step-1 p', 'A second comment.');
+  await expect(page.locator('.gm-card')).toHaveCount(2);
+});
+
+test('the chip asks for a name in words, and the name field is behind it', async ({ page }, testInfo) => {
+  await open(page, await attached(testInfo, 'onboarding.html'));
+  await expect(page.locator('.gm-id')).toContainText('Your name');
+  await page.click('.gm-id');
+  await page.fill('#gm-reviewer', 'Priya Shah');
+  await page.click('.gm-id');
+  await expect(page.locator('.gm-id .gm-avatar')).toHaveText('PS');
+  await expect(page.locator('.gm-id')).not.toContainText('Your name');
+});
+
+test('a dark page painted in oklch, the shape a modern prototype uses, measures dark', async ({ page }, testInfo) => {
+  // Written into the test's own folder rather than the repo: this is the same
+  // dark fixture with its ground restated in oklch, which is what a browser
+  // keeps in computed styles and what the reader had to learn to convert.
+  const dir = testInfo.outputPath('attached');
+  await mkdir(dir, { recursive: true });
+  const source = join(dir, 'oklch.html');
+  const html = await readFile(resolve('fixtures/onboarding-dark.html'), 'utf8');
+  await writeFile(source, html.replace('background: #141418;', 'background: oklch(0.18 0.01 260);'));
+  const file = await gitmargin(['attach', source], {});
+  const errors = await open(page, pathToFileURL(file).href);
+
+  expect(await page.evaluate(() => getComputedStyle(document.querySelector('.night')).backgroundColor)).toContain('oklch');
+  expect(await page.evaluate(() => window.__gitmargin.ui.theme())).toBe('dark');
+  expect(await hostClass(page)).toContain('gm-dark');
+  expect(errors).toEqual([]);
+});
+
+test('on a narrow window the sheet takes the width and the Comment button stays reachable', async ({ page }, testInfo) => {
+  await open(page, await attached(testInfo, 'onboarding.html'));
+  await comment(page, '#step-1 h2', 'Narrow window.');
+  for (const width of [360, 480]) {
+    await page.setViewportSize({ width, height: 720 });
+    if (!(await page.locator('.gm-sheet').isVisible())) await page.click('.gm-badge');
+    await expect(page.locator('.gm-sheet')).toBeVisible();
+    // The sheet is the width of the window, and the pill sits over its head.
+    const sheet = await rectOf(page.locator('.gm-sheet'));
+    expect(Math.round(sheet.right - sheet.left)).toBe(width);
+    const before = await page.evaluate(() => window.__gitmargin.ui.isCommentMode());
+    await page.click('.gm-switch', { timeout: 5000 });
+    expect(await page.evaluate(() => window.__gitmargin.ui.isCommentMode())).toBe(!before);
+    await page.click('.gm-switch');
   }
 });

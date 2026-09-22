@@ -245,7 +245,7 @@ prototype needs sign-in; nothing is written into the page. A write without a val
 
 Why the confirm page exists, and the limit it leaves, is in `docs/part-2-design.md`, section 4. In one line: the
 provider skips its approval after the first time, so nothing is granted until the person presses Continue on a page
-that shows a code only their own panel shows.
+that shows a code only their own page shows.
 
 ### `DELETE /api/p/<key>/auth/session`
 With `X-Gitmargin-Pass`. Ends that pass. Answers `{ "signed_out": true }`; an unknown pass answers the same.
@@ -264,7 +264,7 @@ is only ever text.
 
 **"Your own", for both kinds of comment.** A comment or reply keeps the rule it was created under. Written under
 sign-in, it belongs to that verified person (provider plus `sub`): they can edit or delete it from any browser, and no
-one else can, whatever token they send. Known limit: the wire carries the username and not `sub`, so a panel decides
+one else can, whatever token they send. Known limit: the wire carries the username and not `sub`, so the overlay decides
 what to draw by username (or by having written the comment itself); after a username change, older comments on
 another browser show no Edit until the wire carries a permanent id. Written under a typed name before sign-in was switched on, it carries no
 `provider` and no `verified`, and still belongs to the token that created it; while sign-in is on, that browser also
@@ -287,7 +287,7 @@ The sign-in from that page is the one above with three differences:
 
 1. It starts at `GET /auth/start?key=<key>&return=latest|<version id>`, in the same tab, with no `code_hash`. `return`
    is a name, never an address: anything else is `400`, and so is `return` on a prototype whose reading is open.
-2. The confirm page asks "Open <prototype> as <person>?" and shows no short code, because no panel is waiting with
+2. The confirm page asks "Open <prototype> as <person>?" and shows no short code, because no page is waiting with
    one to compare.
 3. Continue answers `303` to `/p/<key>/<return>?ticket=gt_...#gm_claim=<code>`. The code is made in the same statement
    that records the Continue, so the sign-in is never claimable under a code anyone else could hold. It rides after the

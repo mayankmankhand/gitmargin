@@ -31,8 +31,8 @@ identity chip. The look is Marker on a light page and Graphite on a dark one, me
 **Shared live comments are built** (issue #15): a comment service in `service/` that each author deploys to their own
 Vercel account with Neon Postgres. `attach --service <address>` registers the prototype and version, uploads a copy of
 the page, and writes the address and a page key into the copy; the overlay then saves locally first and syncs about
-every 5 seconds, and the comments carry authors, replies, a read-only status badge, and a Version line that opens older
-versions. `pull --live`, `status` and `remove` are the author's commands. By default there is no sign-in: the key in the page is
+every 5 seconds, and the comments carry authors, replies and a read-only status badge; the Version line in the comments
+sheet opens older versions. `pull --live`, `status` and `remove` are the author's commands. By default there is no sign-in: the key in the page is
 the only gate. A page attached without `--service` never reaches the network. `service/API.md` is the contract the
 CLI and the overlay are both written against; `service/README.md` has the deploy steps and the plain-English warnings.
 A reviewer needs Chrome or Edge 88, Firefox 85, or Safari 15.4; anything older now says so on the page

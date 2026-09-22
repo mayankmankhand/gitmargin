@@ -180,6 +180,7 @@ input, textarea { font: inherit; color: inherit; }
    someone else's. When the sheet is open the pill moves left, out of its way. */
 .gm-bar {
   position: fixed;
+  z-index: 3;
   top: 12px;
   right: 16px;
   display: flex;
@@ -238,10 +239,32 @@ input, textarea { font: inherit; color: inherit; }
 }
 .gm-spacer { flex: 1; }
 
+/* One line under the pill: where Send is, that the service is down, that a
+   newer version exists. Hidden while the sheet is open, since the sheet says it. */
+.gm-notice {
+  position: fixed;
+  z-index: 1;
+  top: 52px;
+  right: 16px;
+  max-width: 320px;
+  padding: 6px 10px;
+  background: var(--gm-surface);
+  color: var(--gm-muted);
+  border-radius: 8px;
+  box-shadow: var(--gm-shadow-soft);
+  font-size: 12px;
+  text-align: left;
+  pointer-events: auto;
+  transition: right 150ms ease;
+}
+.gm-notice:hover { color: var(--gm-text); }
+.gm-notice.is-shifted { right: 336px; }
+
 /* ---------- popovers under the chrome: identity, menu, preview ---------- */
 
 .gm-pop {
   position: fixed;
+  z-index: 2;
   top: 52px;
   right: 16px;
   width: 300px;
@@ -572,5 +595,19 @@ a.gm-vrow:hover, button.gm-vrow:hover { color: var(--gm-accent-ink); }
 
 @media (prefers-reduced-motion: reduce) {
   .gm-pin { animation: none; transition: none; }
-  .gm-bar, .gm-pop { transition: none; }
+  .gm-bar, .gm-pop, .gm-notice { transition: none; }
+}
+
+/* A narrow window: the sheet takes the width, and the pill stays where it is,
+   above the sheet's title, so comment mode is never pushed off-screen (review
+   of #21, R19). A proper phone mode is part 2's own work. */
+@media (max-width: 600px) {
+  .gm-sheet { width: 100%; box-shadow: none; }
+  /* Room at the top of the sheet for the pill, which sits over it: the sheet
+     is drawn after the bar in the shadow root, so without a stacking order of
+     its own the full-width sheet would paint over comment mode and swallow
+     its clicks (review of #21, R19, second round). */
+  .gm-sheet-head { padding-top: 54px; }
+  .gm-bar.is-shifted, .gm-pop.is-shifted, .gm-notice.is-shifted { right: 16px; }
+  .gm-thread { width: min(300px, calc(100vw - 16px)); }
 }

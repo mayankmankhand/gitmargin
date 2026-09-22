@@ -53,7 +53,8 @@ Three pieces:
    question, like). In comment mode a one-pixel frame follows the pointer and shows the element a click will
    attach to, snapped to the nearest control or named block: a click on the word inside a button means the button,
    and a click on a bold word inside a paragraph means the paragraph. A pin carrying the reviewer's initials marks
-   the element and its thread opens beside it; a sheet behind the count badge lists every thread. (The pins were
+   the element and its thread opens beside it; a small floating toolbar at the top right holds comment mode, a count
+   badge and who you are, and a sheet behind the count badge lists every thread. (The pins were
    numbered and the list was a permanent side panel until issue #21 redrew the overlay on 2026-09-22.)
 2. **Attach and pull.** `gitmargin attach prototype.html` writes a copy of the file next to the original with
    the overlay inside, and stamps a version id into that copy. The original is untouched; the copy is what you

@@ -25,8 +25,17 @@ test('a transparent layer says nothing about the ground', () => {
   assert.equal(luminanceOf('rgba(255, 255, 255, 0.5)'), 1);
 });
 
-test('anything that is not a colour string is null, never a throw', () => {
-  for (const bad of ['transparent', '#1f1f23', 'hsl(0 0% 0%)', '', null, undefined, 42, 'rgb(1, 2)']) {
+test('a hex colour, which is what a canvas hands back for oklch and friends, parses too', () => {
+  assert.equal(luminanceOf('#ffffff'), 1);
+  assert.equal(luminanceOf('#000000'), 0);
+  assert.ok(luminanceOf('#1f1f23') < 0.4);
+  assert.equal(luminanceOf('#1f1f2300'), null); // an alpha of zero is transparent
+});
+
+test('anything that is not an sRGB colour string is null, never a throw', () => {
+  // The browser-side converter turns oklch and hsl into rgb or hex before this
+  // function sees them; in Node they reach it raw and must not throw.
+  for (const bad of ['transparent', 'hsl(0 0% 0%)', 'oklch(20% 0 0)', '#123', '', null, undefined, 42, 'rgb(1, 2)']) {
     assert.equal(luminanceOf(bad), null, `${String(bad)} should be null`);
   }
 });
