@@ -20,6 +20,8 @@ reviewer receives a prototype in part 1. For a plain file, nothing here starts a
 | `tests/signin.spec.js` | Playwright | sign-in with a fake GitLab and a real pop-up |
 | `tests/overlay-rethink.spec.js` | Playwright | the redrawn overlay (issue #21): the light/dark switch, initials and colours, pin placement, the sheet's links to the pins, Unread, open state across a rebuild |
 | `tests/theme.test.js`, `tests/author.test.js` | node:test | the luminance maths behind the switch, and the initials and colour a chip carries |
+| `tests/screens.spec.js` | Playwright | a prototype with more than one screen (issue #24): a comment's pin stays on the screen it was made on, and the light/dark look follows a page that changes after load |
+| `tests/anchor.test.js` | node:test | the screen comparison behind "a lookalike counts only on its own screen" |
 
 **The comment service in tests is the real one.** `tests/helpers/service-server.js` runs the same `route` function Vercel
 runs, over an in-process Postgres (PGlite, a root dev dependency) on a random loopback port. So the service tests need
@@ -46,7 +48,10 @@ count badge, the name field moved under the identity chip, and a row click now o
 files were edited, under a stated rule: a class-name swap, one added "open" click, a card assertion becoming the same
 comment's thread assertion, or an assertion on a removed control becoming the same assertion on its replacement.
 Every edit is listed in that plan's Outcomes, no assertion changed what it checks beyond those, and
-`tests/cli.test.js` was not touched.
+`tests/cli.test.js` was not touched. Issue #24 is the second, and it is one assertion in `tests/roundtrip.spec.js`:
+the overlay now measures the page again when it changes, so the dark shell that test adds after load gives the
+overlay its dark look, and the ring outside the frame is two pixels rather than one. The test still checks what it
+was written for, that the frame reads on a dark shell, and the change was approved in that plan before it was made.
 
 ## Browsers
 
