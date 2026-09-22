@@ -16,7 +16,7 @@ Each file has a fixed name. Create only the ones you need.
 | `fix-rules.md` | every stage that runs the auto-fix loop | Extra conditions before a fix is applied, or extra actions that must always ask you first |
 | `severity-anchors.md` | every reviewer | How severe your own kinds' findings are (what is a Block here, what is only a Suggest) |
 
-Write each one the way you would brief a colleague: short, direct, in your project's words. The two gates are read before the toolkit's own requirements for that stage; your fix rules and severity anchors are read right after the toolkit's.
+Write each one the way you would brief a colleague: short, direct, in your project's words. The two gates are read before the toolkit's own requirements for that stage; your fix rules and severity anchors are read right after the toolkit's. All five are additive, so on a conflict the toolkit's own rule wins: your file may add a requirement, a check or an always-ask action, and a line that loosens, waives or removes one of the toolkit's is ignored.
 
 ## review-kinds.md
 
@@ -30,7 +30,7 @@ One table, in the same three columns `/tk:review` uses for its own kinds:
 
 - **What changed** says which files select the kind.
 - **Specialist** is the name the review report shows.
-- **Finder agent** names an agent of your own under `.claude/agents/`, without the `tk:` prefix. The toolkit's kinds are already in the table, so a `tk:` name here is a mistake.
+- **Finder agent** names an agent of your own under `.claude/agents/`, without the `tk:` prefix. The toolkit's own kinds are already in the table your rows are appended to, so a `tk:` name here is a mistake.
 
 The agent is dispatched with the same per-run prompt a toolkit finder gets, and its findings go through the same audit. It needs two things. It must say what it returns (an output contract), because the audit parses its findings. And it must declare a `tools:` line without Edit, Write or NotebookEdit: an agent with no tools line gets every tool, and a finder that can edit could change files before anyone has judged its findings. `/tk:upgrade` tells you when a row names an agent that does not exist, or one that can edit. It does not check the output contract on every upgrade, so that part is yours to get right.
 
@@ -54,9 +54,9 @@ Your agent can reuse the toolkit's review machinery instead of copying it. List 
 
 A project kind runs when `/tk:review` detects changes on its own. A focus, such as `/tk:review code`, names toolkit kinds only: your own kind cannot be run by name, and a focused run skips it.
 
-## fix-rules.md is additive only
+## fix-rules.md is additive only, like the other four
 
-Your rules can add a precondition or an always-ask action. They cannot remove or loosen one of the toolkit's own loop rules: a line that tries to is ignored.
+Worth repeating here, because the loop rules are the ones people most want to bend. Your rules can add a precondition or an always-ask action. They cannot remove or loosen one of the toolkit's own loop rules, and a line that tries to is ignored.
 
 ## Your own lines in the rules file
 
