@@ -102,6 +102,16 @@
 - **A list that rebuilds on every change costs keyboard users their place on a live page.**
 - **Look at git status after every vendor install: an installer can write agent instruction files into your repo.**
 
+### gitmargin: sign in with GitLab (issue #18, 2026-09-21)
+- **A hand-rolled primitive gets a reference test before anything is built on it.**
+- **Trust comes from the carrier, never from the shape of the data.**
+- **"Where does the browser keep this" is a per-origin-kind fact; one measurement does not cover disk, sandbox and web.**
+- **An answer that ends state must end only the state the request carried.**
+- **A designed refusal reads as a failure to the person testing it unless the verdict comes first.**
+- **Show the bare value when the paste target is a prompt or a dashboard; a quoted shell example teaches the quotes.**
+- **A replacement string is not inert: a dollar sign followed by a backtick or an ampersand is a directive, so replace with a function.**
+- **When the harness refuses an action class, the handoff must say so and hand those lines to the owner.**
+
 ## Mistakes to Avoid
 
 - **Fill a plan's Outcomes by replacing the template placeholder, not inserting above it.**
