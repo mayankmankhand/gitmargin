@@ -29,6 +29,12 @@ address and a page key. The tests attach into a temp folder or Playwright's outp
 **The shared browser tests are slow on purpose.** They wait for real check-ins, about five seconds each, between real
 browsers, several in a row, so that spec has a 90 second budget per test instead of the default 30.
 
+**Two fixtures, one light and one dark.** `fixtures/onboarding.html` is the Sony setup flow as `attach` receives it.
+`fixtures/onboarding-dark.html` is its twin on a dark ground, same structure and the same `data-gm-screen` stamps, so
+any test can run on both. The dark ground is painted on a wrapper `div`, not on `body`, on purpose: that is how most
+AI-made prototypes do it, and the overlay's light/dark switch (`src/overlay/theme.js`) has to find it there. The maths
+behind the switch runs in `tests/theme.test.js` under Node, on the exact colour strings a browser returns.
+
 **The three part-1 test files are a tripwire.** Shared comments were built under the rule that
 `tests/roundtrip.spec.js`, `tests/cli-roundtrip.spec.js` and `tests/cli.test.js` pass with zero edits, since a page
 attached without `--service` must behave exactly as before. It caught one real regression on the way. New behaviour

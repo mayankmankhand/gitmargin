@@ -32,6 +32,7 @@ and never overwrites a design system you already have. Edit it freely.
 <!-- Reactions captured while reacting to idea lists in /tk:explore: what felt right,
      what felt tacky, what to avoid. One line each, newest last. -->
 - 2026-09-02, issue #3 overlay: shown seven one-line looks (margin notes, sticky notes, inspector, Docs literal, red pen, ghost, wayfinding) and answered "you decide"; no per-idea reactions. Standing constraint accepted: the overlay sits on someone else's prototype and must read over any page without competing with it.
+- 2026-09-22, issue #21 rethink: Hairline "looked dated" and "it wasn't crystal clear where the comments lay". Wants the experience of the comment tools people already use (Claude artifact comments, Figma, Notion): the thread opens at the spot it is about, an avatar chip marks the spot, the full list is on demand rather than always open, colours may differ. Framed by the owner as an improvement and a system change, not a divergence. Resolve from the page is out of scope.
 
 ## Directions tried
 
