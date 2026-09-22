@@ -40,9 +40,9 @@ The **service link** is the fallback plug. Since issue #15 the author's comment 
 of a page and serves it at `/p/<key>/latest`. That is already a shareable link with no host to set up, so it is what
 publishing falls back to when a project has no host at all. Its costs are stated where it is offered: the page runs
 locked down, so it cannot use browser storage and does not remember a reviewer between visits; it holds one file of
-up to 4 MB; and the link is the only gate.
+up to 4 MB; and the link is the only gate, unless the author turns strict reading on (section 4).
 
-**Socket 2: who may comment.** Three plugs: typed names (what exists today), GitHub, and GitLab. Two optional rules
+**Socket 2: who may comment.** Three plugs: typed names (the default), GitLab (built, cycle 1), and GitHub (cycle 2). Two optional rules
 sit beside them, set per prototype: *only members of this group may comment*, and *only signed-in members may read*.
 The GitLab plug is written against the open sign-in standard GitLab follows (OpenID Connect), reading its addresses
 from the provider's own discovery document. A company login such as Okta, Microsoft or Google is then a settings
@@ -128,8 +128,13 @@ The decisions inside that picture:
   own panel, which is what every "sign in on another screen" flow does. The limit that remains: a member who is
   talked into pressing Continue on a link someone sent them gives that person a pass for that one prototype, until
   it expires.
+- **Strict reading is the second rule from section 2, switched on per prototype.** By default sign-in limits who may
+  comment and anyone who can open the page may still read. With strict reading on, reading needs what commenting
+  needs: the panel shows nothing until a member signs in, the copies stored on the service stop being open links, and
+  the author's own `pull --live` sends the author secret. What it cannot do is take back what a member's browser
+  already fetched.
 - **"No cookies, ever" stays true.** The service answers pages from any origin, a file on disk included, and that is
-  safe only because it never uses cookies. The pass travels in a request header. In strict reading mode a
+  safe only because it never uses cookies. The pass travels in a request header. Under strict reading a
   stored copy opens with a one-use ticket in its address, handed out only at the Continue press of a sign-in that
   began on the small sign-in page in front of that copy; the same redirect carries a one-time code after the `#`,
   which no server sees, so the person lands already signed in. There is deliberately no route that turns a pass into

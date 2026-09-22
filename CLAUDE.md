@@ -32,12 +32,12 @@ versions. `pull --live`, `status` and `remove` are the author's commands. By def
 the only gate. A page attached without `--service` never reaches the network. `service/API.md` is the contract the
 CLI and the overlay are both written against; `service/README.md` has the deploy steps and the plain-English warnings.
 A reviewer needs Chrome or Edge 88, Firefox 85, or Safari 15.4; anything older now says so on the page
-rather than failing silently (`docs/v0-split.md` section 5). **Part 2** (parked) = sign-in (GitHub in issue #17, GitLab through the
+rather than failing silently (`docs/v0-split.md` section 5). **Part 2** (in progress; cycle 1 built, the rest parked) = sign-in (GitHub in issue #17, GitLab through the
 company login in #18), a publishing plugin (#16), Vercel same-project mode (#19), the Slack mirror, the phone mode, and
 the four spikes. **Part 2 has one design since 2026-09-19, in `docs/part-2-design.md`:** read it before touching sign-in or
 publishing, and do not restate it elsewhere. It is built in four cycles; **cycle 1, the sign-in core plus GitLab, is built (issue #18):** `gitmargin identity <copy> gitlab --members <group> [--read members]` sets the mode on the service, never in the page; the panel signs in through a pop-up and a confirm page; `service/src/signin.js` holds the flow; tests run against `tests/helpers/fake-gitlab.js`. This session may not write saved secrets or deploy to a production address: those lines are the owner's.
 The GitLab-issue mirror is retired: comments are shown on the page. The split and the reasons: `docs/v0-split.md`; the original decision and the
-out-of-scope list: `docs/v0-decision.md`; the batch an agent reads: `docs/batch-format.md` (v0.5, wire 0.1).
+out-of-scope list: `docs/v0-decision.md`; the batch an agent reads: `docs/batch-format.md` (v0.6, wire 0.1).
 
 ## Working on the overlay
 

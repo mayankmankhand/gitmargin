@@ -133,15 +133,20 @@ disk, the service link, GitLab Pages, any host. The design and its reasons are i
    node bin/gitmargin.js identity prototype.gitmargin.html none
    ```
 
-   The command prints, in plain words, who can now read and who can comment. The mode lives on the service, not in the
-   page, so you can change it without attaching or publishing again.
+   The command prints, in plain words, who can now read and who can comment. **Every run replaces the whole setting:**
+   leave out `--read members` and reading goes back to open, leave out `--members` and anyone with a GitLab account may
+   comment, so repeat every flag you still want. The mode lives on the service, not in the page, so you can change it
+   without attaching or publishing again.
 
 ### What a reviewer does
 
 Press Sign in. A small window opens on GitLab; the first time, GitLab asks them to approve, and after that it does
 not. The window then shows a page from **your** service naming the prototype and the person, with a short code such
-as `48-21`; they check it matches the code in their panel and press **Continue**. They are signed in for 7 days on
-that browser. A Guest of the group is a member: that was measured on gitlab.com, on a private group.
+as `48-21`; they check it matches the code in their panel and press **Continue**. On a page with a web address they
+stay signed in for 7 days in that browser. On a copy stored on the service, and on a file opened from disk, the
+sign-in lasts for that tab only: those pages have no storage of their own that other pages cannot read, so the
+next visit is two presses again (GitLab asks nothing the second time). A Guest of the group is a member: that was
+measured on gitlab.com, on a private group.
 
 ### What you should know before you switch it on
 

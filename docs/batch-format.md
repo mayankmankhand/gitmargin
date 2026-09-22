@@ -173,8 +173,8 @@ the markdown rendering.
 typed, possibly empty, and identifies nobody. When the author has switched sign-in on for the prototype, the comment
 service fills `author` from the sign-in instead and ignores whatever the page sent:
 `{ "name": "Priya Shah", "provider": "gitlab", "username": "priya", "verified": true }`. `verified` is only ever
-written by the service, and `pull` keeps it only on comments that arrive from the service: a returned file cannot
-promote a typed name by adding the word. A thread can mix both kinds, because a comment keeps the rule it was written
+written by the service, and `pull` keeps it only on comments that arrive from the service, whatever a file says: a
+returned file cannot promote a typed name by adding the fields, even all of them. A thread can mix both kinds, because a comment keeps the rule it was written
 under, and each is marked for what it is. A plain file names its one reviewer once, on the
 envelope, and its comments carry neither key. `version_id` says which version of the page the comment is about:
 comments belong to a version, a new version starts with none, and `pull --live` reads the version of the copy it is

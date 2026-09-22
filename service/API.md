@@ -243,10 +243,9 @@ prototype needs sign-in; nothing is written into the page. A write without a val
    - for a person outside the group, once, `200 { "member": false, "members": "acme/design", "identity": { ... } }` and **no pass**;
    - anything else (unknown code, expired, cancelled, already claimed): `404 not_found`.
 
-Why the confirm page exists: the provider skips its own approval after the first time, so without it someone holding
-the page key could make their own code, send a member the start address, and collect a pass under that member's name
-from one silent click. What remains, and is stated to authors: a member talked into pressing Continue on a link
-someone sent them gives that person a pass for that one prototype until it expires.
+Why the confirm page exists, and the limit it leaves, is in `docs/part-2-design.md`, section 4. In one line: the
+provider skips its approval after the first time, so nothing is granted until the person presses Continue on a page
+that shows a code only their own panel shows.
 
 ### `DELETE /api/p/<key>/auth/session`
 With `X-Gitmargin-Pass`. Ends that pass. Answers `{ "signed_out": true }`; an unknown pass answers the same.
