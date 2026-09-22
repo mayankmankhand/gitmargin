@@ -27,7 +27,11 @@ the pointer and shows the element a click will anchor, snapped to the nearest co
 author's initials marks the spot, the thread opens beside the element, every comment lives in a sheet behind the count
 badge (grouped by screen, with All, Unread and Mine), and one floating pill holds comment mode, the badge and the
 identity chip. The look is Marker on a light page and Graphite on a dark one, measured from the page itself by
-`src/overlay/theme.js`; `DESIGN-PROFILE.md` names the system and the retired one.
+`src/overlay/theme.js`; `DESIGN-PROFILE.md` names the system and the retired one. **Issue #24** (2026-09-22): a
+comment's pin stays on the screen it was made on, even when every step repeats the same Next button (the saved element
+on a hidden step means "on another screen"; a lookalike counts only on the comment's own screen), and the look now
+follows a page that turns dark after load. It is the second deliberate part-1 change, one assertion (`tests/README.md`);
+three limits it leaves are in `docs/batch-format.md` section 3.
 **Shared live comments are built** (issue #15): a comment service in `service/` that each author deploys to their own
 Vercel account with Neon Postgres. `attach --service <address>` registers the prototype and version, uploads a copy of
 the page, and writes the address and a page key into the copy; the overlay then saves locally first and syncs about
@@ -41,7 +45,7 @@ company login in #18), a publishing plugin (#16), Vercel same-project mode (#19)
 the four spikes. **Part 2 has one design since 2026-09-19, in `docs/part-2-design.md`:** read it before touching sign-in or
 publishing, and do not restate it elsewhere. It is built in four cycles; **cycle 1, the sign-in core plus GitLab, is built (issue #18):** `gitmargin identity <copy> gitlab --members <group> [--read members]` sets the mode on the service, never in the page; the overlay signs in through a pop-up and a confirm page; `service/src/signin.js` holds the flow; tests run against `tests/helpers/fake-gitlab.js`. This session may not write saved secrets or deploy to a production address: those lines are the owner's.
 The GitLab-issue mirror is retired: comments are shown on the page. The split and the reasons: `docs/v0-split.md`; the original decision and the
-out-of-scope list: `docs/v0-decision.md`; the batch an agent reads: `docs/batch-format.md` (v0.6, wire 0.1).
+out-of-scope list: `docs/v0-decision.md`; the batch an agent reads: `docs/batch-format.md` (v0.7, wire 0.1).
 
 ## Working on the overlay
 
