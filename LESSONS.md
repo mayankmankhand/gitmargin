@@ -116,6 +116,15 @@
 - **A replacement string is not inert: a dollar sign followed by a backtick or an ampersand is a directive, so replace with a function.**
 - **When the harness refuses an action class, the handoff must say so and hand those lines to the owner.**
 
+### gitmargin: rethink the comment overlay (issue #21, 2026-09-22)
+- **When the owner says the design is dated, the premise of the issue is the thing to check first.**
+- **A per-frame rebuild is safe only while nothing it destroys is state.**
+- **An assertion that changes because behaviour changed is a behaviour change, not a test edit.**
+- **A canvas round-trips the colour syntax you give it; only the pixel is converted.**
+- **A focus helper that steps aside when anything holds focus cannot hand focus back.**
+- **A stacking order is part of "the pill sits above the sheet", not a detail of it.**
+- **Measure the thing the fix is about, in the browser, before calling it fixed.**
+
 ## Mistakes to Avoid
 
 - **Fill a plan's Outcomes by replacing the template placeholder, not inserting above it.**
