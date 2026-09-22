@@ -146,7 +146,7 @@ AI-regenerated page changes shape. They are tried in that order:
 
 1. **The selector.** A visible match wins immediately. A match on a screen that is not being shown, and that still
    carries the quoted words, means the comment is on another screen: it gets no pin there, the quote is not tried,
-   and the markdown carries no tag, because the spot is elsewhere rather than approximate (issue #24).
+   and its markdown line is not marked nearby or orphaned, because the spot is elsewhere, not approximate (issue #24).
 2. **The quote.** The tightest element whose text *contains* the quote. Containment rather than equality, because a
    highlighted quote is a fragment of a longer paragraph and an element quote is truncated at 160 characters, so
    equality could never rescue either. Whitespace is ignored on both sides of this comparison, so a quote finds its
@@ -164,7 +164,7 @@ When none of the three match, the comment is orphaned, which is a normal state.
 Three limits are recorded rather than fixed (issue #24). A prototype that builds only the step being shown looks,
 from the page, exactly like one whose other steps were deleted, so "Copy for author" pressed on a later step still
 marks an earlier comment `[orphaned: spot not found]` when nothing on the current step shares its words; a returned
-file carries no such tag. A lookalike on a screen whose name changed after the comment was made (a heading the
+file is never marked that way. A lookalike on a screen whose name changed after the comment was made (a heading the
 prototype rewords) reads as on another screen rather than as nearby; that one errs toward not guessing, the rule
 section 6 gives the agent. And a prototype that rebuilds every step inside the same container can reuse the saved
 selector for the new step's lookalike, which is then pinned as if it were the element: the screen rule judges only

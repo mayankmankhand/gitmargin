@@ -43,7 +43,7 @@ behind the switch runs in `tests/theme.test.js` under Node, on the exact colour 
 **The three part-1 test files are a tripwire.** Shared comments were built under the rule that
 `tests/roundtrip.spec.js`, `tests/cli-roundtrip.spec.js` and `tests/cli.test.js` pass with zero edits, since a page
 attached without `--service` must behave exactly as before. It caught one real regression on the way. New behaviour
-gets new files. The issue #21 rethink was the one deliberate part-1 change. The list moved into a sheet behind the
+gets new files. The issue #21 rethink was the first deliberate part-1 change. The list moved into a sheet behind the
 count badge, the name field moved under the identity chip, and a row click now opens the thread. So two of the three
 files were edited, under a stated rule: a class-name swap, one added "open" click, a card assertion becoming the same
 comment's thread assertion, or an assertion on a removed control becoming the same assertion on its replacement.
@@ -51,7 +51,7 @@ Every edit is listed in that plan's Outcomes, no assertion changed what it check
 `tests/cli.test.js` was not touched. Issue #24 is the second, and it is one assertion in `tests/roundtrip.spec.js`:
 the overlay now measures the page again when it changes, so the dark shell that test adds after load gives the
 overlay its dark look, and the ring outside the frame is two pixels rather than one. The test still checks what it
-was written for, that the frame reads on a dark shell, and the change was approved in that plan before it was made.
+was written for, that the frame reads on a dark shell, and the change was approved in the issue #24 plan before it was made.
 
 ## Browsers
 

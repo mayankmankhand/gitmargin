@@ -155,7 +155,7 @@ export function markdown() {
     const selector = c.anchor.selector ? ` (${c.anchor.selector})` : '';
     // Say how confidently the spot was found. An agent that is told the element
     // is only approximate can ask rather than edit the wrong thing. A comment on
-    // another screen gets no tag: it is elsewhere, not approximate (issue #24).
+    // another screen is not marked either way: it is elsewhere, not approximate (issue #24).
     const resolved = resolve(c.anchor, screen);
     const status =
       resolved.status === 'orphaned'

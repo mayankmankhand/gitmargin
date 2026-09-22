@@ -2027,8 +2027,8 @@ export function mountUi(deps) {
     // Measuring is a hit-test and a few computed styles, about 5 microseconds
     // against the milliseconds this re-layout already spends. It runs after the
     // check above, so the overlay switching its own look never measures again.
-    // A part-1 test changed with it, approved in plans/PLAN-issue-24.md: a dark
-    // shell added after load now gets the dark look, and so its two-pixel ring.
+    // A part-1 test changed with it, approved in issue #24 (tests/README.md says
+    // why): a dark shell added after load now gets the dark look, and its two-pixel ring.
     applyTheme();
     schedule();
   }).observe(document.body, { childList: true, subtree: true, attributes: true, characterData: true });

@@ -17,8 +17,14 @@
 // looks past it to the page underneath (issue #24). The overlay measures again
 // whenever the ground may have changed (src/overlay/ui.js): after the page
 // changes, when a fade or an animation on it ends, on resize, once on the
-// first scroll, and when the system's light/dark setting flips. Not on every
-// scroll, so a page painted in light and dark bands does not flicker as it moves.
+// first scroll, and when the system's light/dark setting flips. Scrolling alone
+// never measures again, so a still page painted in light and dark bands keeps
+// one look as it moves. A page whose own script changes as it scrolls (a menu
+// that lights up the section in view, a section that animates in) is measured
+// at each of those changes like any other, so there the look can follow the
+// band at the centre. Ignoring changes made mid-scroll would also ignore a
+// screen changed right after a scroll, the case this measuring exists for
+// (review of #24, R8).
 
 import { ROOT_ID } from './root.js';
 
