@@ -99,11 +99,11 @@ for (const [where, pick] of [
     const { popup, shown, panel } = await signIn(page);
     expect(shown).toMatch(/^\d\d-\d\d$/);
     expect(panel).toBe(shown);
-    await expect(page.locator('.gm-identity-says')).toHaveText('Commenting as Priya Shah · GitLab', SLOW);
+    await expect(page.locator('.gm-identity-says')).toHaveText('Commenting as Priya Shah @priya · GitLab', SLOW);
     await expect.poll(() => popup.isClosed(), SLOW).toBe(true);
 
     await comment(page, '#step-1 h2', 'Is this the right heading?');
-    await expect(page.locator('.gm-card .gm-author').first()).toHaveText('Priya Shah · GitLab (you)', SLOW);
+    await expect(page.locator('.gm-card .gm-author').first()).toHaveText('Priya Shah @priya · GitLab (you)', SLOW);
     const held = await w.service.query('select author_name, author_provider from comments');
     expect(held).toEqual([{ author_name: 'Priya Shah', author_provider: 'gitlab' }]);
     expect(errors).toEqual([]);
@@ -124,16 +124,16 @@ test('from a web address, two people: one signs in and comments, the other sees 
   await open(watcher, url);
 
   await signIn(priya);
-  await expect(priya.locator('.gm-identity-says')).toHaveText('Commenting as Priya Shah · GitLab', SLOW);
+  await expect(priya.locator('.gm-identity-says')).toHaveText('Commenting as Priya Shah @priya · GitLab', SLOW);
   await comment(priya, '#step-1 h2', 'Seen by both?');
 
-  await expect(watcher.locator('.gm-card .gm-author').first()).toHaveText('Priya Shah · GitLab', SLOW);
+  await expect(watcher.locator('.gm-card .gm-author').first()).toHaveText('Priya Shah @priya · GitLab', SLOW);
   await expect(watcher.locator('.gm-identity-btn')).toBeVisible();
 
   // Signed in is remembered on a page with a real address: a reload asks for nothing.
   await priya.reload();
   await priya.waitForFunction(() => !!window.__gitmargin);
-  await expect(priya.locator('.gm-identity-says')).toHaveText('Commenting as Priya Shah · GitLab', SLOW);
+  await expect(priya.locator('.gm-identity-says')).toHaveText('Commenting as Priya Shah @priya · GitLab', SLOW);
 
   await priya.click('.gm-identity-quiet');
   await expect(priya.locator('.gm-identity-btn')).toBeVisible(SLOW);
@@ -162,8 +162,11 @@ test('someone outside the group is told so, and Cancel on the confirm page grant
   const page = await (await browser.newContext()).newPage();
   await open(page, outsider.disk);
   await signIn(page, { press: '#never-there' });
-  await expect(page.locator('.gm-identity-says')).toContainText('Signed in as Sam Lee. This prototype only takes comments from members of gitmargin-test.', SLOW);
-  await expect(page.locator('.gm-identity-btn')).toHaveText('Try another account');
+  // The verdict comes first, then who, then what to do (review of #18, R3 and R4).
+  await expect(page.locator('.gm-identity-says')).toContainText('Your account is not in gitmargin-test', SLOW);
+  await expect(page.locator('.gm-identity-says')).toContainText('signed in to GitLab as Sam Lee');
+  await expect(page.locator('.gm-identity-says')).toContainText('sign out of GitLab');
+  await expect(page.locator('.gm-identity-btn')).toHaveText('Sign in with GitLab again');
   await outsider.service.close();
   await outsider.fake.close();
 
@@ -171,7 +174,8 @@ test('someone outside the group is told so, and Cancel on the confirm page grant
   const second = await (await browser.newContext()).newPage();
   await open(second, w.disk);
   await signIn(second, { press: '#gm-cancel' });
-  await expect(second.locator('.gm-identity-says')).toHaveText('Sign-in did not finish.', SLOW);
+  // After Cancel the panel keeps asking for up to 20 s, since an unknown code can also mean a slow pop-up (R20).
+  await expect(second.locator('.gm-identity-says')).toHaveText('Sign-in did not finish.', { timeout: 30_000 });
   expect(await w.service.query('select 1 from sessions')).toEqual([]);
   await w.service.close();
   await w.fake.close();
@@ -200,7 +204,9 @@ test('the identity line is reachable and operable by keyboard alone', async ({ b
   const [popup] = await Promise.all([page.context().waitForEvent('page'), page.keyboard.press('Enter')]);
   // Sign in became Cancel under the person's hands; focus must not fall to the page.
   await expect(page.locator('.gm-identity-quiet')).toBeFocused();
-  await expect(page.locator('.gm-identity-says')).toHaveAttribute('role', 'status');
+  // The live region wraps the sentence and the code together (review of #18, R16).
+  await expect(page.locator('.gm-identity-live')).toHaveAttribute('role', 'status');
+  await expect(page.locator('.gm-identity-live .gm-identity-code')).toBeVisible();
   await popup.close();
   await page.keyboard.press('Enter');
   await expect(page.locator('.gm-identity-btn')).toBeFocused();
@@ -246,10 +252,10 @@ test('strict reading, the stored copy: a sign-in page first, then the page, sign
 
   // Same tab, now the prototype, and the panel is signed in without a second sign-in.
   await page.waitForFunction(() => !!window.__gitmargin, null, SLOW);
-  await expect(page.locator('.gm-identity-says')).toHaveText('Commenting as Priya Shah · GitLab', SLOW);
+  await expect(page.locator('.gm-identity-says')).toHaveText('Commenting as Priya Shah @priya · GitLab', SLOW);
   expect(new URL(page.url()).hash).toBe('');
   await comment(page, '#step-1 h2', 'Members only, and I am one.');
-  await expect(page.locator('.gm-card .gm-author').first()).toHaveText('Priya Shah · GitLab (you)', SLOW);
+  await expect(page.locator('.gm-card .gm-author').first()).toHaveText('Priya Shah @priya · GitLab (you)', SLOW);
   await expect.poll(async () => (await w.service.query('select 1 from comments')).length, SLOW).toBe(1);
 
   // The ticket is spent: a reload, or the same address pasted elsewhere, meets the sign-in page again.
@@ -267,7 +273,7 @@ test('strict reading, a file on disk: the panel is locked and says so; signing i
   await open(writer, w.disk);
   await expect(writer.locator('.gm-identity-btn')).toHaveText('Sign in with GitLab to see comments', SLOW);
   await signIn(writer);
-  await expect(writer.locator('.gm-identity-says')).toHaveText('Commenting as Priya Shah · GitLab', SLOW);
+  await expect(writer.locator('.gm-identity-says')).toHaveText('Commenting as Priya Shah @priya · GitLab', SLOW);
   await comment(writer, '#step-1 h2', 'Only members should read this.');
   await expect.poll(async () => (await w.service.query('select 1 from comments')).length, SLOW).toBe(1);
 

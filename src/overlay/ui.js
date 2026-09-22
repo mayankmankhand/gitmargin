@@ -67,7 +67,11 @@ export function mountUi(deps) {
    */
   const nameOf = (author) => {
     const name = (author && author.name && author.name.trim()) || 'Someone';
-    return author && author.verified === true ? `${name} \u00b7 ${providerName(author.provider)}` : name;
+    if (!author || author.verified !== true) return name;
+    // The handle too: two people can share a display name, and the mark vouches
+    // for the account, not for the name shown (review of the #18 cycle, R5).
+    const handle = author.username ? ` @${author.username}` : '';
+    return `${name}${handle} \u00b7 ${providerName(author.provider)}`;
   };
   /** A vouched-for name is drawn a step stronger than a typed one, so the two are told apart at a glance. */
   const authorClass = (author) => (author && author.verified === true ? 'gm-author is-verified' : 'gm-author');
@@ -167,11 +171,14 @@ export function mountUi(deps) {
   // when, and only when, the comment service says this prototype uses sign-in.
   // Built once and updated in place: it sits above a live list, and rebuilding
   // things up there is what costs keyboard users their place (LESSONS, #15).
-  const identitySays = el('span', { class: 'gm-identity-says', role: 'status', 'aria-live': 'polite' });
+  const identitySays = el('span', { class: 'gm-identity-says' });
   const identityCode = el('span', { class: 'gm-identity-code', hidden: 'hidden' });
+  // One live region holds the sentence AND the code, so a screen reader hears
+  // "check it shows this code: 48-21" and not the sentence alone (review of #18, R16).
+  const identityLive = el('div', { class: 'gm-identity-live', role: 'status', 'aria-live': 'polite' }, [identitySays, identityCode]);
   const identityBtn = el('button', { type: 'button', class: 'gm-identity-btn' });
   const identityQuiet = el('button', { type: 'button', class: 'gm-identity-quiet', hidden: 'hidden' });
-  const identityLine = el('div', { class: 'gm-identity', hidden: 'hidden' }, [identitySays, identityCode, el('div', { class: 'gm-identity-actions' }, [identityBtn, identityQuiet])]);
+  const identityLine = el('div', { class: 'gm-identity', hidden: 'hidden' }, [identityLive, el('div', { class: 'gm-identity-actions' }, [identityBtn, identityQuiet])]);
   // The click handler calls straight into sync.signIn(): nothing may be awaited
   // between this click and the pop-up opening, or the browser blocks it.
   identityBtn.addEventListener('click', () => sync && sync.signIn());
@@ -976,7 +983,7 @@ export function mountUi(deps) {
     let button = '';
     let quiet = '';
     if (on && view.session) {
-      says = `Commenting as ${view.session.name || 'you'} \u00b7 ${providerName(view.session.provider)}`;
+      says = `Commenting as ${view.session.name || 'you'}${view.session.username ? ` @${view.session.username}` : ''} \u00b7 ${providerName(view.session.provider)}`;
       quiet = 'Sign out';
     } else if (on && view.signin.state === 'waiting') {
       says = `Waiting for ${provider}... Finish in the small window, and check it shows this code:`;
@@ -986,9 +993,14 @@ export function mountUi(deps) {
       says = 'Your browser blocked the sign-in window. Allow pop-ups for this page, then try again.';
       button = `Sign in with ${provider}`;
     } else if (on && view.signin.state === 'not_member') {
+      // The verdict first, then who, then what to do: the earlier order ("Signed
+      // in as ..., this prototype only takes ...") was read as a failure by the
+      // owner in the live walk (review of #18, R3). The provider keeps its own
+      // session, so "another account" means signing out there first (R4).
       const who = view.signin.who || {};
-      says = `Signed in as ${who.name || 'you'}. This prototype ${strict ? 'is only open to' : 'only takes comments from'} members of ${who.members || view.identity.members || 'one group'}.`;
-      button = 'Try another account';
+      const group = who.members || view.identity.members || 'the group';
+      says = `Your account is not in ${group}. You are signed in to ${provider} as ${who.name || 'someone'}, and only members can ${strict ? 'open this prototype' : 'comment here'}. Ask the author for access, or sign out of ${provider} and sign in here with another account.`;
+      button = `Sign in with ${provider} again`;
     } else if (on && view.signin.state === 'failed') {
       says = 'Sign-in did not finish.';
       button = `Sign in with ${provider} ${waitingToSend}`;
@@ -1008,6 +1020,7 @@ export function mountUi(deps) {
     identitySays.hidden = !says;
     identityCode.textContent = code;
     identityCode.hidden = !code;
+    identityLive.hidden = !says && !code;
     identityBtn.textContent = button;
     identityBtn.hidden = !button;
     identityQuiet.textContent = quiet;
@@ -1103,7 +1116,7 @@ export function mountUi(deps) {
   function sharedLine() {
     const view = sync.view();
     if (view.problem) return view.problem;
-    if (view.state === 'locked') return 'Comments on this prototype are for members only. Sign in to read them.';
+    if (view.state === 'locked') return 'Comments on this prototype are for members only. Sign in to see the latest.';
     if (view.state === 'offline') {
       return store.storageOk() === false
         ? 'Working locally. Comments will be shared when the service is back; keep this tab open until then.'

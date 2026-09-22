@@ -61,8 +61,9 @@ Shared comments (optional; needs a comment service you deployed, see service/REA
       Who may comment. gitlab: people sign in and comment under their real GitLab
       name; --members limits it to one GitLab group (its full path); --read
       members hides the comments from everyone else too. none: typed names, as
-      before. Needs GITMARGIN_SECRET, and a GitLab application set up on the
-      service (service/README.md). Every change signs everyone out.
+      before. Each run replaces the whole setting, so repeat every flag you
+      still want. Needs GITMARGIN_SECRET, and a GitLab application set up on
+      the service (service/README.md). Every change signs everyone out.
 
 Exit codes
   0  success

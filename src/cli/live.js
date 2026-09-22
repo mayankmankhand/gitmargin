@@ -432,6 +432,7 @@ export async function setIdentityMode(args) {
     lines.push('A copy you shared before switching this on can still read, but its comments are refused until you attach and share it again.');
   }
   lines.push(`Passes ended: ${set.passes_ended}. Everyone signs in again the next time they comment.`);
+  lines.push('This run replaced the whole setting: next time, repeat every flag you still want.');
   process.stderr.write(`${lines.join('\n')}\n`);
   return EXIT_OK;
 }

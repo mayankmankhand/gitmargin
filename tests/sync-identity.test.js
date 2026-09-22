@@ -63,19 +63,22 @@ async function popup(w, url, { press = 'continue' } = {}) {
   return shown;
 }
 
-async function client(w, { storage = new Map(), syncModule = '../src/overlay/sync.js', blocked = false, arrival = null } = {}) {
+async function client(w, { storage = new Map(), syncModule = '../src/overlay/sync.js', blocked = false, arrival = null, onDisk = false } = {}) {
   instance += 1;
   const store = await import(`../src/overlay/store.js?identity=${instance}`);
   const { startSync } = await import(syncModule);
   store.load(w.versionId);
 
-  const net = { inflight: 0, calls: [] };
+  const net = { inflight: 0, calls: [], holds: [] };
   const fetchImpl = async (url, init = {}) => {
     net.inflight += 1;
     try {
       const u = new URL(url);
       const method = init.method || 'GET';
       net.calls.push(`${method} ${u.pathname}`);
+      // A test can hold one matching request in flight until it says so.
+      const held = net.holds.findIndex((h) => h.test.test(`${method} ${u.pathname}`));
+      if (held >= 0) await net.holds.splice(held, 1)[0].until;
       const headers = Object.fromEntries(Object.entries(init.headers || {}).map(([k, v]) => [k.toLowerCase(), v]));
       const answer = await w.call(method, url, { headers, body: init.body ? JSON.parse(init.body) : null });
       return { ok: answer.status < 400, status: answer.status, json: async () => JSON.parse(answer.body) };
@@ -109,6 +112,7 @@ async function client(w, { storage = new Map(), syncModule = '../src/overlay/syn
       return blocked ? null : { closed: true }; // reads as closed at once, as measured
     },
     takeArrivalCode: () => arrival,
+    sharedStorage: () => onDisk,
   });
 
   const idle = async () => {
@@ -117,17 +121,27 @@ async function client(w, { storage = new Map(), syncModule = '../src/overlay/syn
       calm = net.inflight === 0 ? calm + 1 : 0;
     }
   };
-  /** Fire every timer that is set right now, once. */
-  const tick = async () => {
+  /** Fire every timer that is set right now, once, without waiting for the network. */
+  const fire = () => {
     const due = [...timers.entries()];
     for (const [id, timer] of due) {
       timers.delete(id);
       timer.fn();
     }
+  };
+  const tick = async () => {
+    fire();
     await idle();
   };
+  /** Hold the next request matching `test` until the returned function is called. */
+  const hold = (test) => {
+    let release;
+    const until = new Promise((resolve) => (release = resolve));
+    net.holds.push({ test, until });
+    return release;
+  };
   await idle();
-  return { sync, store, net, opened, storage, tick, idle, timers };
+  return { sync, store, net, opened, storage, tick, fire, hold, idle, timers };
 }
 
 const draft = (id) => ({ id, time: '2026-09-21T12:00:00Z', intent: { text: 'Why here?', tag: null }, anchor: {}, state: {}, status: 'open' });
@@ -208,7 +222,7 @@ test('someone outside the group is told so by name, and gets no pass', async (t)
   assert.equal(view.session, null);
 });
 
-test('Cancel stops the asking, Cancel on the confirm page ends it, and three minutes is the limit', async (t) => {
+test('Cancel stops the asking, Cancel on the confirm page ends it, and the panel waits as long as the service does', async (t) => {
   const w = await world(t);
   const c = await client(w);
   c.sync.signIn();
@@ -220,11 +234,29 @@ test('Cancel stops the asking, Cancel on the confirm page ends it, and three min
 
   c.sync.signIn();
   await popup(w, c.opened[1], { press: 'cancel' });
+  // For the first 20 seconds an unknown code only means the pop-up may not have
+  // reached the service yet, so the panel keeps asking (review of #18, R20).
+  await c.tick();
+  assert.equal(c.sync.view().signin.state, 'waiting');
+  w.clock.advance(21 * 1000);
   await c.tick();
   assert.equal(c.sync.view().signin.state, 'failed');
 
+  // Still asking at minute nine, when the service still accepts a Continue.
   c.sync.signIn();
-  w.clock.advance(3 * 60 * 1000 + 1000);
+  const started = await w.call('GET', c.opened[c.opened.length - 1]); // the pop-up opened, and the person is slow
+  w.clock.advance(9 * 60 * 1000);
+  await c.tick();
+  assert.equal(c.sync.view().signin.state, 'waiting', 'gave up while the service would still have honoured Continue');
+  const landed = await w.call('GET', w.fake.approve(started.headers.location));
+  const field = (name) => (new RegExp(`name="${name}" value="([^"]*)"`).exec(landed.body) || [])[1];
+  await w.call('POST', '/auth/confirm', { body: { state: field('state'), token: field('token'), decision: 'continue' } });
+  await c.tick();
+  assert.ok(c.sync.view().session, 'a Continue in minute nine was not claimed');
+  // And it does give up once the service would have too.
+  c.sync.signOut();
+  c.sync.signIn();
+  w.clock.advance(10 * 60 * 1000 + 1000);
   await c.tick();
   assert.equal(c.sync.view().signin.state, 'failed');
 });
@@ -381,4 +413,52 @@ test('strict reading: a stored copy opened through the sign-in page arrives sign
   const late = await client(w, { arrival: code });
   assert.equal(late.sync.view().session, null);
   assert.equal(late.sync.view().state, 'locked');
+});
+
+test('a pass that arrives while a poll is in flight survives that poll\'s refusal (R8)', async (t) => {
+  const w = await world(t, { read: 'members' });
+  const c = await client(w);
+  assert.equal(c.sync.view().state, 'locked');
+
+  // The next poll leaves without a pass and is held on the wire.
+  const release = c.hold(/^GET .*\/comments$/);
+  c.fire();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(c.net.inflight, 1, 'the poll should be in flight');
+
+  // Meanwhile the person signs in and the pass is claimed.
+  c.sync.signIn();
+  await popup(w, c.opened[0]);
+  c.fire(); // the claim timer
+  for (let i = 0; i < 20 && !c.sync.view().session; i += 1) await new Promise((resolve) => setImmediate(resolve));
+  assert.ok(c.sync.view().session, 'the claim did not land');
+
+  // The old poll comes back refused. It must not end the NEW pass.
+  release();
+  await c.idle();
+  assert.ok(c.sync.view().session, 'a stale refusal signed the person out');
+  await c.tick();
+  assert.equal(c.sync.view().state, 'shared');
+});
+
+test('on a page opened from disk the pass lives in memory only, never in shared storage (R7)', async (t) => {
+  const w = await world(t);
+  const storage = new Map();
+  const c = await client(w, { storage, onDisk: true });
+  c.sync.signIn();
+  await popup(w, c.opened[0]);
+  await c.tick();
+  assert.ok(c.sync.view().session, 'not signed in');
+  assert.ok(![...storage.keys()].some((k) => k.startsWith('gitmargin:pass:')), 'the pass was written to shared storage');
+  assert.ok([...storage.keys()].some((k) => k.startsWith('gitmargin:token:')), 'the edit token still is, as before');
+  // A second overlay sharing that storage (another local file) starts signed out.
+  const other = await client(w, { storage, onDisk: true });
+  assert.equal(other.sync.view().session, null);
+  // Off disk, the same storage keeps the pass across a reload.
+  const web = await client(w, { storage: new Map(), onDisk: false });
+  web.sync.signIn();
+  await popup(w, web.opened[0]);
+  await web.tick();
+  const again = await client(w, { storage: web.storage, onDisk: false });
+  assert.ok(again.sync.view().session, 'a web page forgot the pass on reload');
 });

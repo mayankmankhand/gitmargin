@@ -216,8 +216,21 @@ function htmlPage(status, title, bodyHtml, { closes = false } = {}) {
   };
 }
 
-const problemPage = (status, text) =>
-  htmlPage(status, 'Sign-in did not finish', `<h1>Sign-in did not finish</h1><p>${escapeHtml(text)}</p><p class="muted">Close this window and try again from the comment panel.</p>`);
+/**
+ * Where a person goes after a refusal depends on how they got here. From the
+ * panel's pop-up: close it, the panel is still there. From the sign-in page in
+ * front of a stored copy (strict reading) this IS their tab, so "close this
+ * window" is a dead end (review of the #18 cycle, R2): they get a link back.
+ * `back` is that page's address when it is known, and null before the
+ * sign-in row has been read.
+ */
+function nextStep(back) {
+  if (back) return `<p class="muted"><a id="gm-back" href="${escapeHtml(back)}">Go back to the page</a> and try again.</p>`;
+  return '<p class="muted">Try again from where you started: the comment panel, or the sign-in link on the page.</p>';
+}
+const returnAddress = (signin) => (signin && signin.return_version ? `/p/${signin.prototype_key}/${signin.return_version}` : null);
+const problemPage = (status, text, back = null) =>
+  htmlPage(status, 'Sign-in did not finish', `<h1>Sign-in did not finish</h1><p>${escapeHtml(text)}</p>${nextStep(back)}`);
 
 // ---- reads used by the router ----------------------------------------------
 
@@ -324,7 +337,7 @@ export async function callback(deps, params) {
 
   if (typeof params.error === 'string' || typeof params.code !== 'string') {
     await end();
-    return problemPage(400, 'The sign-in was not approved.');
+    return problemPage(400, 'The sign-in was not approved.', returnAddress(signin));
   }
   const provider = PROVIDERS[signin.provider];
   const settings = providerSettings(deps, signin.provider);
@@ -332,7 +345,7 @@ export async function callback(deps, params) {
   const prototype = found[0];
   if (!provider || !settings || !prototype || prototype.identity !== signin.provider) {
     await end();
-    return problemPage(409, 'Sign-in is no longer switched on for this prototype.');
+    return problemPage(409, 'Sign-in is no longer switched on for this prototype.', returnAddress(signin));
   }
 
   let person;
@@ -342,7 +355,7 @@ export async function callback(deps, params) {
     // The message carries an error name or a status, never a token or the secret.
     if (deps.log) deps.log(error);
     await end();
-    return problemPage(502, `${provider.label} did not confirm the sign-in.`);
+    return problemPage(502, `${provider.label} did not confirm the sign-in.`, returnAddress(signin));
   }
 
   const member = isMember(prototype.members, person.groups);
@@ -355,11 +368,17 @@ export async function callback(deps, params) {
   );
 
   if (!member) {
-    // Nothing to grant, so nothing to confirm. The panel learns of it through the claim.
+    // Nothing to grant, so nothing to confirm. The panel learns of it through the
+    // claim. The verdict comes first: the owner read the earlier wording ("Signed
+    // in as ...", then a rule) as a failure of the software (review of #18, R1).
+    const back = returnAddress(signin);
     return htmlPage(
       200,
       'Not a member',
-      `<h1>Signed in as ${escapeHtml(person.name)}</h1><p>This prototype ${signin.return_version ? 'can only be opened by' : 'only takes comments from'} members of <strong>${escapeHtml(prototype.members)}</strong> on ${escapeHtml(provider.label)}.</p><p class="muted">You can close this window.</p>`,
+      `<h1>Your account is not in ${escapeHtml(prototype.members)}</h1>` +
+        `<p>You are signed in to ${escapeHtml(provider.label)} as <strong>${escapeHtml(person.name)}</strong>, and this prototype ${signin.return_version ? 'can only be opened by' : 'only takes comments from'} members of that group. Nothing went wrong; this account is not one of them.</p>` +
+        `<p>Ask the prototype's author for access. To use a different ${escapeHtml(provider.label)} account, sign out of ${escapeHtml(provider.label)} first, then sign in here again.</p>` +
+        (back ? `<p class="muted"><a id="gm-back" href="${escapeHtml(back)}">Go back to the page</a></p>` : '<p class="muted">You can close this window.</p>'),
     );
   }
   const confirmForm =

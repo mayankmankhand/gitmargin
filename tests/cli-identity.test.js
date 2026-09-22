@@ -155,13 +155,23 @@ test('a returned file cannot promote a typed name by adding the word verified', 
     comments: [
       { id: 'c_333333', time: '2026-09-21T12:00:00Z', intent: { text: 'x', tag: null }, anchor: {}, state: {}, status: 'open', replies: [], author: { name: 'The CEO', verified: true } },
       { id: 'c_444444', time: '2026-09-21T12:00:00Z', intent: { text: 'y', tag: null }, anchor: {}, state: {}, status: 'open', replies: [], author: { name: 'The CEO', verified: 'true', provider: 'gitlab' } },
+      // The exact shape the service writes, but coming from a file: still a typed name (review of #18, R6).
+      { id: 'c_555555', time: '2026-09-21T12:00:00Z', intent: { text: 'z', tag: null }, anchor: {}, state: {}, status: 'open', replies: [{ id: 'r_555555', time: '2026-09-21T12:00:00Z', author: { name: 'The CEO', provider: 'gitlab', username: 'ceo', verified: true }, text: 'me too' }], author: { name: 'The CEO', provider: 'gitlab', username: 'ceo', verified: true } },
     ],
   };
   const html = readFileSync(s.copy, 'utf8').replace('</body>', `<script type="application/json" id="gitmargin-comments">${JSON.stringify(envelope).replace(/</g, '\\u003c')}</script></body>`);
   writeFileSync(reviewed, html);
   const pulled = await run(['pull', reviewed], s.env);
   assert.equal(pulled.code, 0, pulled.err);
-  for (const c of JSON.parse(pulled.out).comments) assert.deepEqual(c.author, { name: 'The CEO' }, 'a file promoted its own author');
+  const comments = JSON.parse(pulled.out).comments;
+  assert.equal(comments.length, 3);
+  for (const c of comments) assert.deepEqual(c.author, { name: 'The CEO' }, 'a file promoted its own author');
+  assert.deepEqual(comments[2].replies[0].author, { name: 'The CEO' }, 'a file promoted a reply author');
+  // And the same file merged BEHIND the service's answer still cannot: only the service source vouches.
+  const merged = await run(['pull', s.copy, '--live', reviewed], s.env);
+  assert.equal(merged.code, 0, merged.err);
+  const forged = JSON.parse(merged.out).comments.find((c) => c.id === 'c_555555');
+  assert.deepEqual(forged.author, { name: 'The CEO' });
 });
 
 test('pull --live under strict reading: the secret goes only when reading needs it, and only where the author chose', async (t) => {

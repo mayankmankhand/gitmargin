@@ -130,6 +130,12 @@ export function startSync({
   // Strict reading: a stored copy opened through the service's sign-in page
   // arrives with a one-time code after the `#` (API.md, "Strict reading").
   takeArrivalCode = arrivalCodeFromAddress,
+  // A page opened from disk shares one storage area with EVERY other local file
+  // in Chromium, so a pass written there could be read by any HTML file opened
+  // later. The pass then lives in memory for this tab only, as the design says
+  // (review of the #18 cycle, R7). The edit token was always shared this way;
+  // it opens only what this browser wrote, a pass opens a person's name.
+  sharedStorage = () => typeof location !== 'undefined' && location.protocol === 'file:',
 }) {
   if (!stamp || !stamp.service || !stamp.key || !stamp.versionId) return null;
 
@@ -159,7 +165,8 @@ export function startSync({
   const origin = new URL(stamp.service).origin;
   const passKey = `gitmargin:pass:${stamp.key}`;
   const identity = { mode: 'none', read: 'open', members: null };
-  let session = disk.read(passKey);
+  const passDisk = sharedStorage() ? safeStorage(() => { throw new Error('tab only'); }) : disk;
+  let session = passDisk.read(passKey);
   if (!session || typeof session.pass !== 'string' || !(Date.parse(session.expires) > now())) session = null;
   // state: idle | waiting | blocked | not_member | failed
   const signin = { state: 'idle', code: null, shortCode: null, who: null, timer: null, started: 0 };
@@ -175,7 +182,7 @@ export function startSync({
   function endSession() {
     if (!session) return;
     session = null;
-    disk.write(passKey, null);
+    passDisk.write(passKey, null);
     announce();
   }
 
@@ -221,7 +228,12 @@ export function startSync({
   const writer = () => (session ? { name: session.identity.name, provider: session.identity.provider, username: session.identity.username, verified: true } : { name: store.reviewer() || '' });
 
   const SIGNIN_ASK_MS = 1000;
-  const SIGNIN_GIVE_UP_MS = 3 * 60 * 1000;
+  // The same 10 minutes the service gives an unfinished sign-in (API.md, "Limits
+  // and lifetimes"): a slower limit here left a person whose Continue landed in
+  // minute four "signed in" in the pop-up and "failed" in the panel (review of
+  // the #18 cycle, R9).
+  const SIGNIN_GIVE_UP_MS = 10 * 60 * 1000;
+  const SIGNIN_UNKNOWN_GRACE_MS = 20 * 1000;
   function stopAsking(state, who = null) {
     if (signin.timer !== null) timers.clear(signin.timer);
     Object.assign(signin, { timer: null, code: null, state, who, shortCode: state === 'waiting' ? signin.shortCode : null });
@@ -250,12 +262,17 @@ export function startSync({
       if (signin.code !== code) return;
       if (status === 200 && answer && answer.member === true && typeof answer.pass === 'string') {
         session = { pass: answer.pass, expires: answer.expires, identity: answer.identity || {} };
-        disk.write(passKey, session);
+        passDisk.write(passKey, session);
         stopAsking('idle');
         kick(); // whatever was waiting for a pass goes now
         return undefined;
       }
       if (status === 200 && answer && answer.member === false) return stopAsking('not_member', { ...(answer.identity || {}), members: answer.members || null });
+      // "Unknown code" in the first moments only means the pop-up has not reached
+      // the service yet (a slow network); after that it means the sign-in was
+      // cancelled, refused at the start (the service's page says why), or is
+      // gone, and the panel says it did not finish (review of #18, R20).
+      if (status === 404 && now() - signin.started < SIGNIN_UNKNOWN_GRACE_MS) return askForPass();
       if (status === 404 || status === 400) return stopAsking('failed');
       return askForPass();
     }, SIGNIN_ASK_MS);
@@ -271,12 +288,15 @@ export function startSync({
   }
 
   async function request(method, url, body) {
+    // Remembered so a refusal can end THIS pass and not one that arrived while
+    // the request was in flight (review of the #18 cycle, R8).
+    const carried = session ? session.pass : null;
     const response = await fetchImpl(url, {
       method,
       headers: {
         'content-type': 'application/json',
         ...(method === 'GET' ? {} : { 'x-gitmargin-token': token }),
-        ...(session ? { 'x-gitmargin-pass': session.pass } : {}),
+        ...(carried ? { 'x-gitmargin-pass': carried } : {}),
       },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
@@ -287,7 +307,11 @@ export function startSync({
       /* not JSON: treated as a failure of the service, below */
     }
     if (!response.ok && !(answer && typeof answer.error === 'string')) throw new Error('unreadable answer');
-    return { ok: response.ok, status: response.status, answer };
+    return { ok: response.ok, status: response.status, answer, carried };
+  }
+  /** A `sign_in` refusal ends the pass it was refused WITH; a newer pass stays. */
+  function endRefused(result) {
+    if (session && session.pass === result.carried) endSession();
   }
 
   /** The comment as the service should hold it, built from the local copy now. */
@@ -334,7 +358,7 @@ export function startSync({
     // change and wait: it is sent the moment someone signs in. Never dropped.
     if (code === 'sign_in') {
       setIdentity({ identity: result.answer.provider, read: identity.read, members: identity.members });
-      endSession();
+      endRefused(result);
       return 'later';
     }
     // The service already holds this id under someone else's token. That is
@@ -484,10 +508,11 @@ export function startSync({
         // Not a failure: the service is fine and said exactly what it wants. The
         // next answer that does come must be a full one, whoever signs in.
         setIdentity({ identity: listed.answer.provider, read: 'members', members: identity.members });
-        endSession();
+        endRefused(listed);
         since = null;
         failures = 0;
-        setView({ state: 'locked', problem: null });
+        // A pass that arrived meanwhile is about to be used by the cycle `kick()` queued: not locked yet.
+        if (!session) setView({ state: 'locked', problem: null });
       } else if (!listed.ok) {
         // The service answered, and the answer is "not this page". Polling on
         // would only repeat it; the comments stay local and say why.
@@ -558,7 +583,7 @@ export function startSync({
       const answer = await response.json();
       if (response.status === 200 && answer && answer.member === true && typeof answer.pass === 'string') {
         session = { pass: answer.pass, expires: answer.expires, identity: answer.identity || {} };
-        disk.write(passKey, session);
+        passDisk.write(passKey, session);
       }
     } catch {
       /* no pass: the panel offers its own sign-in, as it would have anyway */

@@ -258,6 +258,18 @@ for (const [person, rule, why] of [
   });
 }
 
+test('the not-a-member page leads with the verdict, names the account, and says what to do (review of #18, R1)', async (t) => {
+  const ctx = await setUp(t, { person: 'sam' });
+  const { page } = await toCallback(ctx, newCode());
+  assert.equal(page.status, 200);
+  assert.match(page.text, /<h1>Your account is not in gitmargin-test<\/h1>/);
+  assert.match(page.text, /signed in to GitLab as <strong>Sam Lee<\/strong>/);
+  assert.match(page.text, /Nothing went wrong/);
+  assert.match(page.text, /sign out of GitLab first/);
+  assert.match(page.text, /close this window/, 'the pop-up flow may still say close this window');
+  assert.equal(formField(page.text, 'token'), undefined, 'nothing to confirm');
+});
+
 test('the rule matches in any case, and with no rule anyone who signs in may comment', async (t) => {
   const upper = await setUp(t, { members: 'GitMargin-TEST' });
   assert.equal((await signIn(upper)).member, true);
@@ -555,7 +567,10 @@ test('strict reading: Cancel, and a non-member, get no ticket', async (t) => {
 
   ctx.fake.set({ person: 'sam' });
   const outsider = await toReturnConfirm(ctx);
-  assert.match(outsider.text, /can only be opened by members of/);
+  assert.match(outsider.text, /<h1>Your account is not in gitmargin-test<\/h1>/);
+  assert.match(outsider.text, /can only be opened by members of that group/);
+  assert.match(outsider.text, new RegExp(`href="/p/${ctx.key}/latest"`), 'the strict flow gets a way back to the page, not "close this window"');
+  assert.ok(!outsider.text.includes('close this window'));
   assert.equal(formField(outsider.text, 'token'), undefined);
   assert.equal((await ctx.service.query('select 1 from tickets')).length, 0);
 });

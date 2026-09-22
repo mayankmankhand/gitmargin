@@ -461,7 +461,7 @@ a.gm-vrow:hover, button.gm-vrow:hover { color: var(--gm-accent); }
   letter-spacing: 0.06em;
 }
 .gm-identity-actions { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
-.gm-identity-says[hidden] + .gm-identity-code[hidden] + .gm-identity-actions { margin-top: 0; }
+.gm-identity-live[hidden] + .gm-identity-actions { margin-top: 0; }
 .gm-identity-btn {
   font: inherit;
   padding: 5px 12px;
@@ -484,7 +484,10 @@ a.gm-vrow:hover, button.gm-vrow:hover { color: var(--gm-accent); }
 .gm-identity-btn:focus, .gm-identity-quiet:focus { outline: 2px solid var(--gm-accent); outline-offset: 2px; }
 /* Signed in: one row, the name on the left and the quiet action on the right (design critic, round 1). */
 .gm-identity.is-row { display: flex; align-items: baseline; gap: 10px; }
-.gm-identity.is-row .gm-identity-says { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gm-identity-live { display: block; }
+.gm-identity-live[hidden] { display: none; }
+.gm-identity.is-row .gm-identity-live { flex: 1; min-width: 0; }
+.gm-identity.is-row .gm-identity-says { display: block; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .gm-identity.is-row .gm-identity-quiet { white-space: nowrap; }
 .gm-identity.is-row .gm-identity-actions { margin-top: 0; }
 .gm-identity-quiet { text-decoration: none; border-bottom: 1px solid var(--gm-line-strong); }
