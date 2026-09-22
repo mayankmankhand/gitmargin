@@ -277,9 +277,10 @@ export async function start(deps, prototype, params) {
     return problemPage(400, 'The sign-in request was incomplete.');
   }
   const codeHash = returns ? sha256(randomBytes(32).toString('hex')) : params.code_hash;
+  const back = returns ? `/p/${prototype.key}/${params.return}` : null; // the strict flow's way back on a refusal
   const provider = PROVIDERS[prototype.identity];
   const settings = providerSettings(deps, prototype.identity);
-  if (!provider || !settings) return problemPage(409, `The author's comment service is not set up for ${providerLabel(prototype.identity)} sign-in yet.`);
+  if (!provider || !settings) return problemPage(409, `The author's comment service is not set up for ${providerLabel(prototype.identity)} sign-in yet.`, back);
 
   const at = now();
   const state = randomBytes(24).toString('base64url');
@@ -307,7 +308,7 @@ export async function start(deps, prototype, params) {
       returns ? params.return : null,
     ],
   );
-  if (!recorded[0]) return problemPage(429, 'Too many sign-ins were started for this prototype just now. Wait a minute and try again.');
+  if (!recorded[0]) return problemPage(429, 'Too many sign-ins were started for this prototype just now. Wait a minute and try again.', back);
 
   let location;
   try {
@@ -315,7 +316,7 @@ export async function start(deps, prototype, params) {
   } catch (error) {
     if (deps.log) deps.log(error);
     await query('update signins set ended_at = $2 where state = $1', [state, at.toISOString()]);
-    return problemPage(502, `${provider.label} could not be reached.`);
+    return problemPage(502, `${provider.label} could not be reached.`, back);
   }
   return { status: 302, headers: { location, 'cache-control': 'no-store', 'referrer-policy': 'no-referrer' }, body: '' };
 }
@@ -414,7 +415,13 @@ export async function confirm(deps, body) {
   if (!state || !token) return problemPage(400, 'The confirmation was incomplete.');
 
   if (body.decision !== 'continue') {
-    await query('update signins set ended_at = $3, confirm_hash = null where state = $1 and confirm_hash = $2 and ended_at is null', [state, sha256(token), at]);
+    const cancelled = await query(
+      'update signins set ended_at = $3, confirm_hash = null where state = $1 and confirm_hash = $2 and ended_at is null returning prototype_key, return_version',
+      [state, sha256(token), at],
+    );
+    const back = returnAddress(cancelled[0]);
+    // In the strict flow this is the person's own tab: no self-close, a way back instead.
+    if (back) return htmlPage(200, 'Cancelled', `<h1>Cancelled</h1><p>Nothing was signed in.</p><p class="muted"><a id="gm-back" href="${escapeHtml(back)}">Go back to the page</a></p>`);
     return htmlPage(200, 'Cancelled', '<h1>Cancelled</h1><p>Nothing was signed in. You can close this window.</p>', { closes: true });
   }
   // The token works once: a match clears it in the same statement. A sign-in

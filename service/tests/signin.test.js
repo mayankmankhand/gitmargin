@@ -564,6 +564,15 @@ test('strict reading: Cancel, and a non-member, get no ticket', async (t) => {
   const cancelled = await pressContinue(ctx, await toReturnConfirm(ctx), 'cancel');
   assert.equal(cancelled.status, 200);
   assert.equal(cancelled.headers.get('location'), null);
+  // This is the person's own tab in the strict flow: a way back, no self-close (review of #18, follow-up to R2).
+  assert.match(cancelled.text, new RegExp(`href="/p/${ctx.key}/latest"`));
+  assert.ok(!cancelled.text.includes('window.close'));
+  // And a refusal at the start of that flow also points back (here: the start limit).
+  for (let i = 0; i < 30; i += 1) await call(ctx, 'GET', `/auth/start?key=${ctx.key}&return=latest`);
+  const limited = await call(ctx, 'GET', `/auth/start?key=${ctx.key}&return=latest`);
+  assert.equal(limited.status, 429);
+  assert.match(limited.text, new RegExp(`href="/p/${ctx.key}/latest"`));
+  ctx.clock.advance(MINUTE + 1000); // the limit is per minute; the rest of this test starts sign-ins too
 
   ctx.fake.set({ person: 'sam' });
   const outsider = await toReturnConfirm(ctx);
