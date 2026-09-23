@@ -11,7 +11,9 @@ Technical terms are explained in the research report's [glossary](../research/pr
 **Status on 2026-09-23:** cycle 1 (section 7), the sign-in core and the GitLab plug, is built under issue #18 and was
 walked on two computers with two gitlab.com accounts. Cycle 2, the GitHub plug (issue #17), is built and tested against
 a stand-in GitHub in Chromium and Firefox and walked on the real github.com (a file on disk, the service link and a
-GitHub Pages page). Everything else here is decided and not yet built, and says so.
+GitHub Pages page). Same-project mode, the second half of cycle 4 (issue #19), is built ahead of cycle 3 and tested
+behind a stand-in for Vercel's login wall; its walk on a real Vercel project waits for the owner. Everything else here
+is decided and not yet built, and says so.
 The contract is `service/API.md`; setup and warnings are in `service/README.md`.
 
 ## 1. Why one design
@@ -259,7 +261,11 @@ Each cycle ends in a live test on accounts one person owns, before the next star
    with detect, propose, confirm once, remember, and the file, link, GitHub Pages and GitLab Pages channels.
 4. **The Vercel channel and same-project mode** ([#19](https://github.com/mayankmankhand/gitmargin/issues/19)). The
    page key stays as a plain label for "which prototype"; Vercel's own protection wraps the page and the comments
-   together, so the service barely changes.
+   together, so the service barely changes. **Same-project mode built 2026-09-23, before the plugin:** a second
+   deployment of the author's service with `GITMARGIN_SAME_PROJECT=1` serves one prototype as its own site (not
+   sandboxed, so its calls carry Vercel's login), opens it at `/`, and holds one prototype, with a database of its
+   own; a page opened at its own `/p/<key>/...` talks to the address it was opened from; the command line passes
+   Vercel's wall with Vercel's bypass for automation. The plain Vercel channel stays with the plugin (cycle 3).
 
 ## 8. Honest limits
 
@@ -267,7 +273,12 @@ Each cycle ends in a live test on accounts one person owns, before the next star
   comments, not privacy for the page.
 - **GitLab Pages access control is on the Free tier**, and every reviewer needs a GitLab account that is a member.
 - **Vercel's password protection is Enterprise, or a paid add-on on Pro.** Cycle 4 proves same-project mode with a
-  free stand-in (Vercel's own login wall, or a share link if the free plan has them, which is still to be checked).
+  free stand-in: Vercel Authentication with "All Deployments", free on every plan since 2026-09-09. On the free plan
+  that lets in the owner, one outside Vercel user the owner approves, and anyone holding the account's one share link.
+  The default, Standard Protection, leaves a project's main address open, so the setup says to choose All Deployments.
+- **Same-project pages are not sandboxed.** They share the address only with their own prototype, but with sign-in
+  on, a hostile script inside the prototype could press Continue for a reviewer; and sign-in there works from the
+  main address only, where the provider's callback is registered.
 - **The company single sign-on pass-through is untested.** Personal accounts cannot enforce a company login, so that
   path is documented as untested and not claimed.
 - **One author, one service.** A team can share one by sharing its author secret, which is a known limit. The pass

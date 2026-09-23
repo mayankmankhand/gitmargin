@@ -313,6 +313,78 @@ In the function's log (`vercel logs <project>.vercel.app --since 30m`), `token c
 is a wrong secret, `token call refused: bad_verification_code` a reused or expired attempt, and
 `token call refused: unverified_user_email` a reviewer whose primary GitHub email is not verified.
 
+## Same-project mode on Vercel (the page and its comments behind one login)
+
+> **Not walked on a real Vercel project yet.** Everything here was tested against a stand-in for Vercel's login wall,
+> and the Vercel settings named below come from Vercel's documentation; the live walk is the last step of issue #19.
+
+Use it when the prototype must be private and the people who review it can pass Vercel's own protection. It is a
+**second deployment of this same service**, switched to serve one prototype as its own site. The page and its comment
+routes are then one Vercel project behind one login: someone who has not passed Vercel's protection gets Vercel's
+login and nothing else, not the page, not the comments, not even an answer from the service. The page key stays in
+the page as a label. Everything above still applies to your ordinary comment service, which this does not touch.
+
+**Who can get past Vercel's protection.** On the free Hobby plan: you, one outside Vercel user you approve, and anyone
+holding your account's one share link. On paid plans, your team, or a password (a paid add-on). Choose **All
+Deployments** in the protection settings: it covers the project's main address too, and has been free on every plan
+since 2026-09-09. The default, Standard Protection, leaves the main address open.
+
+### Set it up, once per prototype
+
+From a folder of its own, so this project can never be deployed over your main comment service:
+
+```bash
+cp -r service ~/gitmargin-review-onboarding && cd ~/gitmargin-review-onboarding
+rm -rf .vercel .env.local
+vercel link --yes --project onboarding-review          # a new project, named for the prototype
+vercel integration add neon --plan free_v3 -m region=iad1 -m auth=false   # its own database
+node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"   # a new author secret; keep it
+vercel env add GITMARGIN_SECRET production --sensitive
+vercel env add GITMARGIN_SAME_PROJECT production          # type 1
+vercel deploy --prod
+```
+
+**Its own database, on purpose.** Connecting your main service's database here would let that open service answer
+for the same key, outside Vercel's protection.
+
+Then, in Vercel: the project, Settings, **Deployment Protection**:
+
+1. **Vercel Authentication:** on, **All Deployments**.
+2. **Protection Bypass for Automation:** add one and copy it. It is how the `gitmargin` commands get through, and it
+   opens every deployment of this project, so keep it like the author secret.
+
+Check it: `curl -s -o /dev/null -w '%{http_code}\n' https://onboarding-review.vercel.app/api/ping` must answer `302`
+or `401` (Vercel's login), never `200`.
+
+### Publish, and every new version
+
+```bash
+export GITMARGIN_SECRET=...          # this project's author secret
+export GITMARGIN_VERCEL_BYPASS=...   # this project's bypass for automation
+node bin/gitmargin.js attach prototype.html --service https://onboarding-review.vercel.app
+```
+
+A new version is the same `attach` again: no redeploy. `pull --live`, `status`, `remove` and `identity` work the same
+way with the two values set. The bypass goes only to an address you typed yourself (or named in `GITMARGIN_SERVICE`),
+never into the page. Without it, the commands stop and say the address is behind Vercel's protection.
+
+### What reviewers do
+
+Send them `https://onboarding-review.vercel.app/`, or your share link (the Share button on the deployment's page,
+"Anyone with the link"). They pass Vercel's login and land on the prototype, and comment as on any shared page.
+
+### What you should know
+
+- **One prototype per project.** Attaching a different page from another folder is refused, with the key of the one
+  it holds; `--key <that key>` publishes a new version of it instead.
+- **Its pages are not locked down the way stored copies are.** The service serves the prototype as its own site, so
+  its calls carry Vercel's login; the prototype shares the address only with itself. With sign-in on, a hostile
+  script inside the prototype could press Continue for a reviewer, as it can already read the pass the overlay holds.
+- **Sign-in, if you switch it on, works from the main address only:** the provider sends people back to the one
+  callback address you registered.
+- **The page opens from whichever address the reviewer used,** the main address, a deployment address or a share
+  link, and its comments go to that same address, where the reviewer's Vercel login is.
+
 ## Tests
 
 From the repository root, `npm test` runs this folder's tests too. They use an in-process Postgres, so they need no
