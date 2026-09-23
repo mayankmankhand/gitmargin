@@ -376,7 +376,8 @@ async function createPrototype({ query, now, sameProject }, body) {
   return json(201, { key });
 }
 
-async function registerVersion({ query, now }, key, body) {
+async function registerVersion(deps, key, body) {
+  const { query, now } = deps;
   if (!body || !isHash(body.hash)) return refuse(400, 'invalid');
   if (body.html !== undefined && typeof body.html !== 'string') return refuse(400, 'invalid');
   const fits = typeof body.html === 'string' && Buffer.byteLength(body.html, 'utf8') <= LIMITS.pageBytes;
@@ -400,6 +401,7 @@ async function registerVersion({ query, now }, key, body) {
       round: newest.round,
       created: false,
       page_stored: newest.has_page || Boolean(html),
+      ...(deps.sameProject ? { same_project: true } : {}),
     });
   }
   if (versions.length >= LIMITS.versions) return refuse(409, 'full');
@@ -416,7 +418,13 @@ async function registerVersion({ query, now }, key, body) {
     key,
     round - LIMITS.pagesKept,
   ]);
-  return json(201, { version_id: versionId, round, created: true, page_stored: Boolean(html) });
+  return json(201, {
+    version_id: versionId,
+    round,
+    created: true,
+    page_stored: Boolean(html),
+    ...(deps.sameProject ? { same_project: true } : {}),
+  });
 }
 
 async function setStatus({ query, now }, key, id, body) {

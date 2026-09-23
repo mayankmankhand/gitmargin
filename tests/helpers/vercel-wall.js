@@ -47,7 +47,8 @@ export async function startVercelWall(target, { bypass = FAKE_BYPASS } = {}) {
     seen.push({ method: req.method, path: url.pathname, host: req.headers.host, passed, bypassed, bypassHeader: req.headers['x-vercel-protection-bypass'] || null });
 
     // The login page: one button, which sets the cookie for this host name only.
-    if (url.pathname === '/__wall/login') {
+    // At `/sso-api`, the path of Vercel's own login (measured 2026-09-23).
+    if (url.pathname === '/sso-api') {
       const next = (url.searchParams.get('next') || '/').startsWith('/') ? url.searchParams.get('next') || '/' : '/';
       if (req.method === 'POST') {
         res.writeHead(303, { location: next, 'set-cookie': '_vercel_jwt=passed; Path=/; HttpOnly; SameSite=Lax', 'cache-control': 'no-store' });
@@ -59,13 +60,13 @@ export async function startVercelWall(target, { bypass = FAKE_BYPASS } = {}) {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
       return res.end(
         `<!doctype html><title>Log in to Vercel</title><h1 id="wall">Log in to Vercel</h1>` +
-          `<form method="post" action="/__wall/login?next=${encodeURIComponent(next)}"><button id="wall-login">Continue</button></form>`,
+          `<form method="post" action="/sso-api?next=${encodeURIComponent(next)}"><button id="wall-login">Continue</button></form>`,
       );
     }
 
     if (!passed && !bypassed) {
-      res.writeHead(302, { location: `/__wall/login?next=${encodeURIComponent(url.pathname + url.search)}`, 'content-type': 'text/plain', 'cache-control': 'no-store' });
-      return res.end(`Redirecting to ${escapeHtml('/__wall/login')}...`);
+      res.writeHead(302, { location: `/sso-api?next=${encodeURIComponent(url.pathname + url.search)}`, 'content-type': 'text/plain', 'cache-control': 'no-store' });
+      return res.end(`Redirecting to ${escapeHtml('/sso-api')}...`);
     }
 
     // Through the wall: the service answers as it would on Vercel.

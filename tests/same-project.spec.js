@@ -99,7 +99,7 @@ test('without passing the wall there is no prototype and no comment route, only 
   for (const [method, path] of [['GET', `/api/p/${w.key}/comments`], ['GET', '/'], ['OPTIONS', `/api/p/${w.key}/comments`]]) {
     const answer = await fetch(`${w.wall.url}${path}`, { method, redirect: 'manual' });
     expect(answer.status, `${method} ${path}`).toBe(302);
-    expect(answer.headers.get('location')).toMatch(/^\/__wall\/login\?next=/);
+    expect(answer.headers.get('location')).toMatch(/^\/sso-api\?next=/);
   }
   const reached = w.wall.seen.filter((c) => !c.passed && !c.bypassed && c.path.startsWith('/api/'));
   expect(reached.length).toBeGreaterThan(0); // the wall saw them, and forwarded none

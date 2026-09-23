@@ -149,12 +149,23 @@ const NOT_CONFIGURED = {
 /**
  * What stands in front of the service answered, not the service: a redirect to
  * Vercel's login, or a 401 or 403 that is not the service's own JSON (issue
- * #19). Said by name, and never followed.
+ * #19). Said by name, and never followed. Vercel's login lives at `/sso-api`
+ * (measured 2026-09-23); any other redirect is named with where it points, so
+ * a moved address is not blamed on a correct bypass secret (review of #19, R18).
  */
 function walled(address, response, answer, bypass) {
   const redirect = response.status >= 300 && response.status < 400;
+  const location = redirect ? String(response.headers.get('location') || '') : '';
+  const toLogin = redirect && /\/sso-api(?:[/?#]|$)/.test(location);
   const refusedPage = (response.status === 401 || response.status === 403) && !(answer && typeof answer.error === 'string');
-  if (!redirect && !refusedPage) return null;
+  if (redirect && !toLogin) {
+    return new CliError(
+      `${address} answered with a redirect to ${location || 'another address'}, not with the comment service.`,
+      EXIT_REFUSED,
+      'Check the address: use the one the service itself answers on.\nNothing was written.'
+    );
+  }
+  if (!toLogin && !refusedPage) return null;
   if (bypass['x-vercel-protection-bypass']) {
     return new CliError(
       `Vercel's protection refused the bypass secret at ${address}.`,
@@ -168,6 +179,27 @@ function walled(address, response, answer, bypass) {
     process.env.GITMARGIN_VERCEL_BYPASS
       ? 'GITMARGIN_VERCEL_BYPASS is set, but it only goes to an address you typed with attach --service, or named in GITMARGIN_SERVICE.\nNothing was written.'
       : "Set GITMARGIN_VERCEL_BYPASS to the project's Protection Bypass for Automation (Vercel: the project, Settings, Deployment Protection), and run this again.\nNothing was written."
+  );
+}
+
+/**
+ * Same-project mode is only private if Vercel's protection covers the address,
+ * and a new project's default leaves its main address open (measured
+ * 2026-09-23). So after publishing there, ask once without the bypass, and say
+ * so plainly if the service answers (review of #19, R16). Never a refusal: the
+ * author may be testing on purpose.
+ */
+async function warnIfOpen(address) {
+  let status = 0;
+  try {
+    status = (await fetch(`${address}/api/ping`, { redirect: 'manual' })).status;
+  } catch {
+    return;
+  }
+  if (status !== 200) return;
+  process.stderr.write(
+    `Warning: ${address} answers without Vercel's login, so anyone with the address reaches this prototype and its comments.\n` +
+      'In Vercel: the project, Settings, Deployment Protection, Vercel Authentication, choose All Deployments.\n'
   );
 }
 
@@ -308,6 +340,7 @@ export async function attachLive(args) {
     auth,
     body: { hash: hashOf(bytes), file: originalName },
   });
+  if (version.same_project) await warnIfOpen(address);
 
   const out = attachToHtml(html, {
     bundle,
