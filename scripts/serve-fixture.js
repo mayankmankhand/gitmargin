@@ -1,7 +1,9 @@
-// Tiny static server for the fixture, used only by the design-critic loop:
-// the toolkit's browse.js navigates http(s) URLs only, so a screenshot of the
-// overlay needs the fixture served rather than opened from disk. The tests do
-// NOT use this - they open the file directly, which is how a reviewer gets it.
+// Tiny static server for the fixtures. The toolkit's browse.js navigates http(s)
+// URLs only, so every toolkit browser check on the overlay (design screenshots,
+// the design loop's interaction checks, the review's browser checks) needs the
+// fixture served rather than opened from disk. It listens on a free port that the
+// toolkit does not probe, so hand it the URL this prints. The tests do NOT use
+// this - they open the file directly, which is how a reviewer gets it.
 //
 // Usage: npm run serve  ->  prints the URL and stays up until Ctrl-C.
 //

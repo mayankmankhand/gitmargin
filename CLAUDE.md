@@ -54,8 +54,10 @@ out-of-scope list: `docs/v0-decision.md`; the batch an agent reads: `docs/batch-
 builds, then runs the `node --test` suite in `tests/*.test.js` (the CLI, no browser), then the Playwright
 suite in `tests/*.spec.js`, which opens the fixtures from `file://` because that is how a reviewer
 receives a prototype. Chromium is required; Firefox and WebKit run when they can start on this machine
-(`tests/README.md` has the detail, including why WebKit is untested here). `npm run serve` is only for
-design screenshots, since the toolkit's browser script cannot open a local file.
+(`tests/README.md` has the detail, including why WebKit is untested here). The toolkit's browser script cannot
+open a local file, so `npm run serve` is how it reaches the overlay: design screenshots, the design loop's
+interaction checks, and the review's browser checks. It picks a free port and prints the address, which the
+toolkit will not find on its usual ports, so hand it that address.
 
 ## Working on the comment service
 
