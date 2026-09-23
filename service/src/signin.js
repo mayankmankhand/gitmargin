@@ -114,7 +114,11 @@ export function githubApi(url) {
   return /^https:\/\/github\.com$/i.test(url) ? 'https://api.github.com' : `${url}/api/v3`;
 }
 
-/** GitHub refuses an API call with no User-Agent, and asks callers to name the API version. */
+/**
+ * GitHub asks every caller to name itself in the User-Agent and to name the API
+ * version. (It refuses a call with no User-Agent at all, but Node's own fetch
+ * always sends `node`, so that refusal cannot happen here: measured 2026-09-23.)
+ */
 const GITHUB_HEADERS = {
   accept: 'application/vnd.github+json',
   'user-agent': 'gitmargin-comment-service',

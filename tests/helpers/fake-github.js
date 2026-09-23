@@ -17,7 +17,9 @@
 //      and an unknown client as a 404 (measured against github.com, 2026-09-23).
 //      Only a returned `access_token` means yes.
 //   4. The token call answers form-encoded text unless asked for JSON.
-//   5. The API refuses a request with no `User-Agent`.
+//   5. The API refuses a request with no `User-Agent`. (Node's fetch always
+//      sends one, `node`, so this protects nothing today; it is here so the
+//      fake is no kinder than the real thing if the runtime ever changes.)
 //   6. A person's display name can be empty.
 //   7. Its pages refuse to be framed (`x-frame-options: deny`, measured).
 //
@@ -38,6 +40,8 @@ export const PEOPLE = {
   sam: { id: 5002, login: 'samlee', name: null, access: ['acme/site'] },
   // Access to a repository whose name merely STARTS like the rule's.
   dana: { id: 5004, login: 'danawu', name: 'Dana Wu', access: ['acme/app-two'] },
+  // Access to both: the lookalike and the real one.
+  lee: { id: 5007, login: 'leek', name: 'Lee Kim', access: ['acme/app-two', 'acme/app'] },
   // No access to anything the App is installed on.
   noor: { id: 5005, login: 'noorh', name: 'Noor Haddad', access: [] },
   // A name that would be markup if anyone rendered it as markup.
@@ -51,7 +55,9 @@ export const PEOPLE = {
  * "explicit permission" rule for a user's token.
  */
 const INSTALLATIONS = [
-  { id: 71, account: 'acme', repos: ['acme/app', 'acme/app-two', 'acme/site'] },
+  // `acme/app-two` is listed before `acme/app` on purpose: a rule compared as a
+  // prefix would stop at it and turn away someone who can open both.
+  { id: 71, account: 'acme', repos: ['acme/app-two', 'acme/app', 'acme/site'] },
   { id: 72, account: 'octopriya', repos: ['octopriya/notes'] },
 ];
 
