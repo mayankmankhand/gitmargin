@@ -45,6 +45,8 @@ gitmargin status <name>.gitmargin.html <comment-id> rejected
 
 `accepted` means agreed but not done yet; `open` puts it back. Comments from a returned file or pasted text have no service, so there is nothing to mark.
 
+If `gitmargin status` says the author secret (`GITMARGIN_SECRET`) is not set, the changes are still applied; say that the comments could not be marked yet, and that the secret reaches Claude Code only after a restart from a new terminal (step 7 of the share skill's service setup).
+
 ## 5. Report
 
 A short list: what you applied (one line each, naming the step), what you answered, what you left and why, and any spot you could not find. Then offer: "Share the new version with `/gitmargin:share <name>.html`." Sharing again makes a new version whose comments start empty; reviewers can still open the older version, with its comments, from the Version line in the comments list.

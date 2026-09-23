@@ -3,7 +3,7 @@ name: share
 description: Share an HTML prototype for review with gitmargin comments. Wraps the page with the comment overlay, checks it will survive the host, publishes it (a file, the author's comment-service link, or GitHub Pages) and hands back the link. Run only when the author types /gitmargin:share.
 argument-hint: "[prototype.html] [where, for example: on GitHub Pages]"
 disable-model-invocation: true
-allowed-tools: Bash(gitmargin *) Bash(gitmargin-publish *) Bash(git remote *) Bash(git rev-parse *) Bash(vercel --version) Bash(vercel whoami) Read(/${CLAUDE_SKILL_DIR}/**) Edit(/${CLAUDE_PROJECT_DIR}/.gitmargin.json) Edit(/${CLAUDE_PROJECT_DIR}/.gitignore)
+allowed-tools: Bash(gitmargin *) Bash(gitmargin-publish *) Bash(git remote get-url *) Bash(git rev-parse *) Bash(vercel --version) Bash(vercel whoami) Read(/${CLAUDE_SKILL_DIR}/**) Edit(/${CLAUDE_PROJECT_DIR}/.gitmargin.json) Edit(/${CLAUDE_PROJECT_DIR}/.gitignore)
 ---
 
 # Share a prototype for review
@@ -66,6 +66,7 @@ Then write `.gitmargin.json` with the Write tool, and add these lines to the pro
 # gitmargin: wrapped copies carry the page's key, and .gitmargin.json is this machine's choice
 *.gitmargin.html
 *.reviewed.html
+*.reviewed.*.html
 .gitmargin.json
 ```
 
@@ -79,9 +80,11 @@ Then write `.gitmargin.json` with the Write tool, and add these lines to the pro
 
 **Never ask** when re-sharing the same prototype, or sharing another prototype to a host already chosen here.
 
-## Step 3: The comment service (service link and GitHub Pages)
+## Step 3: The comment service (the service link, GitHub Pages, and a file with shared comments)
 
 Shared comments need the author's own comment service: a small Vercel project with a Neon database, in the author's own account. gitmargin runs nothing.
+
+- On every share that uses the service, run `gitmargin services --json` once (the first share already did, in step 2). If its `serviceCopy` is `differs`, a plugin update brought a newer service than the one deployed: follow "After a plugin update" in [setup-service.md](setup-service.md) before publishing, so the author deploys it again. `none`, `same` and `unknown` need nothing.
 
 - The address from `.gitmargin.json` goes to the command with `--require-trusted`. That flag refuses an address this machine has never used, so a settings file copied from someone else's project can never receive the author's secret. If it refuses, show the address and ask whether it is theirs; if yes, run once more without `--require-trusted`.
 - An address the author typed or confirmed in this conversation goes without the flag, and the command remembers it.

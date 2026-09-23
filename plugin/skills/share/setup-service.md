@@ -108,10 +108,13 @@ Then write it into `.gitmargin.json` as `service`, and carry on with the chosen 
 
 ## After a plugin update
 
-A plugin update can bring a newer service. Compare the two folders, ignoring Vercel's link and the environment files:
+A plugin update can bring a newer service. `gitmargin services --json` says so: its `serviceCopy` is `differs` when the copy in `<gm>/service` is not the one this plugin carries (it compares contents, and never reads a `.env` file).
+
+Tell the author the service changed, and hand them these two lines to run together in their own terminal, with `<plugin>` and `<gm>` written out in full. The copy keeps Vercel's link and the environment files already there. The copy and the deploy go together on purpose: once the copy is made, the check reads `same` whether or not the deploy ran, so a copy made without a deploy would hide the old service.
 
 ```bash
-diff -rq <plugin>/service <gm>/service -x .vercel -x node_modules -x '.env*' -x .agents -x .claude -x skills-lock.json
+cp -R <plugin>/service/. <gm>/service/
+cd <gm>/service && vercel deploy --prod
 ```
 
-If files differ, copy the new ones over (`cp -R <plugin>/service/. <gm>/service/`), tell the author the service changed, and ask them to run step 5 again. Until they do, the old service keeps working for everything it already did.
+Ask them to say when it is done, then share. Until they deploy, the old service keeps working for everything it already did.

@@ -27,7 +27,7 @@ In Claude Code, type:
 /plugin install gitmargin@gitmargin
 ```
 
-Use the `https://` address as written: the short `owner/repo` form clones over SSH, which needs an SSH key. When the plugin is installed, Claude Code's shell has two new commands, `gitmargin` and `gitmargin-publish`, and Claude knows the three skills below. Updates arrive with `/plugin update gitmargin@gitmargin`.
+Use the `https://` address as written: the short `owner/repo` form clones over SSH, which needs an SSH key. When the plugin is installed, Claude Code's shell has two new commands, `gitmargin` and `gitmargin-publish`, and Claude knows the three skills below. Updates arrive with `/plugin update gitmargin@gitmargin`. After an update, the next `/gitmargin:share` checks whether your comment service needs deploying again, and tells you if it does.
 
 ## 1. Build a prototype
 
