@@ -22,6 +22,9 @@ export default async function handler(req, res) {
       now: () => new Date(),
       secret: process.env.GITMARGIN_SECRET || '',
       log: (error) => console.error(error),
+      // Issue #19: a second deployment of this service that serves one prototype
+      // as its own site, behind the host's protection. Off unless set to exactly 1.
+      sameProject: process.env.GITMARGIN_SAME_PROJECT === '1',
       // Sign-in (issue #18): the provider's settings and the network call arrive
       // from outside, like the database and the clock. `origin` is this service's
       // own address, used to build the one callback the provider will accept; a

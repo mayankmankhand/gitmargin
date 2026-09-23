@@ -64,6 +64,8 @@ export async function startService(options = {}) {
         now: clock.now,
         secret,
         log: options.log,
+        // Issue #19: the deployment switch, off unless a test turns it on.
+        sameProject: Boolean(options.sameProject),
         // Sign-in: `options.gitlab` and `options.github` are started fakes
         // (tests/helpers/fake-gitlab.js, tests/helpers/fake-github.js).
         fetch: (...args) => fetch(...args),

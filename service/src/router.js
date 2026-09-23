@@ -358,9 +358,20 @@ async function changeReply({ query, now }, key, commentId, replyId, token, body,
 
 // ---- author ---------------------------------------------------------------
 
-async function createPrototype({ query, now }, body) {
+async function createPrototype({ query, now, sameProject }, body) {
   const name = cleanName(body && body.name) || 'prototype';
   const key = `gm_${randomBytes(16).toString('base64url')}`;
+  if (sameProject) {
+    // Same-project mode (issue #19): one prototype per deployment. The check is
+    // part of the insert, like every limit, so two attaches at once cannot both pass.
+    const made = await query(
+      'insert into prototypes (key, name, created) select $1::text, $2::text, $3::timestamptz where not exists (select 1 from prototypes) returning key',
+      [key, name, now().toISOString()],
+    );
+    if (made[0]) return json(201, { key });
+    const held = await query('select key from prototypes order by created limit 1');
+    return json(409, { error: 'one_prototype', key: held[0] ? held[0].key : null });
+  }
   await query('insert into prototypes (key, name, created) values ($1, $2, $3)', [key, name, now().toISOString()]);
   return json(201, { key });
 }
@@ -439,6 +450,20 @@ const PAGE_HEADERS = {
   'cache-control': 'no-store',
 };
 
+/**
+ * Same-project mode (issue #19): the deployment holds one prototype behind the
+ * host's own protection, and its pages must call this address with the host's
+ * login cookie. A sandboxed page has the origin "null" and sends no cookie, so
+ * here the page is served as an ordinary page of the site. It shares the
+ * address only with itself. Everything else about the headers stays.
+ */
+const OWN_SITE_PAGE_HEADERS = {
+  'content-type': 'text/html; charset=utf-8',
+  'referrer-policy': 'no-referrer',
+  'x-content-type-options': 'nosniff',
+  'cache-control': 'no-store',
+};
+
 async function servePage(deps, key, which, params) {
   const { query } = deps;
   // Strict reading (plan step 9): the copy opens only with a ticket, which the
@@ -455,7 +480,16 @@ async function servePage(deps, key, which, params) {
   // No such key, no such version, or a version whose page was too large or has
   // been pruned: one answer for all of them.
   if (!rows[0] || !rows[0].html) return refuse(404, 'not_found');
-  return { status: 200, headers: PAGE_HEADERS, body: rows[0].html };
+  return { status: 200, headers: deps.sameProject ? OWN_SITE_PAGE_HEADERS : PAGE_HEADERS, body: rows[0].html };
+}
+
+/** Same-project mode: the site's front door opens its one prototype. */
+async function frontDoor({ query }) {
+  const rows = await query('select key from prototypes order by created limit 1');
+  if (!rows[0]) {
+    return signin.htmlPage(404, 'Nothing published yet', '<h1>Nothing is published here yet</h1><p>The author has not attached a prototype to this address.</p>');
+  }
+  return { status: 302, headers: { location: `/p/${rows[0].key}/latest`, 'cache-control': 'no-store', 'referrer-policy': 'no-referrer' }, body: '' };
 }
 
 // ---- dispatch -------------------------------------------------------------
@@ -497,6 +531,12 @@ async function dispatch(request, deps) {
   if (method === 'GET' && (m = PAGE.exec(path))) {
     await ensureSchema(query);
     return servePage(deps, m[1], m[2], request.query || {});
+  }
+
+  // Same-project mode only (issue #19); anywhere else `/` is not a route.
+  if (method === 'GET' && path === '/' && deps.sameProject) {
+    await ensureSchema(query);
+    return frontDoor(deps);
   }
 
   // Sign-in (issue #18). These answer small HTML pages in a pop-up, not JSON.
