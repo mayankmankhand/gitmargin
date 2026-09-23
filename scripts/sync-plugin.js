@@ -1,6 +1,11 @@
 #!/usr/bin/env node
 // Build the generated half of the Claude Code plugin in plugin/.
 //
+// Named sync-plugin, not build-plugin, on purpose: the toolkit's pre-push check
+// treats any repository holding both .claude-plugin/marketplace.json and
+// scripts/build-plugin.js as the toolkit itself, and runs that script its own
+// way on every push, which fails here (review of #16, found at the push).
+//
 // Why the plugin carries copies at all: Claude Code copies an installed plugin
 // into its own cache and does not let a plugin reach a file outside its own
 // folder, so plugin/ cannot import ../bin/gitmargin.js or ../dist/gitmargin.js
@@ -29,8 +34,8 @@
 // one list that already knows what must stay private.
 //
 // Usage
-//   node scripts/build-plugin.js              write the four generated paths
-//   node scripts/build-plugin.js --check      change nothing; exit 1 and list
+//   node scripts/sync-plugin.js              write the four generated paths
+//   node scripts/sync-plugin.js --check      change nothing; exit 1 and list
 //                                             every generated file that is
 //                                             missing, changed, extra or ignored
 //   --out <dir>                               build or check another folder
@@ -279,12 +284,12 @@ function shown(out, rel) {
   return slashed(fromHere.startsWith('..') ? abs : fromHere);
 }
 
-const USAGE = `build-plugin - copy the CLI, the overlay and the service into plugin/
+const USAGE = `sync-plugin - copy the CLI, the overlay and the service into plugin/
 
 Usage
-  node scripts/build-plugin.js            write plugin/bin/gitmargin.js, plugin/src/,
+  node scripts/sync-plugin.js            write plugin/bin/gitmargin.js, plugin/src/,
                                           plugin/dist/ and plugin/service/
-  node scripts/build-plugin.js --check    change nothing; list drift and exit 1
+  node scripts/sync-plugin.js --check    change nothing; list drift and exit 1
     --out <dir>                           another plugin folder instead of plugin/
 
 npm run build:plugin builds the overlay first, then runs this.`;
@@ -309,27 +314,27 @@ export function main(argv) {
   if (check) {
     const problems = checkPlugin(REPO, out);
     if (problems.length === 0) {
-      process.stderr.write(`build-plugin: ${shown(out, '.')} is in sync with its sources.\n`);
+      process.stderr.write(`sync-plugin: ${shown(out, '.')} is in sync with its sources.\n`);
       return EXIT_OK;
     }
     // The drift list is the answer, so it goes to stdout, one file a line.
     for (const { kind, file } of problems) process.stdout.write(`${kind.padEnd(8)} ${shown(out, file)}\n`);
     const ignored = problems.some((p) => p.kind === 'ignored');
     process.stderr.write(
-      `build-plugin: ${problems.length} generated file(s) out of step. Run npm run build:plugin, then commit plugin/.\n` +
+      `sync-plugin: ${problems.length} generated file(s) out of step. Run npm run build:plugin, then commit plugin/.\n` +
         (ignored ? 'An "ignored" file is one git would never commit: add an exception for it to .gitignore.\n' : ''),
     );
     return EXIT_DRIFT;
   }
 
   const count = writePlugin(REPO, out);
-  process.stderr.write(`build-plugin: wrote ${count} generated files into ${shown(out, '.')}.\n`);
+  process.stderr.write(`sync-plugin: wrote ${count} generated files into ${shown(out, '.')}.\n`);
   // A file git ignores would be written here and then never reach a clone,
   // so a build that produces one is not a success.
   const ignored = ignoredFiles(REPO, out, [...expectedFiles(REPO).keys()]);
   if (ignored.length > 0) {
     for (const file of ignored) process.stderr.write(`ignored  ${shown(out, file)}\n`);
-    process.stderr.write('build-plugin: git ignores the files above, so no clone would get them: add an exception to .gitignore.\n');
+    process.stderr.write('sync-plugin: git ignores the files above, so no clone would get them: add an exception to .gitignore.\n');
     return EXIT_DRIFT;
   }
   return EXIT_OK;
@@ -340,7 +345,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     process.exitCode = main(process.argv.slice(2));
   } catch (error) {
     if (!(error instanceof BuildError)) throw error;
-    process.stderr.write(`build-plugin: ${error.message}\n`);
+    process.stderr.write(`sync-plugin: ${error.message}\n`);
     if (error.hint) process.stderr.write(`${error.hint}\n`);
     process.exitCode = error.code;
   }

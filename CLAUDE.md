@@ -61,7 +61,7 @@ toolkit will not find on its usual ports, so hand it that address.
 
 ## Working on the Claude Code plugin
 
-`plugin/` is what authors install (`.claude-plugin/marketplace.json` at the root points at it). `scripts/build-plugin.js`
+`plugin/` is what authors install (`.claude-plugin/marketplace.json` at the root points at it). `scripts/sync-plugin.js`
 owns four generated paths, `plugin/bin/gitmargin.js`, `plugin/src/`, `plugin/dist/` and `plugin/service/`, copied from
 the sources and never edited by hand: after any change to `bin/`, `src/cli/`, `src/overlay/` or `service/`, run
 `npm run build:plugin`, or the last test in `tests/plugin.test.js` fails and names the file. Everything else in

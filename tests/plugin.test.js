@@ -1,4 +1,4 @@
-// The Claude Code plugin (issue #16): scripts/build-plugin.js and the package it
+// The Claude Code plugin (issue #16): scripts/sync-plugin.js and the package it
 // builds in plugin/.
 //
 // Run by node:test. Three groups:
@@ -33,10 +33,10 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { BuildError, checkPlugin, expectedFiles, writePlugin } from '../scripts/build-plugin.js';
+import { BuildError, checkPlugin, expectedFiles, writePlugin } from '../scripts/sync-plugin.js';
 
 const ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
-const SCRIPT = path.join(ROOT, 'scripts', 'build-plugin.js');
+const SCRIPT = path.join(ROOT, 'scripts', 'sync-plugin.js');
 const PLUGIN = path.join(ROOT, 'plugin');
 const LAUNCHER = path.join(PLUGIN, 'bin', 'gitmargin');
 
