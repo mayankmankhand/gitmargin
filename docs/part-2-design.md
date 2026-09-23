@@ -165,10 +165,10 @@ Enterprise Cloud), so "it went to GitHub automatically" would turn a private pro
 
 | The plugin finds | It proposes | Who will see the page |
 |---|---|---|
-| A GitLab remote | GitLab Pages, access set to project members only | the project's members |
+| A GitLab remote | GitLab Pages, access set to project members only (cycle 4; until then the service link) | the project's members |
 | A GitHub remote, public repo | GitHub Pages | the whole internet, said plainly |
-| A GitHub remote, private repo | the service link or a file; Pages only after an explicit "this makes it public" | whoever holds the link or the file |
-| A `.vercel` folder or `vercel.json` | Vercel, and it asks which protection is on | depends on that protection |
+| A GitHub remote, private repo | the service link or a file, never GitHub Pages (as built in cycle 3, `gitmargin-publish` refuses a private repo) | whoever holds the link or the file |
+| A `.vercel` folder or `vercel.json` | Vercel, and it asks which protection is on (cycle 4; until then the service link) | depends on that protection |
 | Nothing | the service link when a service exists, otherwise a file sent by hand | whoever holds the link or the file |
 
 **It asks when:**
@@ -179,9 +179,12 @@ Enterprise Cloud), so "it went to GitHub automatically" would turn a private pro
 4. two signals disagree, for example a GitHub remote and a Vercel folder;
 5. the step creates a project, costs money, or changes repo settings;
 6. identity mode needs choosing: once per prototype, typed names by default, and sign-in is offered only when the
-   author's service has a sign-in application set up.
+   author's service has a sign-in application set up. As built in cycle 3 this is never asked: a service the plugin
+   sets up has no sign-in application, so every prototype starts with typed names, and sign-in stays a separate
+   `gitmargin identity` step the author runs.
 
-**It never asks** on a republish of the same prototype to the same channel, or on `pull`.
+**It never asks** on a republish of the same prototype to the same channel, on a new prototype to a channel already
+chosen in that project, or on `pull`.
 
 **What lands in an author's repo:** their prototype, untouched, and three lines in its `.gitignore`. As built in
 cycle 3 (issue #16), the attached copy and the small settings file (`.gitmargin.json`: the channel, the service

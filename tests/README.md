@@ -29,6 +29,7 @@ reviewer receives a prototype in part 1. For a plain file, nothing here starts a
 | `tests/anchor.test.js` | node:test | the screen comparison behind "a lookalike counts only on its own screen" |
 | `tests/check.test.js` | node:test | `gitmargin check` (issue #16): each rule fires on its trigger and stays silent without it, the channel filter, the JSON output. `tests/cli-service.test.js` also covers `attach --require-trusted` refusing an address this machine has not used, with nothing reaching the service, `gitmargin services`, and the review link `attach` prints |
 | `tests/plugin.test.js` | node:test | the Claude Code plugin (issue #16): `scripts/build-plugin.js` copies only what git would commit, `--check` catches drift, and a copy of `plugin/` outside the repository runs `gitmargin` through its launcher. Its last test fails whenever `plugin/` is out of date with the sources: run `npm run build:plugin` |
+| `tests/plugin-evals/README.md` | by hand, `claude -p` | the plugin's three skills (issue #16): the headless scenarios that proved them, what each must show, and how to rerun them without touching real accounts |
 | `tests/publish-branch.test.js` | node:test | `gitmargin-publish` (issue #16) against a local bare repository and a stand-in `gh`: the `gitmargin-pages` branch, the author's checkout left untouched, and every refusal before a push |
 
 **The comment service in tests is the real one.** `tests/helpers/service-server.js` runs the same `route` function Vercel

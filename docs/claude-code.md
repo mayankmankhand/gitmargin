@@ -65,6 +65,8 @@ Claude Code asks your permission the first time Claude runs each gitmargin comma
 }
 ```
 
+When you paste a reviewer's copied text instead of a file, Claude saves it to a temporary file next to the prototype, reads it, and deletes it: that can bring two more prompts, one to save the file and one to delete it.
+
 When Claude asks you something during a share, answer by typing the line it offers, which starts with `/gitmargin:share`. A plain "yes" works too, but Claude Code then asks your permission again for each command and for saving `.gitmargin.json` and `.gitignore`. Setting up your comment service asks a few more permissions, once: the `vercel` commands, and copying the service into `~/.config/gitmargin`, which is outside your project folder.
 
 On some Claude Code plans, sessions start in auto mode, which shows no permission prompts at all and decides for itself.
@@ -94,7 +96,7 @@ The first `/gitmargin:share` that needs it sets it up. Claude does the work, and
 
 Then **restart Claude Code in a new terminal** (`/exit`, close the terminal, open a new one in the project folder, then `claude --continue`): the secret reaches only terminals opened after it was added. Type `/gitmargin:share` again. The service's files live in `~/.config/gitmargin/service` on your machine.
 
-For sign-in, so reviewers comment under their real GitLab or GitHub name, see [the service's guide](../service/README.md#sign-in-with-gitlab-optional-per-prototype). It is optional, set per prototype, and the plugin never asks about it.
+For sign-in, so reviewers comment under their real GitLab or GitHub name, see the service's guide for [GitLab](../service/README.md#sign-in-with-gitlab-optional-per-prototype) or [GitHub](../service/README.md#sign-in-with-github-optional-per-prototype). It is optional, set per prototype, and the plugin never asks about it.
 
 ## When something goes wrong
 
