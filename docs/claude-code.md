@@ -31,7 +31,7 @@ Use the `https://` address as written: the short `owner/repo` form clones over S
 
 ## 1. Build a prototype
 
-Ask Claude for a prototype the way you always do: "build a three-step signup flow as one HTML file". The plugin's **build rules** tell Claude how to build it so the comments land well. In short: one self-contained file; each step in its own wrapper with a name; steps hidden with `hidden` and switched by a script; no step inside a pop-up dialog; browser storage used carefully. Claude runs `gitmargin check` at the end to catch anything that would break. The first time, Claude Code asks your permission to run `gitmargin`: see [Permission prompts](#permission-prompts) below.
+Ask Claude for a prototype the way you always do: "build a three-step signup flow as one HTML file". The plugin's **build rules** tell Claude how to build it so the comments land well. In short: one self-contained file; each step in its own wrapper with a name; steps hidden with `hidden` and switched by a script; no step inside a pop-up dialog; browser storage used carefully. Claude runs `gitmargin check` at the end to catch anything that would break. The first time in a project, Claude Code asks your permission to run `gitmargin check`: see [Permission prompts](#permission-prompts) below.
 
 Why rules at all? Measured on seventeen kinds of prototype: most pages work as they are, but a few common habits break commenting without any warning. React redrawing one area for every step makes a comment's pin jump onto the next step's lookalike button. Steps with no heading of their own all get the same name. Separate CSS or image files go missing once the page is shared. The rules avoid all of that, and cost nothing when a page is never reviewed.
 
@@ -55,7 +55,7 @@ To move a project to another place, say so: `/gitmargin:share signup.html on Git
 
 ### Permission prompts
 
-Claude Code asks your permission before it runs a command for the first time. For gitmargin that is `gitmargin` and `gitmargin-publish`: choose **"Yes, and don't ask again"**. Claude Code saves that answer for the current project only, so a new project asks once more. To be asked in no project at all, add the two rules to your own `~/.claude/settings.json`:
+Claude Code asks your permission the first time Claude runs each gitmargin command in a project: `gitmargin check` when it builds a prototype, `gitmargin pull` and `gitmargin status` the first time you ask what reviewers said, `gitmargin-publish` the first time a page goes to GitHub Pages. Choose **"Yes, and don't ask again"** each time. Claude Code saves that answer for that one command and for the current project only, so the next gitmargin command, or a new project, asks once more. To be asked in no project at all, add these two rules to your own `~/.claude/settings.json`; they cover every gitmargin command:
 
 ```json
 {
@@ -65,7 +65,9 @@ Claude Code asks your permission before it runs a command for the first time. Fo
 }
 ```
 
-On some Claude Code plans, sessions start in auto mode, which shows no permission prompts at all and decides for itself. Everything above works there too.
+When Claude asks you something during a share, answer by typing the line it offers, which starts with `/gitmargin:share`. A plain "yes" works too, but Claude Code then asks your permission again for each command and for saving `.gitmargin.json` and `.gitignore`. Setting up your comment service asks a few more permissions, once: the `vercel` commands, and copying the service into `~/.config/gitmargin`, which is outside your project folder.
+
+On some Claude Code plans, sessions start in auto mode, which shows no permission prompts at all and decides for itself.
 
 Sharing a changed prototype makes a new version at the same link. Its comments start empty (the old ones were about a page that no longer exists), and anyone can still open the older versions, with their comments, from the **Version** line in the comments list.
 
