@@ -161,7 +161,7 @@ export async function startFakeGithub(options = {}) {
 
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, origin);
-    requests.push({ method: req.method, path: url.pathname, query: url.search });
+    requests.push({ method: req.method, path: url.pathname, query: url.search, userAgent: req.headers['user-agent'] || null });
 
     // ---- the web side: login, authorize, token -----------------------------
 

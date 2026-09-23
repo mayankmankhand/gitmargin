@@ -650,13 +650,14 @@ export async function takeTicket({ query, now }, key, which, ticket) {
 export function gatePage(prototype, which) {
   const label = providerLabel(prototype.identity);
   const go = `/auth/start?key=${encodeURIComponent(prototype.key)}&return=${encodeURIComponent(which)}`;
-  // GitLab rules name a group; GitHub rules name a repository, or no one.
-  const audience =
-    prototype.identity !== 'github'
-      ? `Its author shares it with members of one ${label} group only.`
-      : prototype.members
-        ? 'Its author shares it only with people who can open one GitHub repository.'
-        : 'Its author shares it only with people who sign in with GitHub.';
+  // GitLab rules name a group, GitHub rules a repository; with no rule, whoever
+  // signs in with the provider (review of #17, R14: the GitLab sentence named a
+  // group even when the author had named none).
+  const audience = !prototype.members
+    ? `Its author shares it only with people who sign in with ${label}.`
+    : prototype.identity === 'github'
+      ? 'Its author shares it only with people who can open one GitHub repository.'
+      : `Its author shares it with members of one ${label} group only.`;
   return htmlPage(
     401,
     'Sign in to open this page',

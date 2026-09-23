@@ -199,11 +199,14 @@ test('a wrong secret is refused at the token call and logged by name', async (t)
   assert.ok(ctx.logged.join('\n').includes('token call refused: incorrect_client_credentials'));
 });
 
-test('every call to the API carries a User-Agent, as GitHub demands', async (t) => {
+test('every call to GitHub names the service in its User-Agent, as GitHub asks', async (t) => {
   const ctx = await setUp(t);
-  const claimed = await signIn(ctx);
-  assert.equal(claimed.member, true, 'the fake refuses API calls with no User-Agent, so a missing one fails the sign-in');
-  assert.ok(ctx.github.requests.some((r) => r.path === '/api/v3/user'));
+  assert.equal((await signIn(ctx)).member, true);
+  // Node's fetch sends `node` when nothing is set, so GitHub's refusal of a
+  // missing header cannot happen; what this pins is that the service names itself.
+  const calls = ctx.github.requests.filter((r) => r.path === '/login/oauth/access_token' || r.path.startsWith('/api/v3/'));
+  assert.ok(calls.length >= 2);
+  for (const r of calls) assert.equal(r.userAgent, 'gitmargin-comment-service', `${r.path} was sent as ${r.userAgent}`);
 });
 
 test('the verifier travels to the token call: a code cannot be swapped without it', async (t) => {

@@ -201,10 +201,16 @@ callback address that is not registered on the application.
 
 ## Sign-in with GitHub (optional, per prototype)
 
+> **Not walked on the real github.com yet.** The steps, field names and messages below follow GitHub's documentation
+> and were tested against a stand-in GitHub; the live walk is the last step of issue #17.
+
 The same sign-in with GitHub in place of GitLab: reviewers press **Sign in with GitHub**, approve GitHub's screen the
-first time, press **Continue** on your service's confirm page, and comment under their GitHub name. Everything in
-"What a reviewer does", "What you should know" and "Strict reading" above holds word for word, with GitHub for GitLab.
-One service can hold GitLab prototypes and GitHub prototypes side by side; each prototype has one mode.
+first time, press **Continue** on your service's confirm page, and comment under their GitHub name. "What a reviewer
+does" and "Strict reading" above hold with GitHub for GitLab, and so does "What you should know", except its two
+bullets about a GitLab group. GitHub has no groups: with no rule, anyone with a GitHub account who can open the page
+may comment, and the most you can do to stop one person is run the `identity` command again, which ends every pass
+and which they can undo by signing in again. One service can hold GitLab prototypes and GitHub prototypes side by
+side; each prototype has one mode.
 
 ### Set it up, once per service
 
