@@ -70,6 +70,37 @@ function trustedAddresses() {
   }
 }
 
+/**
+ * `gitmargin services [--json]`: what this machine knows about comment
+ * services, read-only (issue #16). The Claude Code plugin asks this before a
+ * first share: to propose the service link when the author already has a
+ * service, and to learn the settings folder without a shell expansion, which
+ * Claude Code would stop to ask about. It sends nothing, and says whether the
+ * author secret is set, never what it is.
+ */
+export function listServices(args) {
+  const unknown = args.filter((a) => a !== '--json');
+  if (unknown.length) throw new CliError(`Unknown option: ${unknown[0]}`, EXIT_USAGE, 'Try: gitmargin services --json');
+  const answer = {
+    configDir: path.dirname(trustFile()),
+    trusted: [...new Set(trustedAddresses())],
+    fromEnvironment: process.env.GITMARGIN_SERVICE ? cleanAddress(process.env.GITMARGIN_SERVICE) : null,
+    secretSet: Boolean(process.env.GITMARGIN_SECRET),
+  };
+  if (args.includes('--json')) {
+    process.stdout.write(`${JSON.stringify(answer, null, 2)}\n`);
+    return EXIT_OK;
+  }
+  process.stdout.write(
+    `Settings folder: ${answer.configDir}\n` +
+      'Comment services this machine trusts:\n' +
+      (answer.trusted.length ? answer.trusted.map((a) => `  ${a}\n`).join('') : '  (none)\n') +
+      `GITMARGIN_SERVICE: ${answer.fromEnvironment || 'not set'}\n` +
+      `Author secret (GITMARGIN_SECRET): ${answer.secretSet ? 'set' : 'not set'}\n`
+  );
+  return EXIT_OK;
+}
+
 function rememberAddress(address) {
   if (trustedAddresses().includes(address)) return;
   try {
@@ -386,7 +417,11 @@ export async function attachLive(args) {
       `${version.created ? '' : ' (unchanged since the last attach)'}.\n` +
       `Comments are shared through ${address}.\n` +
       (pageStored
-        ? `A copy of this version is stored at ${address}/p/${key}/${version.version_id}\n`
+        ? `A copy of this version is stored at ${address}/p/${key}/${version.version_id}\n` +
+          // The address to hand reviewers (issue #16): it always opens the newest
+          // version, so it survives the next share. A plugin that built it from
+          // the line above handed out a version's address, which went stale.
+          `Review link (always the newest version): ${address}/p/${key}/latest\n`
         : 'This page is too large to store a copy of (over 4 MB). Its comments are shared as usual; once a newer\n' +
           'version exists, people will read this version\'s comments as a list rather than on the page.\n') +
       `Send or publish ${path.basename(outPath)}. ${path.basename(source)} is untouched.\n`

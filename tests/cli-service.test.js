@@ -411,3 +411,49 @@ test('--require-trusted accepts an address named in GITMARGIN_SERVICE, and does 
   // the saved list is left as it was (rememberAddress skips a trusted address).
   assert.ok(!existsSync(s.list));
 });
+
+test('services says what this machine trusts and whether the secret is set, never the secret, and sends nothing (issue #16)', async (t) => {
+  const s = await setup(t);
+  const config = mkdtempSync(path.join(tmpdir(), 'gitmargin-services-'));
+  t.after(() => rmSync(config, { recursive: true, force: true }));
+
+  let r = await run(['services', '--json'], { GITMARGIN_CONFIG_DIR: config });
+  assert.equal(r.code, 0, r.err);
+  let answer = JSON.parse(r.out);
+  assert.equal(answer.configDir, config, 'the settings folder follows GITMARGIN_CONFIG_DIR');
+  assert.deepEqual(answer.trusted, []);
+  assert.equal(answer.fromEnvironment, null);
+  assert.equal(answer.secretSet, false);
+
+  r = await run(['attach', s.source, '--service', s.service.url], { ...s.env, GITMARGIN_CONFIG_DIR: config });
+  assert.equal(r.code, 0, r.err);
+
+  // An address in GITMARGIN_SERVICE that nothing answers: services must not reach for it.
+  r = await run(['services', '--json'], { ...s.env, GITMARGIN_CONFIG_DIR: config, GITMARGIN_SERVICE: 'https://nothing-answers.invalid/' });
+  assert.equal(r.code, 0, r.err);
+  answer = JSON.parse(r.out);
+  assert.deepEqual(answer.trusted, ['https://nothing-answers.invalid', s.service.url]);
+  assert.equal(answer.fromEnvironment, 'https://nothing-answers.invalid');
+  assert.equal(answer.secretSet, true);
+  assert.ok(!r.out.includes(s.service.secret) && !r.err.includes(s.service.secret), 'the secret is never shown');
+
+  r = await run(['services'], { ...s.env, GITMARGIN_CONFIG_DIR: config });
+  assert.equal(r.code, 0, r.err);
+  assert.ok(r.out.includes(`Settings folder: ${config}`));
+  assert.ok(r.out.includes(`  ${s.service.url}\n`));
+  assert.match(r.out, /Author secret \(GITMARGIN_SECRET\): set/);
+  assert.ok(!r.out.includes(s.service.secret));
+
+  r = await run(['services', '--all'], { GITMARGIN_CONFIG_DIR: config });
+  assert.equal(r.code, 1, 'an unknown option is a usage error');
+});
+
+test('attach --service prints the review link that always opens the newest version (issue #16)', async (t) => {
+  const s = await setup(t);
+  const r = await run(['attach', s.source, '--service', s.service.url], s.env);
+  assert.equal(r.code, 0, r.err);
+  const link = `${s.service.url}/p/${s.tag('key')}/latest`;
+  assert.ok(r.err.includes(`Review link (always the newest version): ${link}\n`), r.err);
+  const page = await fetch(link);
+  assert.equal(page.status, 200, 'the printed link opens the stored page');
+});

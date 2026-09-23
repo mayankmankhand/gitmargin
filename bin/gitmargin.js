@@ -15,7 +15,7 @@
 
 import { attach } from '../src/cli/attach.js';
 import { pull } from '../src/cli/pull.js';
-import { attachLive, pullLive, removeComment, setIdentityMode, setStatus } from '../src/cli/live.js';
+import { attachLive, listServices, pullLive, removeComment, setIdentityMode, setStatus } from '../src/cli/live.js';
 import { check } from '../src/cli/check.js';
 import { CliError, EXIT_OK, EXIT_USAGE } from '../src/cli/errors.js';
 
@@ -80,6 +80,9 @@ Shared comments (optional; needs a comment service you deployed, see service/REA
       open, accepted, rejected or applied. Reviewers see it on their page.
   node bin/gitmargin.js remove <prototype.gitmargin.html> <comment-id>
       Removes anyone's comment. Both need GITMARGIN_SECRET.
+  node bin/gitmargin.js services [--json]
+      The settings folder, the comment services this machine trusts, and
+      whether GITMARGIN_SECRET is set (never its value). Sends nothing.
   node bin/gitmargin.js identity <prototype.gitmargin.html> <none|gitlab|github> [--members <group>] [--read open|members]
       Who may comment. gitlab: people sign in and comment under their real GitLab
       name; --members limits it to one GitLab group (its full path). github:
@@ -114,6 +117,8 @@ async function main(argv) {
       return setIdentityMode(rest);
     case 'check':
       return check(rest);
+    case 'services':
+      return listServices(rest);
     case 'help':
     case '--help':
     case '-h':
