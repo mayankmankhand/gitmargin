@@ -1,0 +1,15 @@
+{
+  "name": "gitmargin",
+  "description": "The gitmargin plugin for Claude Code: comments on HTML prototypes that Claude can act on.",
+  "owner": {
+    "name": "Mayank Mankhand",
+    "url": "https://github.com/mayankmankhand"
+  },
+  "plugins": [
+    {
+      "name": "gitmargin",
+      "source": "./plugin",
+      "description": "Comments on HTML prototypes: build pages whose comments stay on their step, share them for review, and pull the comments back for Claude to act on."
+    }
+  ]
+}

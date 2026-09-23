@@ -5,3 +5,6 @@
 # Prevents CRLF on Windows clones from breaking bash execution and Node shebangs
 *.sh text eol=lf
 scripts/** text eol=lf
+# The plugin's sh launchers and its publishing script: a CRLF on a Windows clone breaks the launchers
+plugin/bin/* text eol=lf
+plugin/scripts/** text eol=lf

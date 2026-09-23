@@ -35,6 +35,9 @@ venv/
 # Build output & deploy artifacts
 # ---------------------------------------------------------------
 dist/
+# The plugin carries its own copy of the built overlay, because an installed
+# plugin cannot read files outside its own folder (scripts/build-plugin.js).
+!plugin/dist/
 build/
 out/
 .output/
