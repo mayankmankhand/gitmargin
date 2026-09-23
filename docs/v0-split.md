@@ -164,7 +164,7 @@ already give.
 
 ## 7. Part 2: what is parked, and what unparks it
 
-**Amended 2026-09-21.** Cycle 1 of that design, sign-in with GitLab ([#18](https://github.com/mayankmankhand/gitmargin/issues/18)), is built and was walked live. "No sign-in" below describes part 1 and the default of shared comments; on a shared prototype sign-in is now the author's choice.
+**Amended 2026-09-21 and 2026-09-23.** Cycles 1 and 2 of that design, sign-in with GitLab ([#18](https://github.com/mayankmankhand/gitmargin/issues/18)) and with GitHub ([#17](https://github.com/mayankmankhand/gitmargin/issues/17)), are built and were walked live. "No sign-in" below describes part 1 and the default of shared comments; on a shared prototype sign-in is now the author's choice.
 
 **Amended 2026-09-19.** Part 2 now has one design, in [part-2-design.md](part-2-design.md): where the page lives, who may comment, and the author's own comment service as the constant, built in four cycles that each end in a live test on accounts one person can own. That document is the description of part 2 from here on. What follows is kept as the record of how the list got there.
 

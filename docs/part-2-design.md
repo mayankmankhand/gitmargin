@@ -45,7 +45,8 @@ locked down, so it cannot use browser storage and does not remember a reviewer b
 up to 4 MB; and the link is the only gate, unless the author turns strict reading on (section 4).
 
 **Socket 2: who may comment.** Three plugs: typed names (the default), GitLab (built, cycle 1), and GitHub (built, cycle 2). Two optional rules
-sit beside them, set per prototype: *only members of this group may comment*, and *only signed-in members may read*.
+sit beside them, set per prototype: *only members of this group may comment* (GitHub has no such groups, so its rule
+names one repository: *only people GitHub lets open this repository*), and *only signed-in members may read*.
 The GitLab plug is written against the open sign-in standard GitLab follows (OpenID Connect), reading its addresses
 from the provider's own discovery document. A company login such as Okta, Microsoft or Google is then a settings
 change plus testing later, not new code. GitHub does not follow that standard closely enough, so it is a second
@@ -113,7 +114,9 @@ The decisions inside that picture:
   stored, never logged and never sent to a browser. The prototype is AI-made HTML, and any script in it can read
   whatever the overlay holds. So the browser only ever receives a pass: random, stored as a hash, valid for one
   prototype, able to do one thing.
-- **Reviewers are never asked for more than "verify who you are"** (GitLab's `openid` permission). A frightening
+- **Reviewers are never asked for more than "verify who you are"** (GitLab's `openid` permission, or a GitHub App with
+  no permissions), except under one rule the author chooses: GitHub's repository rule needs the App to read repository
+  metadata, and GitHub's screen then says more. A frightening
   permission screen is the login friction that, most likely, killed GitLab's own Visual Reviews. Group membership
   comes from the `groups` claim. Measured against the real gitlab.com on 2026-09-21: with `openid` alone, userinfo
   returned `groups` listing a private group for its owner. The same for a Guest is confirmed in cycle 1's
@@ -226,7 +229,8 @@ and the page key, which is the tension described above.
 The sign-in column was walked for cycle 1 on 2026-09-21, on gitlab.com: GitLab Pages (members only), the service
 link and a file from disk, end to end in Chrome; in Firefox the window opened from a real click with the pop-up
 blocker on and reached GitLab's login, and the rest rests on the automated suite. The Guest of a private group was
-recognised as a member with the `openid` permission alone. The other rows are still targets.
+recognised as a member with the `openid` permission alone. The GitHub Pages row was walked for cycle 2 on 2026-09-23,
+with the service link and a file from disk. The Vercel same-project row is still a target.
 
 | The page lives on | Typed names | With sign-in |
 |---|---|---|
@@ -244,10 +248,13 @@ Each cycle ends in a live test on accounts one person owns, before the next star
    shared core from [#17](https://github.com/mayankmankhand/gitmargin/issues/17)). GitLab first because GitLab Pages
    with access control is the only free host where the page itself is private, so it is where the thesis is true.
 2. **The GitHub plug** ([#17](https://github.com/mayankmankhand/gitmargin/issues/17)), using the kind of GitHub app
-   whose permission screen says only "verify your identity". It proves the socket takes a second plug. **Built
-   2026-09-23:** a GitHub App created with no permissions, PKCE and the App's secret on the service, who someone is
-   from GitHub's `/user`; the pop-up, the confirm page, the pass and strict reading are cycle 1's, unchanged, and the
-   overlay needed no change at all. A GitLab prototype and a GitHub prototype live side by side on one service.
+   whose permission screen says only "verify your identity". It proves the socket takes a second plug. **Built and
+   walked 2026-09-23:** a GitHub App created with no permissions, PKCE and the App's secret on the service, who someone
+   is from GitHub's `/user`; the pop-up, the confirm page, the pass and strict reading are cycle 1's, unchanged. The
+   members rule names a repository instead of a group (`--members owner/repo`): only people GitHub lets open it may
+   comment. It needs the App installed on that repository with one read-only permission, Metadata, so with the rule
+   on GitHub's screen says more than "verify your identity". The overlay changed in one place: its no-access line
+   names the repository. A GitLab prototype and a GitHub prototype live side by side on one service.
 3. **The plugin** ([#16](https://github.com/mayankmankhand/gitmargin/issues/16)): install, service setup, publish
    with detect, propose, confirm once, remember, and the file, link, GitHub Pages and GitLab Pages channels.
 4. **The Vercel channel and same-project mode** ([#19](https://github.com/mayankmankhand/gitmargin/issues/19)). The

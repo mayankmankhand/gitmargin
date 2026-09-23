@@ -164,9 +164,12 @@ measured on gitlab.com, on a private group.
   someone sent them gives that person a pass for that one prototype, for at most 7 days.
 - **The members rule names a group by its full path,** matched whole and in any case, never by prefix. If you rename
   or delete the group, set the rule again: a freed path can be registered by someone else.
-- **A copy you shared before switching sign-in on can still read, but its comments are refused** until you attach
-  and share it again, because the older overlay in it has no sign-in button. The comments are kept on that person's
-  page, not lost.
+- **A copy you shared before switching sign-in on has no sign-in button,** because its overlay is older, so its new
+  comments are refused until you attach again and share the new copy. Attaching again keeps the same key and version.
+  Until then, with the default reading rule, the old copy still shows comments and says "A comment could not be
+  shared. It is saved here." With `--read members` it shows none, and says "The comment service does not know this
+  prototype. Comments are saved here only.", which is misleading: the service has the prototype, the old page just
+  cannot sign in. Either way the person's own comments stay on their page, not lost.
 - **Two people with the same display name are told apart by their handle.** The GitLab username is stored, comes
   through `pull`, is shown after the name in every thread, and chooses the colour of the person's pin, so two
   "Mayank Mankhand"s get two colours.
@@ -304,6 +307,7 @@ means a second browser that stays signed out, or a second real person, not a sec
 | GitHub's own 404 | the Client ID is wrong | add `GITMARGIN_GITHUB_ID` again, bare, and redeploy |
 | "GitHub did not confirm the sign-in" | the client secret is wrong, GitHub was unreachable, or (for one reviewer only) their GitHub email is not verified | generate a new client secret, add it again, redeploy; for one reviewer, they verify their email on GitHub |
 | "not set up for GitHub sign-in yet" | one of the two values is missing | `vercel env ls production` should list both |
+| "This sign-in is unknown, was already used, or took longer than 10 minutes." | the attempt was reused or too slow | close the small window and press Sign in again |
 
 In the function's log (`vercel logs <project>.vercel.app --since 30m`), `token call refused: incorrect_client_credentials`
 is a wrong secret, `token call refused: bad_verification_code` a reused or expired attempt, and

@@ -170,10 +170,10 @@ exactly as described above and nothing in this section is reachable from a page.
 
 A third thing then opens the service:
 
-- **The pass** (`gp_...`). Proof that a person signed in with the prototype's provider and, when the author named a
-  group, belongs to it. It is valid for **one prototype**, for 7 days, and travels as the header `X-Gitmargin-Pass`. The
-  service stores only its SHA-256. It is never a cookie: the service answers every origin, and that is safe only because
-  it uses no cookies.
+- **The pass** (`gp_...`). Proof that a person signed in with the prototype's provider and, when the author set a
+  members rule (a GitLab group or a GitHub repository), meets it. It is valid for **one prototype**, for 7 days, and
+  travels as the header `X-Gitmargin-Pass`. The service stores only its SHA-256. It is never a cookie: the service
+  answers every origin, and that is safe only because it uses no cookies.
 
 **What is never stored, logged or sent to a browser:** the provider's authorization code, its access token, its ID
 token, and the application's secret. The provider's tokens are used once, inside the callback, and dropped.
@@ -203,18 +203,18 @@ either provider is `https://<service>/auth/callback`. Pasted values are trimmed 
 | Sign-in starts per prototype | 30 in any 60 seconds | the refusal page, `429` |
 | An unfinished sign-in | 10 minutes from start | claim answers `404 not_found` |
 | A pass | 7 days | `401 sign_in` |
-| A group path in the members rule | 255 characters | `400 invalid` |
+| A members rule (a group path, or `owner/repo`) | 255 characters | `400 invalid` |
 
 Expired sign-ins and passes are cleared alongside writes, like the other housekeeping.
 
 ### `PATCH /api/prototypes/<key>` (author secret)
-Body `{ "identity": "none" | "gitlab" | "github", "members": "group/full/path" | null, "read": "open" | "members" }`.
+Body `{ "identity": "none" | "gitlab" | "github", "members": "group/full/path" | "owner/repo" | null, "read": "open" | "members" }`.
 `members` and `read` are optional; `members` defaults to null (anyone who signs in may comment) and `read` to `"open"`.
 `members` or `read: "members"` with `identity: "none"` is `400 invalid`, and so is a GitHub `members` that is not
 exactly `owner/repo`. A provider the deployment has no settings for is `409 provider_not_configured`.
 
 **Every call ends every pass for that prototype**, whatever changed. That is the author's way to stop someone now:
-removing a person from the group stops their next sign-in, and this stops the pass they already hold. It is also what
+removing a person from the group (or taking away their access to the repository) stops their next sign-in, and this stops the pass they already hold. It is also what
 makes switching providers safe: moving a prototype from `gitlab` to `github` ends every GitLab pass and every
 unfinished GitLab sign-in, and a callback for a provider the prototype no longer uses is refused.
 
@@ -265,8 +265,8 @@ prototype needs sign-in; nothing is written into the page. A write without a val
    shows the **short code**: the first eight hex characters of the hash, read as a number, modulo 10000, zero-padded,
    written `48-21`.
 2. `/auth/start` checks the key, the prototype's provider and the start limit, records the sign-in (a random `state`, a
-   PKCE verifier, the hash), and answers `302` to the provider's authorize address with `scope=openid`, the `state` and
-   a `S256` challenge. A problem answers a small HTML page saying so in plain words, never a redirect elsewhere.
+   PKCE verifier, the hash), and answers `302` to the provider's authorize address with the `state`, a `S256` challenge
+   and, for GitLab only, `scope=openid` (GitHub gets no `scope`; see "Providers"). A problem answers a small HTML page saying so in plain words, never a redirect elsewhere.
 3. `GET /auth/callback?code=...&state=...` finds the sign-in by `state` (unknown, expired or already used: the problem
    page), exchanges the code with the application's secret and the verifier, reads who the person is (see
    "Providers"), decides membership, and answers the **confirm page**. Nothing is claimable yet. The provider's token is
