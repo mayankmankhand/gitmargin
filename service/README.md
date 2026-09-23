@@ -85,7 +85,8 @@ comments. The Version line in the comments sheet opens the older versions, each 
   comments. If the page is public, so are its comments.
 - **Stored copies are not behind your password.** The service keeps a copy of each version (the newest ten, up to 4 MB
   each) so an older version can still be opened with its comments in place. If the live page sits behind a password,
-  the stored copy does not: whoever has the link to it can open it.
+  the stored copy does not: whoever has the link to it can open it. On Vercel, same-project mode (below) puts the page,
+  its stored copies and its comments behind one login.
 - **Names are typed, not verified, unless you switch sign-in on.** Without sign-in, "your own" comment means
   "written in this browser". With it (next section), a comment carries the person's GitLab name and belongs to them
   on any computer.
@@ -331,7 +332,8 @@ since 2026-09-09. The default, Standard Protection, leaves the main address open
 
 ### Set it up, once per prototype
 
-From a folder of its own, so this project can never be deployed over your main comment service:
+Run this from the folder you cloned gitmargin into. It copies the service into a folder of its own, so this project
+can never be deployed over your main comment service:
 
 ```bash
 cp -r service ~/gitmargin-review-onboarding && cd ~/gitmargin-review-onboarding
@@ -357,6 +359,8 @@ Check it: `curl -s -o /dev/null -w '%{http_code}\n' https://onboarding-review.ve
 or `401` (Vercel's login), never `200`.
 
 ### Publish, and every new version
+
+Back in the folder you cloned gitmargin into (the setup above left you in the copy):
 
 ```bash
 export GITMARGIN_SECRET=...          # this project's author secret

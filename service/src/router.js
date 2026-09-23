@@ -363,7 +363,10 @@ async function createPrototype({ query, now, sameProject }, body) {
   const key = `gm_${randomBytes(16).toString('base64url')}`;
   if (sameProject) {
     // Same-project mode (issue #19): one prototype per deployment. The check is
-    // part of the insert, like every limit, so two attaches at once cannot both pass.
+    // part of the insert, like every limit, and soft at the edge like them: two
+    // statements that truly overlap can each miss the other's row (review of
+    // #19, R17). One that slips through is still served locked down and never
+    // opened at the front door, which only ever opens the first.
     const made = await query(
       'insert into prototypes (key, name, created) select $1::text, $2::text, $3::timestamptz where not exists (select 1 from prototypes) returning key',
       [key, name, now().toISOString()],

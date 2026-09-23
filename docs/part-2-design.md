@@ -240,7 +240,7 @@ with the service link and a file from disk. The Vercel same-project row is still
 | The service link | type a name each visit (that page cannot remember) | Sign in and Continue each visit; no approval at the provider after the first |
 | GitHub Pages | type once | Sign in, approve once, Continue; then remembered while the pass lasts |
 | GitLab Pages, members only | GitLab's login, then type once | GitLab's login, Sign in, approve once, Continue; then remembered |
-| Vercel same-project | Vercel's gate, then type once | the same; sign-in stays optional there |
+| Vercel same-project | Vercel's gate, then type once | the same; sign-in stays optional there, and works from the main address only |
 
 ## 7. Built in four cycles
 

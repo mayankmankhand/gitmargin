@@ -80,7 +80,9 @@ test('one prototype per deployment: a second is refused with the key of the firs
   assert.equal(v2.answer.version_id, 'v2-def456');
 });
 
-test('two creates at the same moment still leave one prototype', async (t) => {
+// This database runs statements one at a time, so it shows the check is part of
+// the insert; on Neon the limit is soft at the edge, like every limit (API.md).
+test('a burst of creates leaves one prototype', async (t) => {
   const s = await setUp(t);
   const results = await Promise.all([s.publish('a.html'), s.publish('b.html'), s.publish('c.html')]);
   assert.equal(results.filter((r) => r.status === 201).length, 1);

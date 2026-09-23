@@ -364,14 +364,20 @@ The switch changes exactly three things. Everything else in this file holds as w
    short page saying so.
 3. **One prototype per deployment.** `POST /api/prototypes` when one exists answers
    `409 { "error": "one_prototype", "key": "gm_..." }`. The caller holds the author secret, so naming the key tells them
-   nothing new. The check is part of the insert, like every limit.
+   nothing new. The check is part of the insert, like every limit, and soft at the edge like them: two statements that
+   truly overlap can each miss the other's row. A second prototype that slips through is never opened at `/`.
+
+The version answers (`POST /api/prototypes/<key>/versions`) also carry `"same_project": true` on such a deployment, so
+the command line knows to check that the address really is behind the protection: it asks `GET /api/ping` once
+without the bypass, and warns if the service answers.
 
 ### Client rule: which address a page talks to
-A page whose own address is `<origin>/p/<its own key>/<latest or a version id>`, over `http` or `https`, with a real
-origin (not "null"), talks to `<origin>`: its comment calls, its sign-in window and its links to older versions.
-Any other page talks to the address in its `gitmargin-service` tag, as before. Reviewers may open a same-project
-prototype on the main address, a deployment address or a share link, and the protection's login is kept per address,
-so the calls must go where the page is. A sandboxed stored copy has the origin "null", so the rule never fires there.
+A page whose own address is `<origin>/p/<its own key>/<latest or a version id>`, over `http` or `https`, whose document
+has a real origin (`self.origin`, not "null"), talks to `<origin>`: its comment calls, its sign-in window and its links
+to older versions. Any other page talks to the address in its `gitmargin-service` tag, as before. Reviewers may open a
+same-project prototype on the main address, a deployment address or a share link, and the protection's login is kept per
+address, so the calls must go where the page is. A sandboxed stored copy's document has the origin "null" (its
+`location` still reports the host, which is why the rule reads the document's origin), so the rule never fires there.
 
 ### Clients outside a browser: Vercel's bypass
 The command line reaches a protected deployment with Vercel's **Protection Bypass for Automation**: the secret from
