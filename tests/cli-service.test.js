@@ -9,7 +9,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { mkdtempSync, readFileSync, writeFileSync, existsSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -328,4 +328,86 @@ test('a prototype with an apostrophe in its name keeps its whole name (review R2
   const again = await run(['attach', source, '--service'], s.env);
   assert.equal(again.code, 0, again.err);
   assert.doesNotMatch(again.err, /NEW prototype/, 'the previous copy was read back correctly, key and all');
+});
+
+// ------------------------------------------------ attach --require-trusted (issue #16, plan D10)
+//
+// The share skill reads the service address from a project's .gitmargin.json,
+// which a cloned repo can carry. With this flag an address this machine has
+// never used is refused before anything is sent. Each case keeps its own trust
+// list: the shared CONFIG above collects every earlier test's address, and a
+// port can come round again.
+
+/** A service that counts every request that reaches it, and a fresh trust list. */
+async function counted(t) {
+  let requests = 0;
+  const service = await startService({ down: () => ((requests += 1), false) });
+  const dir = mkdtempSync(path.join(tmpdir(), 'gitmargin-trust-'));
+  const config = path.join(dir, 'config');
+  t.after(async () => {
+    await service.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+  const source = path.join(dir, 'proto.html');
+  writeFileSync(source, PAGE);
+  return {
+    service,
+    source,
+    copy: path.join(dir, 'proto.gitmargin.html'),
+    list: path.join(config, 'trusted-services.json'),
+    env: { GITMARGIN_SECRET: service.secret, GITMARGIN_CONFIG_DIR: config },
+    requests: () => requests,
+  };
+}
+
+test('--require-trusted refuses an address this machine has not used, before any request or write', async (t) => {
+  const s = await counted(t);
+  // Something else is trusted: the list exists, and it does not name this service.
+  mkdirSync(path.dirname(s.list), { recursive: true });
+  const before = `${JSON.stringify(['https://someone-else.example'], null, 2)}\n`;
+  writeFileSync(s.list, before);
+
+  const r = await run(['attach', s.source, '--service', s.service.url, '--require-trusted'], s.env);
+  assert.equal(r.code, 2, r.err);
+  assert.equal(r.out, '');
+  assert.match(r.err, /this machine has not used that comment service before/);
+  assert.match(r.err, /Nothing was sent and nothing was written/);
+  assert.match(r.err, /confirm that, then attach once\nwithout --require-trusted/, 'it names the way to confirm');
+  assert.ok(r.err.includes(`--service ${s.service.url}`), 'with the exact line to run');
+  assert.equal(s.requests(), 0, 'no request reached the service');
+  assert.ok(!existsSync(s.copy), 'no copy was written');
+  assert.equal(readFileSync(s.list, 'utf8'), before, 'the trusted list is unchanged');
+
+  // The same service and secret without the flag: so the refusal above was the flag, not the setup.
+  const plain = await run(['attach', s.source, '--service', s.service.url], s.env);
+  assert.equal(plain.code, 0, plain.err);
+  assert.ok(s.requests() > 0);
+});
+
+test('--require-trusted attaches as usual to an address this machine already trusts', async (t) => {
+  const s = await counted(t);
+  mkdirSync(path.dirname(s.list), { recursive: true });
+  writeFileSync(s.list, `${JSON.stringify([s.service.url], null, 2)}\n`);
+
+  const r = await run(['attach', s.source, '--service', `${s.service.url}/`, '--require-trusted'], s.env);
+  assert.equal(r.code, 0, r.err);
+  assert.equal(r.out.trim(), s.copy);
+  assert.ok(s.requests() > 0);
+  assert.match(readFileSync(s.copy, 'utf8'), /<meta name="gitmargin-key" content="gm_[A-Za-z0-9_-]+">/);
+  assert.match(r.err, /creates a NEW prototype/);
+
+  // A bare --service reads the previous copy's address, and the flag changes nothing there.
+  const again = await run(['attach', s.source, '--service', '--require-trusted'], s.env);
+  assert.equal(again.code, 0, again.err);
+  assert.match(again.err, /unchanged since the last attach/);
+});
+
+test('--require-trusted accepts an address named in GITMARGIN_SERVICE, and does not add it to the list', async (t) => {
+  const s = await counted(t);
+  const r = await run(['attach', s.source, '--service', s.service.url, '--require-trusted'], { ...s.env, GITMARGIN_SERVICE: s.service.url });
+  assert.equal(r.code, 0, r.err);
+  assert.ok(existsSync(s.copy));
+  // Naming it in the environment is the author choosing it for this shell;
+  // the saved list is left as it was (rememberAddress skips a trusted address).
+  assert.ok(!existsSync(s.list));
 });

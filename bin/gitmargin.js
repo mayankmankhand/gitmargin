@@ -3,6 +3,7 @@
 //
 //   attach  puts the overlay into one HTML file and stamps a version id
 //   pull    reads the comments back out in a form a coding agent can act on
+//   check   says, offline, what in a prototype will not survive its host (issue #16)
 //
 // Only the author ever runs these. A reviewer only ever opens an HTML file, so
 // nothing here needs to be installed anywhere but this machine. Node and
@@ -15,16 +16,23 @@
 import { attach } from '../src/cli/attach.js';
 import { pull } from '../src/cli/pull.js';
 import { attachLive, pullLive, removeComment, setIdentityMode, setStatus } from '../src/cli/live.js';
+import { check } from '../src/cli/check.js';
 import { CliError, EXIT_OK, EXIT_USAGE } from '../src/cli/errors.js';
 
 const USAGE = `gitmargin - comments on one HTML prototype, in a form an agent can act on
 
-Not on npm, so run these from the repo. Build the overlay once first:
-  npm install && npm run build
+Two ways to run it (it is not on npm):
+  Installed through the Claude Code plugin:  gitmargin <command>
+    in Claude Code's shell, with the overlay already built.
+  From a clone of the repo:  node bin/gitmargin.js <command>
+    Build the overlay once first: npm install && npm run build
+The lines below use the clone form. With the plugin, type gitmargin in place of
+node bin/gitmargin.js.
 
 Usage
   node bin/gitmargin.js attach <prototype.html>        write a copy with the overlay in it
   node bin/gitmargin.js pull <reviewed.html> [more...] print the comments as JSON
+  node bin/gitmargin.js check <prototype.html>         say what will not survive the host
   node bin/gitmargin.js help                           this text
 
   npm run attach -- <prototype.html>                   the same, through npm
@@ -42,6 +50,16 @@ pull
 
     --markdown   print the human rendering instead of JSON
 
+check
+  Reads one prototype, offline, and prints what will break where it is going:
+  files next to it that will not travel with it, links to other pages, a
+  Content-Security-Policy tag, path routing, unguarded browser storage and a
+  page too large to store (the service link), with a one-line fix for each.
+  Exits 0 whenever it ran, findings or not.
+
+    --channel file|service-link|github-pages   only what affects that host
+    --json       print {file, channel, findings} instead of lines
+
 Shared comments (optional; needs a comment service you deployed, see service/README.md)
   node bin/gitmargin.js attach <prototype.html> --service <address>
       Registers the prototype and this version with your service and writes the
@@ -50,6 +68,8 @@ Shared comments (optional; needs a comment service you deployed, see service/REA
       prototype from another machine. Needs GITMARGIN_SECRET in the environment.
       The secret is only ever sent to an address you typed here yourself, or
       named in GITMARGIN_SERVICE: never to one that only a file names.
+      --require-trusted refuses, sending nothing, an address this machine has
+      not used before; for scripts that read the address from a file.
       Behind Vercel's protection (same-project mode), also set
       GITMARGIN_VERCEL_BYPASS to the project's Protection Bypass for
       Automation; it follows the same rule.
@@ -92,6 +112,8 @@ async function main(argv) {
       return removeComment(rest);
     case 'identity':
       return setIdentityMode(rest);
+    case 'check':
+      return check(rest);
     case 'help':
     case '--help':
     case '-h':

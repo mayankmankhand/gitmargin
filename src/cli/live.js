@@ -1,6 +1,6 @@
 // The commands that talk to a comment service (issue #15).
 //
-//   attach <file> --service [address] [--key <key>]
+//   attach <file> --service [address] [--key <key>] [--require-trusted]
 //   pull <attached-file> --live [--version <id> | --all] [more sources...]
 //   status <attached-file> <comment-id> <open|accepted|rejected|applied>
 //   remove <attached-file> <comment-id>
@@ -276,8 +276,14 @@ function sharedStamp(file) {
 export async function attachLive(args) {
   const service = takeOption(args, '--service', { optional: true });
   const keyOption = takeOption(service.rest, '--key');
-  const files = keyOption.rest.filter((a) => !a.startsWith('-'));
-  const unknown = keyOption.rest.filter((a) => a.startsWith('-'));
+  // For an address read from a file someone else could have written, such as a
+  // project's .gitmargin.json in a cloned repo (issue #16, plan D10): the
+  // plain `--service <address>` trusts whatever it is given, so a script that
+  // did not hear the author type the address asks for this instead.
+  const requireTrusted = keyOption.rest.includes('--require-trusted');
+  const remaining = keyOption.rest.filter((a) => a !== '--require-trusted');
+  const files = remaining.filter((a) => !a.startsWith('-'));
+  const unknown = remaining.filter((a) => a.startsWith('-'));
   if (unknown.length) throw new CliError(`Unknown option: ${unknown[0]}`, EXIT_USAGE, 'Try: gitmargin help');
   if (files.length !== 1) {
     throw new CliError('attach takes exactly one file.', EXIT_USAGE, 'Try: gitmargin attach prototype.html --service https://...');
@@ -295,6 +301,18 @@ export async function attachLive(args) {
     );
   }
   const address = cleanAddress(given);
+  // Before the secret is even looked up, and so before any request or write.
+  // Only an address on this command line needs it: a bare --service reads the
+  // previous copy's address, which assertSecretMayGo already holds to the
+  // trusted list.
+  if (requireTrusted && service.value && !trustedAddresses().includes(address)) {
+    throw new CliError(
+      `Refusing to use ${address}: this machine has not used that comment service before.`,
+      EXIT_REFUSED,
+      'Nothing was sent and nothing was written. If it is your own service, confirm that, then attach once\n' +
+        `without --require-trusted, which remembers it: gitmargin attach ${source} --service ${address}`
+    );
+  }
   const auth = secret();
   assertSecretMayGo(address, { typed: Boolean(service.value) });
   if (service.value) typedNow.add(address);
