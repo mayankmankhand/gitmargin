@@ -286,7 +286,7 @@ Each cycle ends in a live test on accounts one person owns, before the next star
    deployment of the author's service with `GITMARGIN_SAME_PROJECT=1` serves one prototype as its own site (not
    sandboxed, so its calls carry Vercel's login), opens it at `/`, and holds one prototype, with a database of its
    own; a page opened at its own `/p/<key>/...` talks to the address it was opened from; the command line passes
-   Vercel's wall with Vercel's bypass for automation. The plain Vercel channel stays with the plugin (cycle 3).
+   Vercel's wall with Vercel's bypass for automation. The plain Vercel channel joins it here: the plugin (cycle 3) was built with the file, service-link and GitHub Pages channels, and the GitLab Pages and plain Vercel channels moved to this cycle.
 
 ## 8. Honest limits
 
