@@ -107,6 +107,23 @@ test('the bypass never follows an address that only a file names', async (t) => 
   assert.equal(otherWall.seen.filter((c) => c.bypassHeader).length, 0, 'the bypass reached an address only a file named');
 });
 
+test('the bypass never goes in the clear, even to an address the author named', async (t) => {
+  const s = await setup(t);
+  assert.equal((await s.cli(['attach', s.source, '--service', s.wall.url], { GITMARGIN_VERCEL_BYPASS: s.wall.bypass })).code, 0);
+
+  // The same service behind a wall on plain http at an address that is not
+  // loopback by name: 127.0.0.2 reaches this computer, but the command line
+  // cannot know that, so it treats it like any address across a network.
+  const plain = await startVercelWall(s.service.url, { host: '127.0.0.2' });
+  t.after(() => plain.close());
+  const copy = path.join(s.dir, 'plain.gitmargin.html');
+  writeFileSync(copy, readFileSync(s.copy, 'utf8').replace(s.wall.url, plain.url));
+  const r = await s.cli(['pull', copy, '--live'], { GITMARGIN_VERCEL_BYPASS: s.wall.bypass, GITMARGIN_SERVICE: plain.url });
+  assert.notEqual(r.code, 0);
+  assert.ok(plain.seen.length > 0, 'the pull never reached the address, so this proves nothing');
+  assert.equal(plain.seen.filter((c) => c.bypassHeader).length, 0, 'the bypass crossed plain http');
+});
+
 test('a second prototype is refused with the first one\'s key, and nothing is written', async (t) => {
   const s = await setup(t);
   const env = { GITMARGIN_VERCEL_BYPASS: s.wall.bypass };

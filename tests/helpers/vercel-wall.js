@@ -34,9 +34,11 @@ const escapeHtml = (text) =>
 
 /**
  * @param {string} target the service behind the wall, e.g. http://127.0.0.1:1234
- * @param {{bypass?: string}} [options]
+ * @param {{bypass?: string, host?: string}} [options] `host` is where it listens:
+ *   another loopback address, such as 127.0.0.2, stands in for a plain-http
+ *   address that is not this computer.
  */
-export async function startVercelWall(target, { bypass = FAKE_BYPASS } = {}) {
+export async function startVercelWall(target, { bypass = FAKE_BYPASS, host = '127.0.0.1' } = {}) {
   const seen = []; // every request: what it asked for and what it carried
 
   const server = http.createServer(async (req, res) => {
@@ -83,10 +85,10 @@ export async function startVercelWall(target, { bypass = FAKE_BYPASS } = {}) {
     res.end(Buffer.from(await upstream.arrayBuffer()));
   });
 
-  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  await new Promise((resolve) => server.listen(0, host, resolve));
   const port = server.address().port;
   return {
-    url: `http://127.0.0.1:${port}`,
+    url: `http://${host}:${port}`,
     // The same deployment under a second name, with a login of its own.
     otherUrl: `http://localhost:${port}`,
     bypass,
