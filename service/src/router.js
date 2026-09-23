@@ -467,7 +467,8 @@ const PAGE_HEADERS = {
  * host's own protection, and its pages must call this address with the host's
  * login cookie. A sandboxed page has the origin "null" and sends no cookie, so
  * here the page is served as an ordinary page of the site. It shares the
- * address only with itself. Everything else about the headers stays.
+ * address only with pages the same author attached here (one, unless a race
+ * let a second in). Everything else about the headers stays.
  */
 const OWN_SITE_PAGE_HEADERS = {
   'content-type': 'text/html; charset=utf-8',

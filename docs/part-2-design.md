@@ -12,8 +12,8 @@ Technical terms are explained in the research report's [glossary](../research/pr
 walked on two computers with two gitlab.com accounts. Cycle 2, the GitHub plug (issue #17), is built and tested against
 a stand-in GitHub in Chromium and Firefox and walked on the real github.com (a file on disk, the service link and a
 GitHub Pages page). Same-project mode, the second half of cycle 4 (issue #19), is built ahead of cycle 3 and tested
-behind a stand-in for Vercel's login wall; its walk on a real Vercel project waits for the owner. Everything else here
-is decided and not yet built, and says so.
+behind a stand-in for Vercel's login wall; it was walked on a real Vercel project, including a reviewer on the share
+link. Everything else here is decided and not yet built, and says so.
 The contract is `service/API.md`; setup and warnings are in `service/README.md`.
 
 ## 1. Why one design
@@ -228,11 +228,12 @@ and the page key, which is the tension described above.
 
 ## 6. What a reviewer experiences
 
-The sign-in column was walked for cycle 1 on 2026-09-21, on gitlab.com: GitLab Pages (members only), the service
-link and a file from disk, end to end in Chrome; in Firefox the window opened from a real click with the pop-up
-blocker on and reached GitLab's login, and the rest rests on the automated suite. The Guest of a private group was
-recognised as a member with the `openid` permission alone. The GitHub Pages row was walked for cycle 2 on 2026-09-23,
-with the service link and a file from disk. The Vercel same-project row is still a target.
+The sign-in column was walked for cycle 1 on 2026-09-21, on gitlab.com: GitLab Pages (members only), the service link
+and a file from disk, end to end in Chrome; in Firefox the window opened from a real click with the pop-up blocker on
+and reached GitLab's login, and the rest rests on the automated suite. The Guest of a private group was recognised as a
+member with the `openid` permission alone. The GitHub Pages row was walked for cycle 2 on 2026-09-23, with the service
+link and a file from disk. The Vercel same-project row was walked the same day for #19, through Vercel's login and
+through its share link; sign-in on a same-project page is still a target.
 
 | The page lives on | Typed names | With sign-in |
 |---|---|---|
