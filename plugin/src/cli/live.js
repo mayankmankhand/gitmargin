@@ -12,9 +12,10 @@
 //
 // Node and nothing else: `fetch` is built in from Node 18.
 
-import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { CliError, EXIT_OK, EXIT_REFUSED, EXIT_USAGE } from './errors.js';
 import { attachToHtml, hashOf, prepareAttach, readStamp } from './attach.js';
 import { pull } from './pull.js';
@@ -71,6 +72,48 @@ function trustedAddresses() {
 }
 
 /**
+ * The service this command line came with: `service/` beside `src/`, in a clone
+ * and in the Claude Code plugin alike (issue #16).
+ */
+const SERVICE_SOURCE = fileURLToPath(new URL('../../service', import.meta.url));
+/** Never compared and never read: Vercel's link, installs, tests, the Neon installer's guide files, and (by prefix) every .env file. */
+const SERVICE_SKIP = new Set(['.vercel', 'node_modules', 'tests', '.agents', '.claude', 'skills-lock.json']);
+
+function serviceFiles(root, rel = '') {
+  const found = [];
+  for (const entry of readdirSync(path.join(root, rel), { withFileTypes: true })) {
+    if (SERVICE_SKIP.has(entry.name) || entry.name.startsWith('.env')) continue;
+    const child = path.join(rel, entry.name);
+    if (entry.isDirectory()) found.push(...serviceFiles(root, child));
+    else if (entry.isFile()) found.push(child);
+  }
+  return found;
+}
+
+/**
+ * Is the copy of the service this machine deploys from the one this command
+ * line came with? `none` (no copy yet), `same`, `differs` (a plugin update
+ * brought a newer service, so it wants redeploying), or `unknown` (nothing to
+ * compare with). A plugin update replaces the command line but not the
+ * deployed service, and nothing else would notice (review of #16, R5).
+ * Contents only; .env files are skipped by name, so a secret is never read.
+ */
+function serviceCopyState(configDir) {
+  const copy = path.join(configDir, 'service');
+  if (!existsSync(copy)) return 'none';
+  if (!existsSync(SERVICE_SOURCE)) return 'unknown';
+  try {
+    for (const rel of serviceFiles(SERVICE_SOURCE)) {
+      const deployed = path.join(copy, rel);
+      if (!existsSync(deployed) || !readFileSync(deployed).equals(readFileSync(path.join(SERVICE_SOURCE, rel)))) return 'differs';
+    }
+  } catch {
+    return 'unknown';
+  }
+  return 'same';
+}
+
+/**
  * `gitmargin services [--json]`: what this machine knows about comment
  * services, read-only (issue #16). The Claude Code plugin asks this before a
  * first share: to propose the service link when the author already has a
@@ -87,6 +130,7 @@ export function listServices(args) {
     fromEnvironment: process.env.GITMARGIN_SERVICE ? cleanAddress(process.env.GITMARGIN_SERVICE) : null,
     secretSet: Boolean(process.env.GITMARGIN_SECRET),
   };
+  answer.serviceCopy = serviceCopyState(answer.configDir);
   if (args.includes('--json')) {
     process.stdout.write(`${JSON.stringify(answer, null, 2)}\n`);
     return EXIT_OK;
@@ -96,7 +140,15 @@ export function listServices(args) {
       'Comment services this machine trusts:\n' +
       (answer.trusted.length ? answer.trusted.map((a) => `  ${a}\n`).join('') : '  (none)\n') +
       `GITMARGIN_SERVICE: ${answer.fromEnvironment || 'not set'}\n` +
-      `Author secret (GITMARGIN_SECRET): ${answer.secretSet ? 'set' : 'not set'}\n`
+      `Author secret (GITMARGIN_SECRET): ${answer.secretSet ? 'set' : 'not set'}\n` +
+      `Service copy in ${path.join(answer.configDir, 'service')}: ${
+        {
+          none: 'none yet',
+          same: 'the same as the one that came with this command line',
+          differs: 'different from the one that came with this command line: deploy it again',
+          unknown: 'cannot be compared',
+        }[answer.serviceCopy]
+      }\n`
   );
   return EXIT_OK;
 }

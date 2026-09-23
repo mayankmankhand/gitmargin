@@ -108,6 +108,8 @@ fixtures/.tmp-*
 # Both are rebuilt from the source prototype, so neither belongs in git.
 *.gitmargin.html
 *.reviewed.html
+# A reviewer's name folds into the download: onboarding.reviewed.priya.html (review of #16, R4)
+*.reviewed.*.html
 
 # Added by the LLM Peer Review toolkit (/tk:setup)
 .claude/.toolkit-migration.json

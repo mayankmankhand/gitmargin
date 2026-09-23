@@ -9,7 +9,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync, rmSync } from 'node:fs';
+import { cpSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -456,4 +456,32 @@ test('attach --service prints the review link that always opens the newest versi
   assert.ok(r.err.includes(`Review link (always the newest version): ${link}\n`), r.err);
   const page = await fetch(link);
   assert.equal(page.status, 200, 'the printed link opens the stored page');
+});
+
+test('services says whether the service copy here differs from the one that came with this command line, and never reads a .env file (review of #16, R5)', async (t) => {
+  const config = mkdtempSync(path.join(tmpdir(), 'gitmargin-services-copy-'));
+  t.after(() => rmSync(config, { recursive: true, force: true }));
+  const state = async () => JSON.parse((await run(['services', '--json'], { GITMARGIN_CONFIG_DIR: config })).out).serviceCopy;
+
+  assert.equal(await state(), 'none');
+
+  // The deployable copy, made the way the share skill makes it: never the tests,
+  // the installs, Vercel's link or an environment file (this repo's service/
+  // folder can hold real secrets in .env.local, so the test copies none).
+  const skip = new Set(['.vercel', 'node_modules', 'tests', '.agents', '.claude', 'skills-lock.json']);
+  const copy = path.join(config, 'service');
+  cpSync(path.join(ROOT, 'service'), copy, {
+    recursive: true,
+    filter: (source) => !skip.has(path.basename(source)) && !path.basename(source).startsWith('.env'),
+  });
+  // A deployed copy gains its own Vercel link and environment file; neither is compared.
+  mkdirSync(path.join(copy, '.vercel'), { recursive: true });
+  writeFileSync(path.join(copy, '.vercel', 'project.json'), '{}');
+  writeFileSync(path.join(copy, '.env.local'), 'NOT_THE_SAME=1\n');
+  assert.equal(await state(), 'same');
+
+  writeFileSync(path.join(copy, 'src', 'router.js'), '// an older service\n', { flag: 'a' });
+  assert.equal(await state(), 'differs');
+  const text = await run(['services'], { GITMARGIN_CONFIG_DIR: config });
+  assert.match(text.out, /deploy it again/);
 });
