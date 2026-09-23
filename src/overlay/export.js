@@ -154,8 +154,9 @@ export function markdown() {
     const target = quote ? `the "${quote}" ${noun}` : `the ${noun}`;
     const selector = c.anchor.selector ? ` (${c.anchor.selector})` : '';
     // Say how confidently the spot was found. An agent that is told the element
-    // is only approximate can ask rather than edit the wrong thing.
-    const resolved = resolve(c.anchor);
+    // is only approximate can ask rather than edit the wrong thing. A comment on
+    // another screen is not marked either way: it is elsewhere, not approximate (issue #24).
+    const resolved = resolve(c.anchor, screen);
     const status =
       resolved.status === 'orphaned'
         ? ' [orphaned: spot not found]'

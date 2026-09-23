@@ -4,21 +4,22 @@ The batch is the whole point of part 1. A reviewer leaves comments on a prototyp
 coding agent reads them and makes the edits. For the agent to do that without the author explaining anything, each
 comment has to say **where** the reviewer was and **why** they stopped, in a form the agent can act on.
 
-**Status: v0.6, 2026-09-21.** Draft v0.1 was written before any code existed; v0.2 followed the part-1 overlay
+**Status: v0.7, 2026-09-22.** Draft v0.1 was written before any code existed; v0.2 followed the part-1 overlay
 build, answering the open points in section 8; v0.3 follows the `attach` and `pull` commands (issue #5) and records
 what they settled; v0.4 records which element a click anchors (issue #10); v0.5 records what shared comments add (issue #15): who
 wrote a comment, replies that are no longer an empty slot, and the comment service as a fourth carrier; v0.6 records what
-sign-in adds (issue #18): an author the service has verified. The shape it
-belongs to is in [v0-split.md](v0-split.md).
+sign-in adds (issue #18): an author the service has verified; v0.7 records how a comment keeps its place on a
+prototype with more than one screen (issue #24). The shape it belongs to is in [v0-split.md](v0-split.md).
 
-The **document** revision is v0.6. The **wire format** stays `0.1`, in the envelope's `gitmargin` field and in the
+The **document** revision is v0.7. The **wire format** stays `0.1`, in the envelope's `gitmargin` field and in the
 first line of the markdown block, because the shape of what the overlay writes has not changed. What v0.3 added is on
 the reading side: how `pull` prints a batch (section 1), what it adds when it merges several (section 5a), and where
 the agent rules now travel (section 6). What v0.4 adds is one rule in section 3: which element a click anchors. What v0.5 adds is optional and additive: `author` on a comment, filled `replies`, and a per-comment `version_id`, each
 written only when the page is shared, so a plain file's batch is byte for byte the shape it was. `replies` was
 reserved in v0.1 precisely so that filling it would not be a format change, and it is not one. What v0.6 adds is three
-optional fields on `author`, written only for a comment made under sign-in. The two version
-numbers are deliberately not the same thing.
+optional fields on `author`, written only for a comment made under sign-in. What v0.7 adds is a reading rule in
+section 3, not a field: how the overlay finds a comment's element once the prototype has moved to another screen.
+The two version numbers are deliberately not the same thing.
 
 ## 1. Where the batch lives
 
@@ -143,16 +144,31 @@ puts a visual break, decided by the computed display rather than by the tag, so 
 heading and a caption reads as words rather than as one long run. Three ways to find the same spot on purpose: an
 AI-regenerated page changes shape. They are tried in that order:
 
-1. **The selector.** A visible match wins immediately.
+1. **The selector.** A visible match wins immediately. A match on a screen that is not being shown, and that still
+   carries the quoted words, means the comment is on another screen: it gets no pin there, the quote is not tried,
+   and its markdown line is not marked nearby or orphaned, because the spot is elsewhere, not approximate (issue #24).
 2. **The quote.** The tightest element whose text *contains* the quote. Containment rather than equality, because a
    highlighted quote is a fragment of a longer paragraph and an element quote is truncated at 160 characters, so
    equality could never rescue either. Whitespace is ignored on both sides of this comparison, so a quote finds its
-   element whether the page formats it with spaces or not.
+   element whether the page formats it with spaces or not. A match the reviewer can see counts only on the screen
+   the comment was made on: its `state.screen.name` is compared with the name of the screen that match is on, and
+   only a known mismatch rules the match out. When every match in view is on another screen, the comment is on
+   another screen, as above. Among several matches, exact text ranks first, then the one whose saved prefix and
+   suffix still surround it, then the tightest; choosing one of several marks the comment approximate.
 3. **The nearest surviving ancestor** named by the selector, found by dropping its trailing segments. This is the
    only pointer left when a regenerated page has changed both the class names and the copy. A comment resolved this
    way is marked approximate, because the container was found and the element was not.
 
 When none of the three match, the comment is orphaned, which is a normal state.
+
+Three limits are recorded rather than fixed (issue #24). A prototype that builds only the step being shown looks,
+from the page, exactly like one whose other steps were deleted, so "Copy for author" pressed on a later step still
+marks an earlier comment `[orphaned: spot not found]` when nothing on the current step shares its words; a returned
+file is never marked that way. A lookalike on a screen whose name changed after the comment was made (a heading the
+prototype rewords) reads as on another screen rather than as nearby; that one errs toward not guessing, the rule
+section 6 gives the agent. And a prototype that rebuilds every step inside the same container can reuse the saved
+selector for the new step's lookalike, which is then pinned as if it were the element: the screen rule judges only
+quote matches, because the element itself stays pinned on every screen it appears on, such as a header.
 
 **state**, the where: `hash` is the page's URL fragment; `title` the page title; `screen` the name of the step, tab,
 or dialog that was open, and how it was found (section 4); `trail` the clicks since the page loaded, oldest first,

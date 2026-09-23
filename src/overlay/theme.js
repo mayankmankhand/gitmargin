@@ -11,9 +11,20 @@
 // and a wrapper div paints the dark ground. A layer painted with a gradient or
 // a picture has no colour to read, so its text colour stands in: light text
 // means a dark ground (review of #21, R13). Recorded limit: a light card that
-// happens to sit at the centre measures light; the overlay re-measures on
-// resize, on the first scroll, and whenever the page changes under it, which
-// is as far as a measurement can go without guessing.
+// happens to sit at the centre measures light.
+//
+// When the overlay's own thread or sheet covers the centre, the measurement
+// looks past it to the page underneath (issue #24). The overlay measures again
+// whenever the ground may have changed (src/overlay/ui.js): after the page
+// changes, when a fade or an animation on it ends, on resize, once on the
+// first scroll, and when the system's light/dark setting flips. Scrolling alone
+// never measures again, so a still page painted in light and dark bands keeps
+// one look as it moves. A page whose own script changes as it scrolls (a menu
+// that lights up the section in view, a section that animates in) is measured
+// at each of those changes like any other, so there the look can follow the
+// band at the centre. Ignoring changes made mid-scroll would also ignore a
+// screen changed right after a scroll, the case this measuring exists for
+// (review of #24, R8).
 
 import { ROOT_ID } from './root.js';
 
@@ -108,17 +119,24 @@ const themeFor = (lum) => (lum < DARK_BELOW ? 'dark' : 'light');
 export function themeOf(doc = document, hit = null) {
   const view = doc.defaultView;
   if (!view || !doc.documentElement) return 'light';
+  const isOurs = (el) => !!(el && el.closest && el.closest(`#${ROOT_ID}`));
   let node = hit;
   if (!node) {
     try {
-      node = doc.elementFromPoint(view.innerWidth / 2, view.innerHeight / 2);
+      // Everything under the centre, topmost first, so our own thread or sheet
+      // can be looked past to the page beneath it (issue #24). Starting from
+      // body instead read a dark page as light whenever the sheet covered the
+      // centre, because the usual AI-made page leaves body white and paints a wrapper.
+      const x = view.innerWidth / 2;
+      const y = view.innerHeight / 2;
+      const stack = doc.elementsFromPoint ? doc.elementsFromPoint(x, y) : [doc.elementFromPoint(x, y)];
+      node = stack.find((el) => el && !isOurs(el)) || null;
     } catch {
       node = null;
     }
   }
-  // Our own overlay is what sits at the centre when a thread or the sheet is
-  // open; the page under it is the question, so start from body instead.
-  if (node && node.closest && node.closest(`#${ROOT_ID}`)) node = null;
+  // A hit inside the overlay says nothing about the page: start from body.
+  if (isOurs(node)) node = null;
   if (!node) node = doc.body;
   for (let el = node; el; el = el.parentElement) {
     let style = null;

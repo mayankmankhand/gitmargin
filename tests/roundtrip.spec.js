@@ -1055,6 +1055,6 @@ test('a wrapper larger than the window still gets a frame inside the window', as
   expect(frame.top).toBeGreaterThanOrEqual(0);
   expect(frame.right).toBeLessThanOrEqual(size.width);
   expect(frame.bottom).toBeLessThanOrEqual(size.height);
-  // The ground-coloured hairline outside the stroke, so the frame reads on this dark shell.
-  expect(frame.outline).toBe('1px');
+  // The dark shell gives the overlay its dark look, so the ring outside the stroke is two pixels (issue #24).
+  expect(frame.outline).toBe('2px');
 });

@@ -139,7 +139,10 @@ export function mountUi(deps) {
   }
 
   // Which way the page is lit decides which token set draws the overlay.
-  // Measured at mount, on resize, and once on the first scroll (theme.js).
+  // Measured at mount, and again whenever the ground may have changed: after
+  // the page changes, when a fade or an animation on it ends, on resize, once
+  // on the first scroll, and when the system's light/dark setting flips
+  // (theme.js; issue #24).
   let theme = 'light';
   function applyTheme() {
     theme = themeOf(document);
@@ -1991,7 +1994,9 @@ export function mountUi(deps) {
 
   function render(force) {
     const resolved = store.comments().map((comment) => {
-      const { element, status, via } = resolve(comment.anchor);
+      // The screen it was made on: a lookalike on any other screen is not its element (issue #24).
+      const screen = comment.state && comment.state.screen ? comment.state.screen.name : null;
+      const { element, status, via } = resolve(comment.anchor, screen);
       return { comment, element, status, via };
     });
     resolvedNow = resolved;
@@ -2018,11 +2023,13 @@ export function mountUi(deps) {
     // Ignore our own mutations: the overlay lives in a shadow root, but the host
     // element itself is a child of <body>.
     if (records.every((r) => r.target === host || host.contains(r.target))) return;
-    // Deliberately NOT re-measuring the theme here (review of #21, R14): a
-    // prototype that swaps in a dark screen after load keeps the light chrome
-    // until the next resize. Measuring on every mutation costs a hit-test per
-    // frame on an animated page, and it changed what a part-1 test asserts,
-    // which is a part-1 behaviour change and the owner's call.
+    // The page changed under us, and a new screen may be a dark one (issue #24).
+    // Measuring is a hit-test and a few computed styles, about 5 microseconds
+    // against the milliseconds this re-layout already spends. It runs after the
+    // check above, so the overlay switching its own look never measures again.
+    // A part-1 test changed with it, approved in issue #24 (tests/README.md says
+    // why): a dark shell added after load now gets the dark look, and its two-pixel ring.
+    applyTheme();
     schedule();
   }).observe(document.body, { childList: true, subtree: true, attributes: true, characterData: true });
 
@@ -2046,6 +2053,20 @@ export function mountUi(deps) {
     applyTheme();
     schedule();
   }, { once: true, capture: true });
+  // A page that fades or animates to dark still reads light at the moment the
+  // change lands; the end of the fade is when the new ground is really there
+  // (issue #24). The overlay's own transitions may arrive here too, which costs
+  // one measurement that finds the same answer.
+  document.addEventListener('transitionend', applyTheme, true);
+  document.addEventListener('animationend', applyTheme, true);
+  // A page that follows the system's light/dark setting changes without a
+  // single change to its content, so the setting itself is the signal.
+  try {
+    const scheme = window.matchMedia('(prefers-color-scheme: dark)');
+    if (scheme && scheme.addEventListener) scheme.addEventListener('change', applyTheme);
+  } catch {
+    /* an engine with no media queries to listen to keeps the other triggers */
+  }
   store.subscribe(schedule);
 
   render();
