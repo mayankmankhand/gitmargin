@@ -365,14 +365,15 @@ async function createPrototype({ query, now, sameProject }, body) {
     // Same-project mode (issue #19): one prototype per deployment. The check is
     // part of the insert, like every limit, and soft at the edge like them: two
     // statements that truly overlap can each miss the other's row (review of
-    // #19, R17). One that slips through is still served locked down and never
-    // opened at the front door, which only ever opens the first.
+    // #19, R17). Only the author, who holds the secret, can race it. A second
+    // one that slips through is served like the first, on the same address;
+    // this refusal and the front door both name the oldest.
     const made = await query(
       'insert into prototypes (key, name, created) select $1::text, $2::text, $3::timestamptz where not exists (select 1 from prototypes) returning key',
       [key, name, now().toISOString()],
     );
     if (made[0]) return json(201, { key });
-    const held = await query('select key from prototypes order by created limit 1');
+    const held = await query('select key from prototypes order by created, key limit 1');
     return json(409, { error: 'one_prototype', key: held[0] ? held[0].key : null });
   }
   await query('insert into prototypes (key, name, created) values ($1, $2, $3)', [key, name, now().toISOString()]);
@@ -494,9 +495,12 @@ async function servePage(deps, key, which, params) {
   return { status: 200, headers: deps.sameProject ? OWN_SITE_PAGE_HEADERS : PAGE_HEADERS, body: rows[0].html };
 }
 
-/** Same-project mode: the site's front door opens its one prototype. */
+/**
+ * Same-project mode: the site's front door opens its one prototype, or the
+ * oldest if a race left two, ties broken by key so every request picks the same.
+ */
 async function frontDoor({ query }) {
-  const rows = await query('select key from prototypes order by created limit 1');
+  const rows = await query('select key from prototypes order by created, key limit 1');
   if (!rows[0]) {
     return signin.htmlPage(404, 'Nothing published yet', '<h1>Nothing is published here yet</h1><p>The author has not attached a prototype to this address.</p>');
   }

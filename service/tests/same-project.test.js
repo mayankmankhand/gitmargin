@@ -1,8 +1,10 @@
 // Same-project mode (issue #19): a second deployment of the comment service,
 // switched on with GITMARGIN_SAME_PROJECT=1, serves its one prototype as its own
-// site behind the host's protection. The switch changes exactly three things
-// (API.md, "Same-project mode"); each has a test here, and so does "with the
-// switch off, nothing moved".
+// site behind the host's protection. The switch changes exactly four things
+// (API.md, "Same-project mode"); the first three have tests here, the fourth,
+// the version answer's same_project field, is tested through the command line
+// that reads it (tests/cli-same-project.test.js), and "with the switch off,
+// nothing moved" has a test here too.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -87,6 +89,22 @@ test('a burst of creates leaves one prototype', async (t) => {
   const results = await Promise.all([s.publish('a.html'), s.publish('b.html'), s.publish('c.html')]);
   assert.equal(results.filter((r) => r.status === 201).length, 1);
   assert.equal((await s.service.query('select count(*)::int as n from prototypes'))[0].n, 1);
+});
+
+test('if a race left two prototypes, the front door and the refusal name the same one (review of #19, R17)', async (t) => {
+  const s = await setUp(t);
+  assert.equal((await s.call('GET', '/')).status, 404); // makes the tables
+  // Only two attaches racing on Neon can leave two (API.md), so they are put in
+  // directly, at one moment, the later key first: the table's own order would
+  // then pick a different one from the key order.
+  const at = new Date().toISOString();
+  for (const key of ['gm_zzzzzzzzzzzzzzzz', 'gm_aaaaaaaaaaaaaaaa']) {
+    await s.service.query('insert into prototypes (key, name, created) values ($1, $2, $3)', [key, 'p', at]);
+  }
+  const door = await s.call('GET', '/');
+  assert.equal(door.headers.get('location'), '/p/gm_aaaaaaaaaaaaaaaa/latest');
+  const refused = await s.publish('three.html');
+  assert.deepEqual(refused.answer, { error: 'one_prototype', key: 'gm_aaaaaaaaaaaaaaaa' });
 });
 
 test('with the switch off, nothing moved: sandboxed pages, no front door, any number of prototypes', async (t) => {

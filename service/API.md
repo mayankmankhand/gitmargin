@@ -353,23 +353,23 @@ are in `docs/part-2-design.md`; setup is in `README.md`.
 A same-project deployment should have **its own database**. A database shared with an open deployment of the service
 would answer for the same key there, outside the protection.
 
-The switch changes exactly three things. Everything else in this file holds as written.
+The switch changes exactly four things. Everything else in this file holds as written.
 
 1. **Stored pages are served as ordinary pages of the site.** `GET /p/<key>/<version>` and `/p/<key>/latest` carry
    `Referrer-Policy: no-referrer`, `X-Content-Type-Options: nosniff` and `Cache-Control: no-store`, and **no**
    `Content-Security-Policy: sandbox`. A sandboxed page has the origin "null", and its calls to this address would carry
-   no cookie, so the protection would refuse every one of them. The deployment holds one prototype, so its scripts
-   share the address only with themselves.
+   no cookie, so the protection would refuse every one of them. The deployment holds one prototype (item 3), so its
+   scripts share the address only with themselves, or at worst with another page the same author attached.
 2. **`GET /` opens the prototype**: `302` to `/p/<key>/latest`. Before anything is published it answers `404` and a
-   short page saying so.
+   short page saying so. If a race left two, it opens the oldest, ties broken by key.
 3. **One prototype per deployment.** `POST /api/prototypes` when one exists answers
    `409 { "error": "one_prototype", "key": "gm_..." }`. The caller holds the author secret, so naming the key tells them
    nothing new. The check is part of the insert, like every limit, and soft at the edge like them: two statements that
-   truly overlap can each miss the other's row. A second prototype that slips through is never opened at `/`.
-
-The version answers (`POST /api/prototypes/<key>/versions`) also carry `"same_project": true` on such a deployment, so
-the command line knows to check that the address really is behind the protection: it asks `GET /api/ping` once
-without the bypass, and warns if the service answers.
+   truly overlap can each miss the other's row. Only the author, who holds the secret, can race it; the refusal and
+   `/` both name the oldest.
+4. **The version answers say so.** `POST /api/prototypes/<key>/versions` carries `"same_project": true`, so the command
+   line knows to check that the address really is behind the protection: it asks `GET /api/ping` once without the
+   bypass, and warns if the service answers.
 
 ### Client rule: which address a page talks to
 A page whose own address is `<origin>/p/<its own key>/<latest or a version id>`, over `http` or `https`, whose document

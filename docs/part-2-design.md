@@ -276,9 +276,9 @@ Each cycle ends in a live test on accounts one person owns, before the next star
   free stand-in: Vercel Authentication with "All Deployments", free on every plan since 2026-09-09. On the free plan
   that lets in the owner, one outside Vercel user the owner approves, and anyone holding the account's one share link.
   The default, Standard Protection, leaves a project's main address open, so the setup says to choose All Deployments.
-- **Same-project pages are not sandboxed.** They share the address only with their own prototype, but with sign-in
-  on, a hostile script inside the prototype could press Continue for a reviewer; and sign-in there works from the
-  main address only, where the provider's callback is registered.
+- **Same-project pages are not sandboxed.** They share the address only with pages the same author attached, but with
+  sign-in on, a hostile script inside the prototype could press Continue for a reviewer; and sign-in there works from
+  the main address only, where the provider's callback is registered.
 - **The company single sign-on pass-through is untested.** Personal accounts cannot enforce a company login, so that
   path is documented as untested and not claimed.
 - **One author, one service.** A team can share one by sharing its author secret, which is a known limit. The pass
