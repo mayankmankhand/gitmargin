@@ -10,8 +10,8 @@ Technical terms are explained in the research report's [glossary](../research/pr
 
 **Status on 2026-09-23:** cycle 1 (section 7), the sign-in core and the GitLab plug, is built under issue #18 and was
 walked on two computers with two gitlab.com accounts. Cycle 2, the GitHub plug (issue #17), is built and tested against
-a stand-in GitHub in Chromium and Firefox; its walk on the real github.com waits for the owner. Everything else here is
-decided and not yet built, and says so.
+a stand-in GitHub in Chromium and Firefox and walked on the real github.com (a file on disk, the service link and a
+GitHub Pages page). Everything else here is decided and not yet built, and says so.
 The contract is `service/API.md`; setup and warnings are in `service/README.md`.
 
 ## 1. Why one design

@@ -120,8 +120,9 @@ disk, the service link, GitLab Pages, any host. The design and its reasons are i
    vercel deploy --prod
    ```
 
-   **Paste the bare value: no quotes, no `export`, nothing around it.** The prompt shows nothing while you paste, so
-   use the Copy button on GitLab's page and paste once. A wrong ID makes GitLab itself say "unknown client"; a wrong
+   **Paste the bare value: no quotes, no `export`, nothing around it.** The prompt shows only a `*` per character
+   (Vercel CLI 59), so use the Copy button on GitLab's page and paste once. Run it in your own terminal: the command
+   has to ask you for the value. A wrong ID makes GitLab itself say "unknown client"; a wrong
    Secret makes the sign-in window say "GitLab did not confirm the sign-in". The ID is the long value with no prefix;
    the Secret starts with `gloas-`. A self-managed GitLab also needs `GITMARGIN_GITLAB_URL` (default
    `https://gitlab.com`).
@@ -201,8 +202,9 @@ callback address that is not registered on the application.
 
 ## Sign-in with GitHub (optional, per prototype)
 
-> **Not walked on the real github.com yet.** The steps, field names and messages below follow GitHub's documentation
-> and were tested against a stand-in GitHub; the live walk is the last step of issue #17.
+> **Walked on the real github.com on 2026-09-23**, with a public App, a file on disk, the service link and a GitHub
+> Pages page, and the repository rule both ways. GitHub renames form fields from time to time: if a label below is
+> not on the page, look for the nearest one.
 
 The same sign-in with GitHub in place of GitLab: reviewers press **Sign in with GitHub**, approve GitHub's screen the
 first time, press **Continue** on your service's confirm page, and comment under their GitHub name. "What a reviewer
@@ -222,7 +224,8 @@ side; each prototype has one mode.
    |---|---|
    | GitHub App name | anything free on GitHub, such as `gitmargin-comments-<your name>` |
    | Homepage URL | `https://<project>.vercel.app` |
-   | Callback URL | `https://<project>.vercel.app/auth/callback` |
+   | Redirect URI (under "Identifying and authorizing users") | `https://<project>.vercel.app/auth/callback` |
+   | Allow wildcard matching | leave unticked: sign-in codes go to this one address only |
    | Expire user authorization tokens | leave ticked |
    | Request user authorization (OAuth) during installation | leave unticked |
    | Enable Device Flow | leave unticked |
@@ -297,13 +300,14 @@ means a second browser that stays signed out, or a second real person, not a sec
 
 | The small window shows | It means | Do |
 |---|---|---|
-| GitHub's own page: "The redirect_uri is not associated with this application" | the Callback URL on the App is not `https://<project>.vercel.app/auth/callback` | fix it on the App's page; no redeploy needed |
+| GitHub's own page: "The redirect_uri is not associated with this application" | the Redirect URI on the App is not `https://<project>.vercel.app/auth/callback` | fix it on the App's page; no redeploy needed |
 | GitHub's own 404 | the Client ID is wrong | add `GITMARGIN_GITHUB_ID` again, bare, and redeploy |
-| "GitHub did not confirm the sign-in" | the client secret is wrong, or GitHub was unreachable | generate a new client secret, add it again, redeploy |
+| "GitHub did not confirm the sign-in" | the client secret is wrong, GitHub was unreachable, or (for one reviewer only) their GitHub email is not verified | generate a new client secret, add it again, redeploy; for one reviewer, they verify their email on GitHub |
 | "not set up for GitHub sign-in yet" | one of the two values is missing | `vercel env ls production` should list both |
 
 In the function's log (`vercel logs <project>.vercel.app --since 30m`), `token call refused: incorrect_client_credentials`
-is a wrong secret, and `token call refused: bad_verification_code` a reused or expired attempt.
+is a wrong secret, `token call refused: bad_verification_code` a reused or expired attempt, and
+`token call refused: unverified_user_email` a reviewer whose primary GitHub email is not verified.
 
 ## Tests
 
