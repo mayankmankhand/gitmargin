@@ -261,12 +261,15 @@ the organization). A public repository does not let everyone in: reading it is n
 
 It needs two things from your GitHub App, and one of them changes what reviewers see:
 
-1. **Install the App on that repository.** On the App's page, Install App, your account or organization, **Only
-   select repositories**, pick the repository. The service can only check repositories the App is installed on.
-2. **Give the App one permission:** Permissions and events, Repository permissions, **Metadata: Read-only**. It is
-   what lets the service list which repositories a reviewer can open. GitHub then shows reviewers more on its
+1. **Give the App one permission first:** Permissions and events, Repository permissions, **Metadata: Read-only**.
+   It is what lets the service list which repositories a reviewer can open. GitHub then shows reviewers more on its
    permission screen than "verify your identity" (it says the App can act on their behalf, even though this App can do
    nothing but read that list). Decide whether your reviewers will accept that screen before you switch the rule on.
+2. **Then install the App on that repository.** On the App's page, Install App, your account or organization, **Only
+   select repositories**, pick the repository. The service can only check repositories the App is installed on.
+   If the App was already installed when you added the permission, GitHub keeps the old permissions until you accept
+   the new one: your Settings, Applications, Installed GitHub Apps, the App, and accept the request. Until then
+   reviewers see "cannot check who can open ...".
 
 ```bash
 node bin/gitmargin.js identity prototype.gitmargin.html github --members your-org/your-repo
@@ -274,8 +277,10 @@ node bin/gitmargin.js identity prototype.gitmargin.html github --members your-or
 
 The command reminds you of both. The check is made at each sign-in, with the reviewer's own token, and thrown away.
 If the App lacks the permission, reviewers see "The author's GitHub App cannot check who can open ..." rather than a
-wrong "not a member". The rule holds names, not permanent ids: after renaming the repository or its owner, run the
-command again.
+wrong "not a member". **If every reviewer is told their account has no access**, the App is not installed on that
+repository, or the rule names it wrongly: install it, or check the `owner/repo` spelling. With the rule on, removing
+someone means taking away their access to the repository, then running the command again, which ends every pass. The
+rule holds names, not permanent ids: after renaming the repository or its owner, run the command again.
 
 **GitHub allows one free personal account per person** (its terms of service), so testing "a second reviewer" alone
 means a second browser that stays signed out, or a second real person, not a second account of your own.

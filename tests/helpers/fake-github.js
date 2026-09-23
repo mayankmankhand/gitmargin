@@ -91,6 +91,7 @@ export async function startFakeGithub(options = {}) {
     failToken: false, // the token call refuses, the way GitHub does: 200 and an `error` field
     failApi: false, // the REST API is down
     noMetadata: false, // the App has no Metadata permission, so repository lists are refused
+    samlBlocked: false, // the organization enforces single sign-on the token has not been granted
     extraRepos: 0, // more repositories on the `acme` installation, before the real ones, for paging tests
   };
   const clientId = options.clientId || 'Iv23fakegithubclientid';
@@ -277,6 +278,7 @@ export async function startFakeGithub(options = {}) {
       const listing = /^\/user\/installations\/(\d+)\/repositories$/.exec(path);
       if (listing) {
         if (settings.noMetadata) return json(res, 403, { message: 'Resource not accessible by integration' });
+        if (settings.samlBlocked) return json(res, 403, { message: 'Resource protected by organization SAML enforcement. You must grant your OAuth token access to this organization.' });
         const installation = INSTALLATIONS.find((i) => String(i.id) === listing[1]);
         if (!installation || !visibleTo(person, installation).length) return json(res, 404, { message: 'Not Found' });
         const perPage = Math.min(100, Math.max(1, Number(url.searchParams.get('per_page')) || 30));

@@ -157,8 +157,13 @@ async function githubAccess(deps, settings, token, rule) {
   for (let page = 1; page <= GITHUB_PAGES; page++) {
     const answer = await get(`/user/installations/${installation.id}/repositories?per_page=100&page=${page}`);
     if (answer.status === 403) {
-      // The App was created without Metadata read. Say so to the person, by name
-      // to the author's log; never "not a member", which would be a false verdict.
+      // Never "not a member", which would be a false verdict. GitHub says "not
+      // accessible by integration" when the App lacks the permission; a 403 for
+      // anything else (company single sign-on, a rate limit) is logged as GitHub
+      // worded it, and the person is told only that GitHub did not confirm
+      // (review of #17, R13). GitHub's message carries no token.
+      const said = await answer.json().then((b) => String((b && b.message) || ''), () => '');
+      if (!/not accessible by integration/i.test(said)) throw new Error(`repositories refused: ${said.slice(0, 80) || 403}`);
       const unchecked = new Error('repositories refused: the App has no Metadata permission');
       unchecked.problem = `The author's GitHub App cannot check who can open ${rule}. Tell the author: it needs read access to repository metadata.`;
       throw unchecked;

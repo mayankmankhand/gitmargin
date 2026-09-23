@@ -161,6 +161,17 @@ test('an App without the Metadata permission is a named problem, never "not a me
   assert.ok(ctx.logged.some((l) => l.includes('repositories refused')));
 });
 
+test('a refusal for any other reason is not blamed on the permission (review of #17, R13)', async (t) => {
+  const ctx = await setUp(t);
+  ctx.github.set({ samlBlocked: true });
+  const { page, claimStatus } = await signIn(ctx);
+  assert.equal(page.status, 502);
+  assert.ok(page.text.includes('GitHub did not confirm the sign-in'), page.text);
+  assert.ok(!page.text.includes('metadata'), 'a single sign-on refusal was blamed on the missing permission');
+  assert.equal(claimStatus, 404);
+  assert.ok(ctx.logged.some((l) => l.includes('repositories refused: Resource protected by organization SAML enforcement')));
+});
+
 test('GitHub down after the token is "did not confirm", and grants nothing', async (t) => {
   const ctx = await setUp(t);
   ctx.github.set({ failApi: true });
