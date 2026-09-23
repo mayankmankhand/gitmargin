@@ -133,6 +133,13 @@
 - **A cost reason for leaving something unfixed is a guess until it is timed.**
 - **Two rules that cover the same fixture hide each other from its tests; break each one alone.**
 
+### gitmargin: sign in with GitHub (issue #17, 2026-09-23)
+- **A setting that sounds safer can shut out everyone else: read what it restricts, not what it protects.**
+- **A header the runtime always sends cannot be tested by its absence; assert its value.**
+- **Check every step of a live walk against the provider's current pages before the owner runs it.**
+- **A copy attached before a feature existed carries the old overlay for good; check its date before a walk uses it.**
+- **Evidence the owner says he does not have is recorded as missing, never asked for again.**
+
 ## Mistakes to Avoid
 
 - **Fill a plan's Outcomes by replacing the template placeholder, not inserting above it.**
