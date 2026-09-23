@@ -147,6 +147,15 @@
 - **A platform's default protection can leave open the one address people actually visit; check it and warn.**
 - **When a pasted secret is refused, compare it with the platform's record without printing either.**
 
+### gitmargin: the Claude Code plugin (issue #16, 2026-09-23)
+- **A prompt file that reads right is still untested: rehearse it in real sessions before trusting it.**
+- **In a plugin skill, only SKILL.md and its allowed-tools see `${CLAUDE_PLUGIN_ROOT}`; supporting files and the shell do not.**
+- **A skill Claude may start on its own must not declare allowed-tools: the grant makes the skill itself need approval.**
+- **"Yes, and don't ask again" saves one subcommand per project; only a hand-added rule covers a whole command.**
+- **A trust rule that assumes a person typed the command breaks the day an agent types it.**
+- **Check what a validator actually validates before counting its pass as evidence.**
+- **A mutation that does not apply proves nothing; make the harness say so.**
+
 ## Mistakes to Avoid
 
 - **Fill a plan's Outcomes by replacing the template placeholder, not inserting above it.**
