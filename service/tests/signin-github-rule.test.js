@@ -106,6 +106,11 @@ test('someone GitHub lets open the repository is a member, whatever the case of 
   assert.deepEqual(listingCalls(ctx).map((r) => r.path), ['/api/v3/user/installations/71/repositories']);
 });
 
+test('someone who can open the lookalike AND the repository is a member: the lookalike does not stop the search', async (t) => {
+  const ctx = await setUp(t, { person: 'lee' });
+  assert.equal((await signIn(ctx)).claim.member, true);
+});
+
 test('access to a repository whose name merely starts the same is not access', async (t) => {
   const ctx = await setUp(t, { person: 'dana' }); // dana can open acme/app-two only
   const { page, claim } = await signIn(ctx);
@@ -120,6 +125,11 @@ test('access to a repository whose name merely starts the same is not access', a
 test('a repository on another owner, or no installation at all, means not a member', async (t) => {
   const otherOwner = await setUp(t, { members: 'octopriya/app' }); // octopriya's installation holds notes, not app
   assert.equal((await signIn(otherOwner)).claim.member, false);
+
+  // The installation asked is the one on the rule's owner, not simply the first one listed.
+  const second = await setUp(t, { members: 'octopriya/notes' });
+  assert.equal((await signIn(second)).claim.member, true);
+  assert.deepEqual(listingCalls(second).map((r) => r.path), ['/api/v3/user/installations/72/repositories']);
 
   const none = await setUp(t, { person: 'noor' }); // noor sees no installation
   assert.equal((await signIn(none)).claim.member, false);
