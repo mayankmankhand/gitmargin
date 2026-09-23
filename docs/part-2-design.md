@@ -8,8 +8,10 @@ Decided 2026-09-19. It came out of thinking through issues
 four features. It replaces the parked list in section 7 of [the split](v0-split.md) as the description of part 2.
 Technical terms are explained in the research report's [glossary](../research/prior-art-landscape.md#8-glossary).
 
-**Status on 2026-09-21:** cycle 1 (section 7), the sign-in core and the GitLab plug, is built under issue #18 and was
-walked on two computers with two gitlab.com accounts. Everything else here is decided and not yet built, and says so.
+**Status on 2026-09-23:** cycle 1 (section 7), the sign-in core and the GitLab plug, is built under issue #18 and was
+walked on two computers with two gitlab.com accounts. Cycle 2, the GitHub plug (issue #17), is built and tested against
+a stand-in GitHub in Chromium and Firefox; its walk on the real github.com waits for the owner. Everything else here is
+decided and not yet built, and says so.
 The contract is `service/API.md`; setup and warnings are in `service/README.md`.
 
 ## 1. Why one design
@@ -42,7 +44,7 @@ publishing falls back to when a project has no host at all. Its costs are stated
 locked down, so it cannot use browser storage and does not remember a reviewer between visits; it holds one file of
 up to 4 MB; and the link is the only gate, unless the author turns strict reading on (section 4).
 
-**Socket 2: who may comment.** Three plugs: typed names (the default), GitLab (built, cycle 1), and GitHub (cycle 2). Two optional rules
+**Socket 2: who may comment.** Three plugs: typed names (the default), GitLab (built, cycle 1), and GitHub (built, cycle 2). Two optional rules
 sit beside them, set per prototype: *only members of this group may comment*, and *only signed-in members may read*.
 The GitLab plug is written against the open sign-in standard GitLab follows (OpenID Connect), reading its addresses
 from the provider's own discovery document. A company login such as Okta, Microsoft or Google is then a settings
@@ -242,7 +244,10 @@ Each cycle ends in a live test on accounts one person owns, before the next star
    shared core from [#17](https://github.com/mayankmankhand/gitmargin/issues/17)). GitLab first because GitLab Pages
    with access control is the only free host where the page itself is private, so it is where the thesis is true.
 2. **The GitHub plug** ([#17](https://github.com/mayankmankhand/gitmargin/issues/17)), using the kind of GitHub app
-   whose permission screen says only "verify your identity". It proves the socket takes a second plug.
+   whose permission screen says only "verify your identity". It proves the socket takes a second plug. **Built
+   2026-09-23:** a GitHub App created with no permissions, PKCE and the App's secret on the service, who someone is
+   from GitHub's `/user`; the pop-up, the confirm page, the pass and strict reading are cycle 1's, unchanged, and the
+   overlay needed no change at all. A GitLab prototype and a GitHub prototype live side by side on one service.
 3. **The plugin** ([#16](https://github.com/mayankmankhand/gitmargin/issues/16)): install, service setup, publish
    with detect, propose, confirm once, remember, and the file, link, GitHub Pages and GitLab Pages channels.
 4. **The Vercel channel and same-project mode** ([#19](https://github.com/mayankmankhand/gitmargin/issues/19)). The
@@ -260,5 +265,7 @@ Each cycle ends in a live test on accounts one person owns, before the next star
   path is documented as untested and not claimed.
 - **One author, one service.** A team can share one by sharing its author secret, which is a known limit. The pass
   design leaves room for authors who sign in too; that is not built.
+- **GitHub allows one free personal account per person.** One person testing GitHub sign-in alone can play a signed-in
+  reviewer and a signed-out one, not two signed-in people; a second real person is the only honest second account.
 - **Safari is untested** ([#7](https://github.com/mayankmankhand/gitmargin/issues/7)), and pop-ups on phones wait
   for the phone mode that stays parked in [#2](https://github.com/mayankmankhand/gitmargin/issues/2).

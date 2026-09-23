@@ -199,6 +199,69 @@ The reason is in the function's log by name, never with a secret in it: `vercel 
 and look for `token call refused:`. `invalid_client` is a wrong ID or Secret; `invalid_grant` is a reused attempt or a
 callback address that is not registered on the application.
 
+## Sign-in with GitHub (optional, per prototype)
+
+The same sign-in with GitHub in place of GitLab: reviewers press **Sign in with GitHub**, approve GitHub's screen the
+first time, press **Continue** on your service's confirm page, and comment under their GitHub name. Everything in
+"What a reviewer does", "What you should know" and "Strict reading" above holds word for word, with GitHub for GitLab.
+One service can hold GitLab prototypes and GitHub prototypes side by side; each prototype has one mode.
+
+### Set it up, once per service
+
+1. **Create a GitHub App**, in the account that owns the repositories you work in: your own account, or your
+   organization (an organization can own an App). Signed in to GitHub, open Settings, Developer settings, GitHub Apps,
+   **New GitHub App** (for your own account that is `https://github.com/settings/apps/new`). Fill in:
+
+   | Field | Value |
+   |---|---|
+   | GitHub App name | anything free on GitHub, such as `gitmargin-comments-<your name>` |
+   | Homepage URL | `https://<project>.vercel.app` |
+   | Callback URL | `https://<project>.vercel.app/auth/callback` |
+   | Expire user authorization tokens | leave ticked |
+   | Request user authorization (OAuth) during installation | leave unticked |
+   | Enable Device Flow | leave unticked |
+   | Webhook, Active | **untick** it (the App needs no events) |
+   | Permissions | leave every one at **No access** |
+   | Where can this GitHub App be installed? | **Only on this account** |
+
+   **Create GitHub App.** Its page shows a **Client ID** (it starts with `Iv`). Under Client secrets press **Generate a
+   new client secret** and copy it at once: GitHub shows it only this one time. With no permissions, GitHub's screen
+   asks reviewers only to let the App verify who they are. That is the point: a frightening permission screen is the
+   login friction that most likely sank GitLab's own Visual Reviews.
+2. **Give both to the deployment**, as sensitive values, then redeploy:
+
+   ```bash
+   vercel env add GITMARGIN_GITHUB_ID production --sensitive
+   vercel env add GITMARGIN_GITHUB_SECRET production --sensitive
+   vercel deploy --prod
+   ```
+
+   **Paste the bare value**, as with GitLab: no quotes, nothing around it. A GitHub Enterprise Server also needs
+   `GITMARGIN_GITHUB_URL` (default `https://github.com`).
+3. **Switch it on for a prototype:**
+
+   ```bash
+   node bin/gitmargin.js identity prototype.gitmargin.html github
+   node bin/gitmargin.js identity prototype.gitmargin.html github --read members
+   ```
+
+   Anyone with a GitHub account who can open the page may then comment, under their GitHub name.
+
+**GitHub allows one free personal account per person** (its terms of service), so testing "a second reviewer" alone
+means a second browser that stays signed out, or a second real person, not a second account of your own.
+
+### When a GitHub sign-in fails
+
+| The small window shows | It means | Do |
+|---|---|---|
+| GitHub's own page: "The redirect_uri is not associated with this application" | the Callback URL on the App is not `https://<project>.vercel.app/auth/callback` | fix it on the App's page; no redeploy needed |
+| GitHub's own 404 | the Client ID is wrong | add `GITMARGIN_GITHUB_ID` again, bare, and redeploy |
+| "GitHub did not confirm the sign-in" | the client secret is wrong, or GitHub was unreachable | generate a new client secret, add it again, redeploy |
+| "not set up for GitHub sign-in yet" | one of the two values is missing | `vercel env ls production` should list both |
+
+In the function's log (`vercel logs <project>.vercel.app --since 30m`), `token call refused: incorrect_client_credentials`
+is a wrong secret, and `token call refused: bad_verification_code` a reused or expired attempt.
+
 ## Tests
 
 From the repository root, `npm test` runs this folder's tests too. They use an in-process Postgres, so they need no

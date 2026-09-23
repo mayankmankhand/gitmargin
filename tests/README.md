@@ -18,6 +18,8 @@ reviewer receives a prototype in part 1. For a plain file, nothing here starts a
 | `tests/roundtrip.spec.js`, `tests/cli-roundtrip.spec.js` | Playwright | the part-1 overlay and the attach, comment, pull round trip |
 | `tests/shared.spec.js` | Playwright | shared comments between two and three real browsers |
 | `tests/signin.spec.js` | Playwright | sign-in with a fake GitLab and a real pop-up |
+| `tests/signin-github.spec.js` | Playwright | the same sign-in with a fake GitHub (issue #17): from disk, the stored copy and a web address |
+| `service/tests/signin.test.js`, `service/tests/signin-github.test.js`, `service/tests/signin-github-rule.test.js` | node:test | every sign-in rule in `service/API.md`, for GitLab and GitHub, against the two fakes in `tests/helpers/` |
 | `tests/overlay-rethink.spec.js` | Playwright | the redrawn overlay (issue #21): the light/dark switch, initials and colours, pin placement, the sheet's links to the pins, Unread, open state across a rebuild |
 | `tests/theme.test.js`, `tests/author.test.js` | node:test | the luminance maths behind the switch, and the initials and colour a chip carries |
 | `tests/screens.spec.js` | Playwright | a prototype with more than one screen (issue #24): a comment's pin stays on the screen it was made on, and the light/dark look follows a page that changes after load |
