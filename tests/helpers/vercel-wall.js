@@ -53,7 +53,10 @@ export async function startVercelWall(target, { bypass = FAKE_BYPASS } = {}) {
         res.writeHead(303, { location: next, 'set-cookie': '_vercel_jwt=passed; Path=/; HttpOnly; SameSite=Lax', 'cache-control': 'no-store' });
         return res.end();
       }
-      res.writeHead(401, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
+      // An ordinary 200 page, as Vercel's own login is: a client that follows the
+      // redirect sees a page that looks like success, which is why the command
+      // line must never follow it.
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
       return res.end(
         `<!doctype html><title>Log in to Vercel</title><h1 id="wall">Log in to Vercel</h1>` +
           `<form method="post" action="/__wall/login?next=${encodeURIComponent(next)}"><button id="wall-login">Continue</button></form>`,
