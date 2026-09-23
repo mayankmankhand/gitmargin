@@ -14,6 +14,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { startService } from './helpers/service-server.js';
 import { startFakeGitlab } from './helpers/fake-gitlab.js';
+import { startFakeGithub } from './helpers/fake-github.js';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const CLI = path.join(ROOT, 'bin', 'gitmargin.js');
@@ -31,9 +32,10 @@ function run(args, env = {}) {
   });
 }
 
-async function setup(t, { gitlab = true } = {}) {
-  const fake = await startFakeGitlab();
-  const service = await startService(gitlab ? { gitlab: fake } : {});
+async function setup(t, { gitlab = true, provider = 'gitlab' } = {}) {
+  // `gitlab: false` means the service has no application for the provider at all.
+  const fake = provider === 'github' ? await startFakeGithub() : await startFakeGitlab();
+  const service = await startService(gitlab ? { [provider]: fake } : {});
   fake.allowRedirect(`${service.url}/auth/callback`);
   const dir = mkdtempSync(path.join(tmpdir(), 'gitmargin-identity-'));
   t.after(async () => {
@@ -227,4 +229,55 @@ test('pull --live with reading open never sends the secret, even when it is set'
   const read = await run(['pull', through, '--live'], s.env);
   assert.equal(read.code, 0, read.err);
   assert.deepEqual(seen, [null]);
+});
+
+// ---- GitHub (issue #17) ---------------------------------------------------------
+
+test('identity github switches GitHub sign-in on and says who can do what, in GitHub words', async (t) => {
+  const s = await setup(t, { provider: 'github' });
+  const r = await run(['identity', s.copy, 'github'], s.env);
+  assert.equal(r.code, 0, r.err);
+  assert.match(r.err, /people comment under their GitHub name/);
+  assert.match(r.err, /anyone with a GitHub account who can open the page/);
+  assert.ok(!/group/i.test(r.err), 'the GitHub printout talked about a group');
+  assert.equal((await post(s, 'c_aaaaaa', 'no pass')).status, 401, 'the service did not start asking for a pass');
+
+  const strict = await run(['identity', s.copy, 'github', '--read', 'members'], s.env);
+  assert.equal(strict.code, 0, strict.err);
+  assert.match(strict.err, /signed-in members only/);
+});
+
+test('identity github refuses --members, and sends nothing when it does', async (t) => {
+  const s = await setup(t, { provider: 'github' });
+  const r = await run(['identity', s.copy, 'github', '--members', 'acme/app'], s.env);
+  assert.equal(r.code, 1);
+  assert.match(r.err, /GitHub sign-in takes no --members/);
+  const listed = await (await fetch(`${s.service.url}/api/p/${s.key}/comments`)).json();
+  assert.deepEqual(listed.prototype, { name: 'proto.html' }, 'the refused command still changed the setting');
+});
+
+test('identity github says so when the service has no GitHub App set up', async (t) => {
+  const s = await setup(t, { provider: 'github', gitlab: false });
+  const r = await run(['identity', s.copy, 'github'], s.env);
+  assert.equal(r.code, 2);
+  assert.match(r.err, /no GitHub App set up/);
+  assert.match(r.err, /GITMARGIN_GITHUB_ID and GITMARGIN_GITHUB_SECRET/);
+  assert.ok(!/GitLab/.test(r.err), 'the GitHub refusal named GitLab');
+});
+
+test('pull --live marks a GitHub author as verified, and a typed one as typed', async (t) => {
+  const s = await setup(t, { provider: 'github' });
+  assert.equal((await post(s, 'c_111111', 'Written before sign-in was on.')).status, 201);
+  assert.equal((await run(['identity', s.copy, 'github'], s.env)).code, 0);
+  const pass = await signIn(s);
+  assert.equal((await post(s, 'c_222222', 'Written under GitHub sign-in.', { pass, name: 'Not My Real Name' })).status, 201);
+
+  const pulled = await run(['pull', s.copy, '--live'], s.env);
+  assert.equal(pulled.code, 0, pulled.err);
+  const byId = Object.fromEntries(JSON.parse(pulled.out).comments.map((c) => [c.id, c.author]));
+  assert.deepEqual(byId.c_111111, { name: 'Sam, typed' });
+  assert.deepEqual(byId.c_222222, { name: 'Priya Shah', provider: 'github', username: 'octopriya', verified: true });
+
+  const markdown = (await run(['pull', s.copy, '--live', '--markdown'], s.env)).out;
+  assert.match(markdown, /From Priya Shah \(GitHub, verified\)\./);
 });

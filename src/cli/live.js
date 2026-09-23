@@ -117,6 +117,14 @@ const REFUSALS = {
     'deployment (service/README.md, "Sign-in"), redeploy, and run this again.',
 };
 
+/** What "not set up" means for each provider: which application, which two values (issue #17). */
+const NOT_CONFIGURED = {
+  gitlab: REFUSALS.provider_not_configured,
+  github:
+    'The comment service has no GitHub App set up yet. Add GITMARGIN_GITHUB_ID and GITMARGIN_GITHUB_SECRET to its\n' +
+    'deployment (service/README.md, "Sign-in with GitHub"), redeploy, and run this again.',
+};
+
 async function call(address, method, route, { body, auth } = {}) {
   let response;
   try {
@@ -377,11 +385,11 @@ export async function removeComment(args) {
   return EXIT_OK;
 }
 
-const IDENTITIES = ['none', 'gitlab'];
-const PROVIDER_NAMES = { gitlab: 'GitLab' };
+const IDENTITIES = ['none', 'gitlab', 'github'];
+const PROVIDER_NAMES = { gitlab: 'GitLab', github: 'GitHub' };
 
 /**
- * `gitmargin identity <attached copy> <none|gitlab> [--members <group>] [--read open|members]`
+ * `gitmargin identity <attached copy> <none|gitlab|github> [--members <group>] [--read open|members]`
  *
  * Who may comment on a shared prototype (issue #18). The setting lives on the
  * comment service, not in the page, so nothing is re-attached and the copies
@@ -392,7 +400,7 @@ export async function setIdentityMode(args) {
   const members = takeOption(args, '--members');
   const read = takeOption(members.rest, '--read');
   const positional = read.rest.filter((a) => !a.startsWith('-'));
-  const usage = 'identity needs the attached copy and a mode: none or gitlab.';
+  const usage = 'identity needs the attached copy and a mode: none, gitlab or github.';
   if (positional.length !== 2) throw new CliError(usage, EXIT_USAGE, 'Try: gitmargin identity prototype.gitmargin.html gitlab --members your-group');
   const [file, mode] = positional;
   if (!IDENTITIES.includes(mode)) throw new CliError(`Not a sign-in mode: ${mode}`, EXIT_USAGE, `One of: ${IDENTITIES.join(', ')}`);
@@ -400,14 +408,28 @@ export async function setIdentityMode(args) {
   if (mode === 'none' && (members.present || read.present)) {
     throw new CliError('--members and --read only mean something with a sign-in mode.', EXIT_USAGE, 'Try: gitmargin identity <copy> none');
   }
+  if (mode === 'github' && members.present) {
+    throw new CliError(
+      'GitHub sign-in takes no --members yet: anyone who signs in with GitHub may comment.',
+      EXIT_USAGE,
+      'Try: gitmargin identity <copy> github, with --read members to keep the comments to signed-in people.'
+    );
+  }
 
   const stamp = sharedStamp(file);
   const auth = secret();
   assertSecretMayGo(stamp.service, { typed: false });
-  const set = await call(stamp.service, 'PATCH', `/api/prototypes/${stamp.key}`, {
-    auth,
-    body: { identity: mode, members: members.value, ...(read.present ? { read: read.value } : {}) },
-  });
+  let set;
+  try {
+    set = await call(stamp.service, 'PATCH', `/api/prototypes/${stamp.key}`, {
+      auth,
+      body: { identity: mode, members: members.value, ...(read.present ? { read: read.value } : {}) },
+    });
+  } catch (refusal) {
+    // The service says only "not configured"; the CLI knows which provider was asked for.
+    if (refusal.refusal === 'provider_not_configured' && NOT_CONFIGURED[mode]) throw new CliError(NOT_CONFIGURED[mode], EXIT_REFUSED, 'Nothing was changed.');
+    throw refusal;
+  }
 
   const name = path.basename(file);
   const lines = [];
