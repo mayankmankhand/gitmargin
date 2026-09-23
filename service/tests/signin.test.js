@@ -531,6 +531,14 @@ test('strict reading: sign in, Continue, and the copy opens once, with a code th
   assert.equal((await call(ctx, 'POST', `/api/p/${ctx.key}/auth/claim`, { body: { code: m[3] } })).status, 404, 'and so does the code');
 });
 
+test('strict reading with no group named: the gate names GitLab, not a group that does not exist (review of #17, R14)', async (t) => {
+  const ctx = await setUp(t, { members: null, read: 'members' });
+  const gate = await call(ctx, 'GET', `/p/${ctx.key}/latest`);
+  assert.equal(gate.status, 401);
+  assert.ok(gate.text.includes('Its author shares it only with people who sign in with GitLab.'), gate.text);
+  assert.ok(!gate.text.includes('group'), 'the gate named a group the author never named');
+});
+
 test('strict reading: a ticket opens only the address it was made for, and only for a minute', async (t) => {
   const ctx = await setUpStrict(t);
   const forLatest = (await pressContinue(ctx, await toReturnConfirm(ctx, 'latest'))).headers.get('location');

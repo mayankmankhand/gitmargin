@@ -46,6 +46,12 @@ export function shortCode(codeHash) {
   return `${digits.slice(0, 2)}-${digits.slice(2)}`;
 }
 
+/**
+ * A GitHub members rule names one repository, `owner/repo`, in the characters
+ * GitHub allows (issue #17). Anything else is not a repository.
+ */
+export const isRepoPath = (v) => typeof v === 'string' && /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/[A-Za-z0-9._-]{1,100}$/.test(v);
+
 /** A group path as the author typed it: trimmed, no edge slashes. Null when there is none. */
 export function cleanGroup(value) {
   if (value === null || value === undefined || value === '') return null;
@@ -89,14 +95,87 @@ function providerAddressOk(address) {
 export const cleanSetting = (value) => String(value || '').trim().replace(/^['"\s]+|['"\s]+$/g, '');
 
 export function providerSettings(deps, name) {
+  const provider = PROVIDERS[name];
   const settings = deps.providers && deps.providers[name];
-  if (!settings || !deps.origin || !deps.fetch) return null;
+  if (!provider || !settings || !deps.origin || !deps.fetch) return null;
   const id = cleanSetting(settings.id);
   const secret = cleanSetting(settings.secret);
   if (!id || !secret) return null;
-  const url = (cleanSetting(settings.url) || 'https://gitlab.com').replace(/\/+$/, '');
+  const url = (cleanSetting(settings.url) || provider.defaultUrl).replace(/\/+$/, '');
   if (!providerAddressOk(url)) return null;
   return { url, id, secret };
+}
+
+/**
+ * Where GitHub keeps its API. github.com keeps it on a host of its own; GitHub
+ * Enterprise Server, and the test suite's fake, keep it under `/api/v3`.
+ */
+export function githubApi(url) {
+  return /^https:\/\/github\.com$/i.test(url) ? 'https://api.github.com' : `${url}/api/v3`;
+}
+
+/**
+ * GitHub asks every caller to name itself in the User-Agent and to name the API
+ * version. (It refuses a call with no User-Agent at all, but Node's own fetch
+ * always sends `node`, so that refusal cannot happen here: measured 2026-09-23.)
+ */
+const GITHUB_HEADERS = {
+  accept: 'application/vnd.github+json',
+  'user-agent': 'gitmargin-comment-service',
+  'x-github-api-version': '2022-11-28',
+};
+
+/** How far a repository rule looks: 10 pages of 100 repositories. Past that it fails closed. */
+const GITHUB_PAGES = 10;
+
+/**
+ * Does GitHub give this person explicit access to the rule's repository?
+ * Asked with the person's own short-lived token, against the author's App:
+ * `/user/installations` lists the installations the person can see (it needs
+ * no permission), and the one on the rule's owner lists the repositories the
+ * person can open (it needs the App's Metadata read permission). Returns the
+ * matching full name in a list, or an empty list: the members rule then
+ * compares it exactly as it compares GitLab's groups. Any failure throws, so a
+ * broken call is never read as "not a member".
+ */
+async function githubAccess(deps, settings, token, rule) {
+  const api = githubApi(settings.url);
+  const get = (path) => deps.fetch(`${api}${path}`, { headers: { ...GITHUB_HEADERS, authorization: `Bearer ${token}` } });
+  const owner = rule.split('/')[0].toLowerCase();
+  const wanted = rule.toLowerCase();
+
+  const found = await get('/user/installations?per_page=100');
+  if (!found.ok) throw new Error(`installations answered ${found.status}`);
+  const { installations } = await found.json();
+  // Only the installation on the rule's own owner is asked: a repository of
+  // that name can only live there.
+  const installation = (Array.isArray(installations) ? installations : []).find(
+    (i) => i && i.account && typeof i.account.login === 'string' && i.account.login.toLowerCase() === owner && Number.isSafeInteger(i.id)
+  );
+  if (!installation) return [];
+
+  for (let page = 1; page <= GITHUB_PAGES; page++) {
+    const answer = await get(`/user/installations/${installation.id}/repositories?per_page=100&page=${page}`);
+    if (answer.status === 403) {
+      // Never "not a member", which would be a false verdict. GitHub says "not
+      // accessible by integration" when the App lacks the permission; a 403 for
+      // anything else (company single sign-on, a rate limit) is logged as GitHub
+      // worded it, and the person is told only that GitHub did not confirm
+      // (review of #17, R13). GitHub's message carries no token.
+      const said = await answer.json().then((b) => String((b && b.message) || ''), () => '');
+      if (!/not accessible by integration/i.test(said)) throw new Error(`repositories refused: ${said.slice(0, 80) || 403}`);
+      const unchecked = new Error('repositories refused: the App has no Metadata permission');
+      unchecked.problem = `The author's GitHub App cannot check who can open ${rule}. Tell the author: it needs read access to repository metadata.`;
+      throw unchecked;
+    }
+    if (!answer.ok) throw new Error(`repositories answered ${answer.status}`);
+    const { repositories } = await answer.json();
+    const names = (Array.isArray(repositories) ? repositories : []).map((r) => r && r.full_name).filter((n) => typeof n === 'string');
+    const match = names.find((n) => n.toLowerCase() === wanted);
+    if (match) return [match];
+    if (names.length < 100) return [];
+  }
+  return []; // past the bound: fail closed
 }
 
 /** One discovery per provider address per warm function. A failure is not remembered. */
@@ -120,11 +199,13 @@ function discover(deps, settings) {
 
 /**
  * Providers are adapters with two jobs, so GitHub is a second entry here and
- * not a second flow. `openid` is the only permission ever asked for.
+ * not a second flow (issue #17). Neither asks for more than "who are you":
+ * GitLab's `openid`, and a GitHub App created with no permissions.
  */
 const PROVIDERS = {
   gitlab: {
     label: 'GitLab',
+    defaultUrl: 'https://gitlab.com',
     async authorizeUrl(deps, settings, { redirectUri, state, challenge }) {
       const meta = await discover(deps, settings);
       const go = new URL(meta.authorization_endpoint);
@@ -169,6 +250,60 @@ const PROVIDERS = {
         username,
         name: cleanName(who.name) || username || 'Someone',
         groups: Array.isArray(who.groups) ? who.groups.filter((g) => typeof g === 'string').slice(0, 2000) : null,
+      };
+    },
+  },
+  github: {
+    label: 'GitHub',
+    defaultUrl: 'https://github.com',
+    // A GitHub App's permissions are set on the App, so no `scope` is sent.
+    async authorizeUrl(deps, settings, { redirectUri, state, challenge }) {
+      const go = new URL(`${settings.url}/login/oauth/authorize`);
+      go.search = new URLSearchParams({
+        client_id: settings.id,
+        redirect_uri: redirectUri,
+        state,
+        code_challenge: challenge,
+        code_challenge_method: 'S256',
+      }).toString();
+      return go.toString();
+    },
+    /** Who is this, and, with a rule, may they? The token lives for the length of this function. */
+    async identify(deps, settings, { code, verifier, redirectUri, members }) {
+      const tokenAnswer = await deps.fetch(`${settings.url}/login/oauth/access_token`, {
+        method: 'POST',
+        // Without `accept: application/json` GitHub answers form-encoded text.
+        headers: { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json', 'user-agent': GITHUB_HEADERS['user-agent'] },
+        body: new URLSearchParams({
+          client_id: settings.id,
+          client_secret: settings.secret,
+          code,
+          redirect_uri: redirectUri,
+          code_verifier: verifier,
+        }).toString(),
+      });
+      const token = await tokenAnswer.json().catch(() => ({}));
+      // GitHub reports most refusals as a 200 with an `error` field (and an
+      // unknown client as a 404), so only a returned token means yes. The
+      // error NAME only: a provider's error body can echo what it was sent.
+      if (typeof token.access_token !== 'string' || !token.access_token) {
+        throw new Error(`token call refused: ${typeof token.error === 'string' ? token.error.slice(0, 40) : tokenAnswer.status}`);
+      }
+      const whoAnswer = await deps.fetch(`${githubApi(settings.url)}/user`, {
+        headers: { ...GITHUB_HEADERS, authorization: `Bearer ${token.access_token}` },
+      });
+      if (!whoAnswer.ok) throw new Error(`user answered ${whoAnswer.status}`);
+      const who = await whoAnswer.json();
+      if (!Number.isSafeInteger(who.id) && !(typeof who.id === 'string' && /^\d{1,20}$/.test(who.id))) throw new Error('user has no id');
+      const username = cleanName(who.login || '');
+      return {
+        // The numeric id is permanent; the login can be changed and reused.
+        subject: String(who.id),
+        username,
+        // A display name is optional on GitHub, so the login stands in.
+        name: cleanName(who.name) || username || 'Someone',
+        // With no rule nothing more is asked of GitHub.
+        groups: members ? await githubAccess(deps, settings, token.access_token, members) : null,
       };
     },
   },
@@ -254,6 +389,8 @@ export async function setIdentity(deps, key, body, { json, refuse }) {
   const read = body.read === undefined ? 'open' : body.read;
   if (members === undefined || !['open', 'members'].includes(read)) return refuse(400, 'invalid');
   if (identity === 'none' && (members || read !== 'open')) return refuse(400, 'invalid');
+  // A GitHub rule names one repository (issue #17); a GitLab rule, a group.
+  if (identity === 'github' && members && !isRepoPath(members)) return refuse(400, 'invalid');
   if (identity !== 'none' && !providerSettings(deps, identity)) return refuse(409, 'provider_not_configured');
 
   await query('update prototypes set identity = $2, members = $3, read_rule = $4 where key = $1', [key, identity, members, read]);
@@ -351,12 +488,18 @@ export async function callback(deps, params) {
 
   let person;
   try {
-    person = await provider.identify(deps, settings, { code: params.code, verifier: signin.verifier, redirectUri: `${deps.origin}/auth/callback` });
+    person = await provider.identify(deps, settings, {
+      code: params.code,
+      verifier: signin.verifier,
+      redirectUri: `${deps.origin}/auth/callback`,
+      members: prototype.members,
+    });
   } catch (error) {
     // The message carries an error name or a status, never a token or the secret.
     if (deps.log) deps.log(error);
     await end();
-    return problemPage(502, `${provider.label} did not confirm the sign-in.`, returnAddress(signin));
+    // A named problem (the author's GitHub App cannot check the rule) is said as it is.
+    return problemPage(502, error.problem || `${provider.label} did not confirm the sign-in.`, returnAddress(signin));
   }
 
   const member = isMember(prototype.members, person.groups);
@@ -373,11 +516,13 @@ export async function callback(deps, params) {
     // claim. The verdict comes first: the owner read the earlier wording ("Signed
     // in as ...", then a rule) as a failure of the software (review of #18, R1).
     const back = returnAddress(signin);
+    // GitLab rules name a group, GitHub rules a repository (issue #17).
+    const repo = signin.provider === 'github';
     return htmlPage(
       200,
       'Not a member',
-      `<h1>Your account is not in ${escapeHtml(prototype.members)}</h1>` +
-        `<p>You are signed in to ${escapeHtml(provider.label)} as <strong>${escapeHtml(person.name)}</strong>, and this prototype ${signin.return_version ? 'can only be opened by' : 'only takes comments from'} members of that group. Nothing went wrong; this account is not one of them.</p>` +
+      `<h1>Your account ${repo ? 'has no access to' : 'is not in'} ${escapeHtml(prototype.members)}</h1>` +
+        `<p>You are signed in to ${escapeHtml(provider.label)} as <strong>${escapeHtml(person.name)}</strong>, and this prototype ${signin.return_version ? 'can only be opened by' : 'only takes comments from'} ${repo ? 'people who can open that repository' : 'members of that group'}. Nothing went wrong; this account is not one of them.</p>` +
         `<p>Ask the prototype's author for access. To use a different ${escapeHtml(provider.label)} account, sign out of ${escapeHtml(provider.label)} first, then sign in here again.</p>` +
         (back ? `<p class="muted"><a id="gm-back" href="${escapeHtml(back)}">Go back to the page</a></p>` : '<p class="muted">You can close this window.</p>'),
     );
@@ -510,10 +655,18 @@ export async function takeTicket({ query, now }, key, which, ticket) {
 export function gatePage(prototype, which) {
   const label = providerLabel(prototype.identity);
   const go = `/auth/start?key=${encodeURIComponent(prototype.key)}&return=${encodeURIComponent(which)}`;
+  // GitLab rules name a group, GitHub rules a repository; with no rule, whoever
+  // signs in with the provider (review of #17, R14: the GitLab sentence named a
+  // group even when the author had named none).
+  const audience = !prototype.members
+    ? `Its author shares it only with people who sign in with ${label}.`
+    : prototype.identity === 'github'
+      ? 'Its author shares it only with people who can open one GitHub repository.'
+      : `Its author shares it with members of one ${label} group only.`;
   return htmlPage(
     401,
     'Sign in to open this page',
-    `<h1>Sign in to open this page</h1><p>Its author shares it with members of one ${escapeHtml(label)} group only.</p>` +
+    `<h1>Sign in to open this page</h1><p>${escapeHtml(audience)}</p>` +
       `<p style="margin-top:14px"><a id="gm-signin" class="button primary" href="${escapeHtml(go)}">Sign in with ${escapeHtml(label)}</a></p>`,
   );
 }

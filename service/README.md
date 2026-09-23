@@ -120,8 +120,9 @@ disk, the service link, GitLab Pages, any host. The design and its reasons are i
    vercel deploy --prod
    ```
 
-   **Paste the bare value: no quotes, no `export`, nothing around it.** The prompt shows nothing while you paste, so
-   use the Copy button on GitLab's page and paste once. A wrong ID makes GitLab itself say "unknown client"; a wrong
+   **Paste the bare value: no quotes, no `export`, nothing around it.** The prompt shows only a `*` per character
+   (Vercel CLI 59), so use the Copy button on GitLab's page and paste once. Run it in your own terminal: the command
+   has to ask you for the value. A wrong ID makes GitLab itself say "unknown client"; a wrong
    Secret makes the sign-in window say "GitLab did not confirm the sign-in". The ID is the long value with no prefix;
    the Secret starts with `gloas-`. A self-managed GitLab also needs `GITMARGIN_GITLAB_URL` (default
    `https://gitlab.com`).
@@ -163,9 +164,12 @@ measured on gitlab.com, on a private group.
   someone sent them gives that person a pass for that one prototype, for at most 7 days.
 - **The members rule names a group by its full path,** matched whole and in any case, never by prefix. If you rename
   or delete the group, set the rule again: a freed path can be registered by someone else.
-- **A copy you shared before switching sign-in on can still read, but its comments are refused** until you attach
-  and share it again, because the older overlay in it has no sign-in button. The comments are kept on that person's
-  page, not lost.
+- **A copy you shared before switching sign-in on has no sign-in button,** because its overlay is older, so its new
+  comments are refused until you attach again and share the new copy. Attaching again keeps the same key and version.
+  Until then, with the default reading rule, the old copy still shows comments and says "A comment could not be
+  shared. It is saved here." With `--read members` it shows none, and says "The comment service does not know this
+  prototype. Comments are saved here only.", which is misleading: the service has the prototype, the old page just
+  cannot sign in. Either way the person's own comments stay on their page, not lost.
 - **Two people with the same display name are told apart by their handle.** The GitLab username is stored, comes
   through `pull`, is shown after the name in every thread, and chooses the colour of the person's pin, so two
   "Mayank Mankhand"s get two colours.
@@ -198,6 +202,116 @@ reading needs what commenting needs:
 The reason is in the function's log by name, never with a secret in it: `vercel logs <project>.vercel.app --since 30m`
 and look for `token call refused:`. `invalid_client` is a wrong ID or Secret; `invalid_grant` is a reused attempt or a
 callback address that is not registered on the application.
+
+## Sign-in with GitHub (optional, per prototype)
+
+> **Walked on the real github.com on 2026-09-23**, with a public App, a file on disk, the service link and a GitHub
+> Pages page, and the repository rule both ways. GitHub renames form fields from time to time: if a label below is
+> not on the page, look for the nearest one.
+
+The same sign-in with GitHub in place of GitLab: reviewers press **Sign in with GitHub**, approve GitHub's screen the
+first time, press **Continue** on your service's confirm page, and comment under their GitHub name. "What a reviewer
+does" and "Strict reading" above hold with GitHub for GitLab, and so does "What you should know", except its two
+bullets about a GitLab group. GitHub has no groups: with no rule, anyone with a GitHub account who can open the page
+may comment, and the most you can do to stop one person is run the `identity` command again, which ends every pass
+and which they can undo by signing in again. One service can hold GitLab prototypes and GitHub prototypes side by
+side; each prototype has one mode.
+
+### Set it up, once per service
+
+1. **Create a GitHub App**, in the account that owns the repositories you work in: your own account, or your
+   organization (an organization can own an App). Signed in to GitHub, open Settings, Developer settings, GitHub Apps,
+   **New GitHub App** (for your own account that is `https://github.com/settings/apps/new`). Fill in:
+
+   | Field | Value |
+   |---|---|
+   | GitHub App name | anything free on GitHub, such as `gitmargin-comments-<your name>` |
+   | Homepage URL | `https://<project>.vercel.app` |
+   | Redirect URI (under "Identifying and authorizing users") | `https://<project>.vercel.app/auth/callback` |
+   | Allow wildcard matching | leave unticked: sign-in codes go to this one address only |
+   | Expire user authorization tokens | leave ticked |
+   | Request user authorization (OAuth) during installation | leave unticked |
+   | Enable Device Flow | leave unticked |
+   | Webhook, Active | **untick** it (the App needs no events) |
+   | Permissions | leave every one at **No access** |
+   | Where can this GitHub App be installed? | **Any account** |
+
+   **Create GitHub App.** Its page shows a **Client ID** (it starts with `Iv`). Under Client secrets press **Generate a
+   new client secret** and copy it at once: GitHub shows it only this one time. With no permissions, GitHub's screen
+   asks reviewers only to let the App verify who they are. That is the point: a frightening permission screen is the
+   login friction that most likely sank GitLab's own Visual Reviews.
+
+   **Why Any account:** GitHub lets only the account that owns a private App ("Only on this account") sign in with it,
+   or, for an App an organization owns, only that organization's members. Every other reviewer would be turned away.
+   Any account lets anyone sign in, and lets anyone install your App on their own account, which gives them nothing:
+   the service only ever asks GitHub who a reviewer is. For a team whose reviewers all belong to one GitHub
+   organization, GitHub's documentation describes the other way round: an App the organization owns, left at Only on
+   this account, admits only its members, with no permission at all (not tested here).
+2. **Give both to the deployment**, as sensitive values, then redeploy:
+
+   ```bash
+   vercel env add GITMARGIN_GITHUB_ID production --sensitive
+   vercel env add GITMARGIN_GITHUB_SECRET production --sensitive
+   vercel deploy --prod
+   ```
+
+   **Paste the bare value**, as with GitLab: no quotes, nothing around it. A GitHub Enterprise Server also needs
+   `GITMARGIN_GITHUB_URL` (default `https://github.com`).
+3. **Switch it on for a prototype:**
+
+   ```bash
+   node bin/gitmargin.js identity prototype.gitmargin.html github
+   node bin/gitmargin.js identity prototype.gitmargin.html github --read members
+   ```
+
+   Anyone with a GitHub account who can open the page may then comment, under their GitHub name.
+
+### Only people who can open one repository: `--members owner/repo`
+
+GitHub has no groups the way GitLab does, so the GitHub rule names a repository: `--members your-org/your-repo` lets
+in only the people GitHub gives explicit access to it (its owner, its collaborators, and people with access through
+the organization). A public repository does not let everyone in: reading it is not explicit access.
+
+It needs two things from your GitHub App, and one of them changes what reviewers see:
+
+1. **Give the App one permission first:** Permissions and events, Repository permissions, **Metadata: Read-only**.
+   It is what lets the service list which repositories a reviewer can open. GitHub then shows reviewers more on its
+   permission screen than "verify your identity" (it says the App can act on their behalf, even though this App can do
+   nothing but read that list). Decide whether your reviewers will accept that screen before you switch the rule on.
+2. **Then install the App on that repository.** On the App's page, Install App, your account or organization, **Only
+   select repositories**, pick the repository. The service can only check repositories the App is installed on.
+   If the App was already installed when you added the permission, GitHub keeps the old permissions until you accept
+   the new one: your Settings, Applications, Installed GitHub Apps, the App, and accept the request (for an App
+   installed on an organization, the organization's own settings, GitHub Apps). Until then
+   reviewers see "cannot check who can open ...".
+
+```bash
+node bin/gitmargin.js identity prototype.gitmargin.html github --members your-org/your-repo
+```
+
+The command reminds you of both. The check is made at each sign-in, with the reviewer's own token, and thrown away.
+If the App lacks the permission, reviewers see "The author's GitHub App cannot check who can open ..." rather than a
+wrong "not a member". **If every reviewer is told their account has no access**, the App is not installed on that
+repository, or the rule names it wrongly: install it, or check the `owner/repo` spelling. With the rule on, removing
+someone means taking away their access to the repository, then running the command again, which ends every pass. The
+rule holds names, not permanent ids: after renaming the repository or its owner, run the command again.
+
+**GitHub allows one free personal account per person** (its terms of service), so testing "a second reviewer" alone
+means a second browser that stays signed out, or a second real person, not a second account of your own.
+
+### When a GitHub sign-in fails
+
+| The small window shows | It means | Do |
+|---|---|---|
+| GitHub's own page: "The redirect_uri is not associated with this application" | the Redirect URI on the App is not `https://<project>.vercel.app/auth/callback` | fix it on the App's page; no redeploy needed |
+| GitHub's own 404 | the Client ID is wrong | add `GITMARGIN_GITHUB_ID` again, bare, and redeploy |
+| "GitHub did not confirm the sign-in" | the client secret is wrong, GitHub was unreachable, or (for one reviewer only) their GitHub email is not verified | generate a new client secret, add it again, redeploy; for one reviewer, they verify their email on GitHub |
+| "not set up for GitHub sign-in yet" | one of the two values is missing | `vercel env ls production` should list both |
+| "This sign-in is unknown, was already used, or took longer than 10 minutes." | the attempt was reused or too slow | close the small window and press Sign in again |
+
+In the function's log (`vercel logs <project>.vercel.app --since 30m`), `token call refused: incorrect_client_credentials`
+is a wrong secret, `token call refused: bad_verification_code` a reused or expired attempt, and
+`token call refused: unverified_user_email` a reviewer whose primary GitHub email is not verified.
 
 ## Tests
 

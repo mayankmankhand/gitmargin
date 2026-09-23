@@ -4,14 +4,15 @@ The batch is the whole point of part 1. A reviewer leaves comments on a prototyp
 coding agent reads them and makes the edits. For the agent to do that without the author explaining anything, each
 comment has to say **where** the reviewer was and **why** they stopped, in a form the agent can act on.
 
-**Status: v0.7, 2026-09-22.** Draft v0.1 was written before any code existed; v0.2 followed the part-1 overlay
+**Status: v0.8, 2026-09-23.** Draft v0.1 was written before any code existed; v0.2 followed the part-1 overlay
 build, answering the open points in section 8; v0.3 follows the `attach` and `pull` commands (issue #5) and records
 what they settled; v0.4 records which element a click anchors (issue #10); v0.5 records what shared comments add (issue #15): who
 wrote a comment, replies that are no longer an empty slot, and the comment service as a fourth carrier; v0.6 records what
 sign-in adds (issue #18): an author the service has verified; v0.7 records how a comment keeps its place on a
-prototype with more than one screen (issue #24). The shape it belongs to is in [v0-split.md](v0-split.md).
+prototype with more than one screen (issue #24); v0.8 adds GitHub as a second provider an author can be verified by
+(issue #17). The shape it belongs to is in [v0-split.md](v0-split.md).
 
-The **document** revision is v0.7. The **wire format** stays `0.1`, in the envelope's `gitmargin` field and in the
+The **document** revision is v0.8. The **wire format** stays `0.1`, in the envelope's `gitmargin` field and in the
 first line of the markdown block, because the shape of what the overlay writes has not changed. What v0.3 added is on
 the reading side: how `pull` prints a batch (section 1), what it adds when it merges several (section 5a), and where
 the agent rules now travel (section 6). What v0.4 adds is one rule in section 3: which element a click anchors. What v0.5 adds is optional and additive: `author` on a comment, filled `replies`, and a per-comment `version_id`, each
@@ -19,6 +20,7 @@ written only when the page is shared, so a plain file's batch is byte for byte t
 reserved in v0.1 precisely so that filling it would not be a format change, and it is not one. What v0.6 adds is three
 optional fields on `author`, written only for a comment made under sign-in. What v0.7 adds is a reading rule in
 section 3, not a field: how the overlay finds a comment's element once the prototype has moved to another screen.
+What v0.8 adds is one more value for a field v0.6 already had: `provider` can be `github` as well as `gitlab`.
 The two version numbers are deliberately not the same thing.
 
 ## 1. Where the batch lives
@@ -188,7 +190,8 @@ the markdown rendering.
 **author** and **version_id** appear on a comment only when the page is shared. `author.name` is what that person
 typed, possibly empty, and identifies nobody. When the author has switched sign-in on for the prototype, the comment
 service fills `author` from the sign-in instead and ignores whatever the page sent:
-`{ "name": "Priya Shah", "provider": "gitlab", "username": "priya", "verified": true }`. `verified` is only ever
+`{ "name": "Priya Shah", "provider": "gitlab", "username": "priya", "verified": true }`. `provider` is `gitlab` or
+`github`, and `username` is that provider's handle (a GitHub login, for GitHub). `verified` is only ever
 written by the service, and `pull` keeps it only on comments that arrive from the service, whatever a file says: a
 returned file cannot promote a typed name by adding the fields, even all of them. A thread can mix both kinds, because a comment keeps the rule it was written
 under, and each is marked for what it is. A plain file names its one reviewer once, on the

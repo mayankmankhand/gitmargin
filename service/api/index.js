@@ -34,6 +34,12 @@ export default async function handler(req, res) {
           id: process.env.GITMARGIN_GITLAB_ID || '',
           secret: process.env.GITMARGIN_GITLAB_SECRET || '',
         },
+        // Issue #17: a GitHub App's Client ID and a client secret made on its page.
+        github: {
+          url: process.env.GITMARGIN_GITHUB_URL || 'https://github.com',
+          id: process.env.GITMARGIN_GITHUB_ID || '',
+          secret: process.env.GITMARGIN_GITHUB_SECRET || '',
+        },
       },
     },
   );

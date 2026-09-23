@@ -170,19 +170,31 @@ exactly as described above and nothing in this section is reachable from a page.
 
 A third thing then opens the service:
 
-- **The pass** (`gp_...`). Proof that a person signed in with the prototype's provider and, when the author named a
-  group, belongs to it. It is valid for **one prototype**, for 7 days, and travels as the header `X-Gitmargin-Pass`. The
-  service stores only its SHA-256. It is never a cookie: the service answers every origin, and that is safe only because
-  it uses no cookies.
+- **The pass** (`gp_...`). Proof that a person signed in with the prototype's provider and, when the author set a
+  members rule (a GitLab group or a GitHub repository), meets it. It is valid for **one prototype**, for 7 days, and
+  travels as the header `X-Gitmargin-Pass`. The service stores only its SHA-256. It is never a cookie: the service
+  answers every origin, and that is safe only because it uses no cookies.
 
 **What is never stored, logged or sent to a browser:** the provider's authorization code, its access token, its ID
 token, and the application's secret. The provider's tokens are used once, inside the callback, and dropped.
 
-**Providers.** `gitlab` today, written against the open sign-in standard (OpenID Connect): the addresses come from
-`<GITMARGIN_GITLAB_URL>/.well-known/openid-configuration` (default `https://gitlab.com`), the application is
-`GITMARGIN_GITLAB_ID` and `GITMARGIN_GITLAB_SECRET`, and the only permission ever asked for is `openid`. A provider
-address on plain `http` is refused unless it is loopback. The callback address to register with the provider is
-`https://<service>/auth/callback`.
+**Providers.** Two, each switched on by its own settings on the deployment; a provider with no settings is simply not
+offered. A provider address on plain `http` is refused unless it is loopback. The callback address to register with
+either provider is `https://<service>/auth/callback`. Pasted values are trimmed of stray quotes and spaces.
+
+- **`gitlab`**, written against the open sign-in standard (OpenID Connect): the addresses come from
+  `<GITMARGIN_GITLAB_URL>/.well-known/openid-configuration` (default `https://gitlab.com`), the application is
+  `GITMARGIN_GITLAB_ID` and `GITMARGIN_GITLAB_SECRET`, and the only permission ever asked for is `openid`. Who someone
+  is comes from userinfo: `sub`, `name`, `nickname`, `groups`.
+- **`github`**, through a GitHub App the author creates with **no permissions**: `GITMARGIN_GITHUB_ID` (the App's
+  Client ID) and `GITMARGIN_GITHUB_SECRET` (a client secret made on the App's page). `GITMARGIN_GITHUB_URL` defaults to
+  `https://github.com`, whose API is `https://api.github.com`; any other address is a GitHub Enterprise Server, whose
+  API is `<address>/api/v3`. The authorize address carries no `scope` (a GitHub App's permissions are set on the App),
+  a `state` and a `S256` challenge. The token call sends the secret and the verifier; GitHub may answer a refusal with
+  any status and an `error` field, so only a returned `access_token` counts, and only the error's name is logged. Who
+  someone is comes from `GET /user`, sent with a `User-Agent` as GitHub requires: `id` (the permanent subject), `login`
+  (the username) and `name` (which may be empty; the login is shown then). Its members rule names a repository; see
+  "The members rule (GitHub)".
 
 ### Limits and lifetimes
 
@@ -191,27 +203,52 @@ address on plain `http` is refused unless it is loopback. The callback address t
 | Sign-in starts per prototype | 30 in any 60 seconds | the refusal page, `429` |
 | An unfinished sign-in | 10 minutes from start | claim answers `404 not_found` |
 | A pass | 7 days | `401 sign_in` |
-| A group path in the members rule | 255 characters | `400 invalid` |
+| A members rule (a group path, or `owner/repo`) | 255 characters | `400 invalid` |
 
 Expired sign-ins and passes are cleared alongside writes, like the other housekeeping.
 
 ### `PATCH /api/prototypes/<key>` (author secret)
-Body `{ "identity": "none" | "gitlab", "members": "group/full/path" | null, "read": "open" | "members" }`. `members`
-and `read` are optional; `members` defaults to null (anyone who signs in may comment) and `read` to `"open"`.
-`members` or `read: "members"` with `identity: "none"` is `400 invalid`. A provider the deployment has no settings for is
-`409 provider_not_configured`.
+Body `{ "identity": "none" | "gitlab" | "github", "members": "group/full/path" | "owner/repo" | null, "read": "open" | "members" }`.
+`members` and `read` are optional; `members` defaults to null (anyone who signs in may comment) and `read` to `"open"`.
+`members` or `read: "members"` with `identity: "none"` is `400 invalid`, and so is a GitHub `members` that is not
+exactly `owner/repo`. A provider the deployment has no settings for is `409 provider_not_configured`.
 
 **Every call ends every pass for that prototype**, whatever changed. That is the author's way to stop someone now:
-removing a person from the group stops their next sign-in, and this stops the pass they already hold.
+removing a person from the group (or taking away their access to the repository) stops their next sign-in, and this stops the pass they already hold. It is also what
+makes switching providers safe: moving a prototype from `gitlab` to `github` ends every GitLab pass and every
+unfinished GitLab sign-in, and a callback for a provider the prototype no longer uses is refused.
 
 Answers `{ "identity": "gitlab", "members": "acme/design", "read": "open", "passes_ended": 3 }`.
 
-### The members rule
+### The members rule (GitLab)
 The group's full path, compared whole and without regard to case against each path in the provider's `groups` claim.
 Never a prefix and never a part of a path: `acme` does not match `acme-design`, and `acme/design` does not match
 `acme/design-team`. Whatever the provider counts as membership counts, inherited membership included; someone who
 belongs only to a subgroup is not a member of its parent. The claim carries paths, not permanent ids, so after a group
 is renamed or deleted the author sets the rule again: a freed path can be registered by someone else.
+
+### The members rule (GitHub)
+One repository, `owner/repo` in GitHub's characters (the owner a login of up to 39 letters, digits and hyphens; the
+name letters, digits, `.`, `_` and `-`), meaning "people GitHub gives explicit access to this repository": its owner, a
+collaborator, or someone with access through the organization. A public repository does not make everyone a member:
+reading it is not explicit access.
+
+It is checked at the callback with the person's own short-lived token, against the author's GitHub App:
+
+1. `GET /user/installations` (needs no permission) must list an installation whose account login equals the rule's
+   owner, compared without regard to case. None: not a member, and nothing more is asked.
+2. `GET /user/installations/<id>/repositories`, 100 a page, at most 10 pages, must list the repository, compared whole
+   and without regard to case, never as a prefix: `acme/app` does not match `acme/app-two`. Not listed within the
+   first 1,000: not a member.
+
+So the App must be **installed on that repository** and must hold **Metadata (read)**, the one repository permission
+the listing needs. GitHub may then show reviewers more on its permission screen than "verify your identity"; the
+author chooses. A listing refused for lack of that permission answers the problem page "The author's GitHub App
+cannot check who can open <repo>" and is logged by name; any other failure answers "GitHub did not confirm the
+sign-in". A failure is never read as "not a member", and never grants anything. With no rule, neither call is made.
+
+The same limit as GitLab's: the rule holds names, not permanent ids, so after the repository or its owner is renamed
+the author sets it again.
 
 ### What a page is told
 When sign-in is on, the `prototype` block of `GET /api/p/<key>/comments` gains `"identity"`, `"read"` and
@@ -228,11 +265,12 @@ prototype needs sign-in; nothing is written into the page. A write without a val
    shows the **short code**: the first eight hex characters of the hash, read as a number, modulo 10000, zero-padded,
    written `48-21`.
 2. `/auth/start` checks the key, the prototype's provider and the start limit, records the sign-in (a random `state`, a
-   PKCE verifier, the hash), and answers `302` to the provider's authorize address with `scope=openid`, the `state` and
-   a `S256` challenge. A problem answers a small HTML page saying so in plain words, never a redirect elsewhere.
+   PKCE verifier, the hash), and answers `302` to the provider's authorize address with the `state`, a `S256` challenge
+   and, for GitLab only, `scope=openid` (GitHub gets no `scope`; see "Providers"). A problem answers a small HTML page saying so in plain words, never a redirect elsewhere.
 3. `GET /auth/callback?code=...&state=...` finds the sign-in by `state` (unknown, expired or already used: the problem
-   page), exchanges the code with the application's secret and the verifier, reads `sub`, `name`, `nickname` and
-   `groups` from userinfo, decides membership, and answers the **confirm page**. Nothing is claimable yet.
+   page), exchanges the code with the application's secret and the verifier, reads who the person is (see
+   "Providers"), decides membership, and answers the **confirm page**. Nothing is claimable yet. The provider's token is
+   dropped as soon as it has been used.
 4. The confirm page names the prototype and the person and shows the short code. It posts
    `POST /auth/confirm` (form: `state`, a one-time `token` from the page, `decision=continue|cancel`). Only
    `continue` with the right token makes the sign-in claimable; the token works once. `cancel` ends the sign-in. The
@@ -263,7 +301,7 @@ Every string from the provider is cleaned like any other untrusted input (one li
 is only ever text.
 
 **"Your own", for both kinds of comment.** A comment or reply keeps the rule it was created under. Written under
-sign-in, it belongs to that verified person (provider plus `sub`): they can edit or delete it from any browser, and no
+sign-in, it belongs to that verified person (provider plus the provider's permanent subject: GitLab's `sub`, GitHub's `id`): they can edit or delete it from any browser, and no
 one else can, whatever token they send. Known limit: the wire carries the username and not `sub`, so the overlay decides
 what to draw by username (or by having written the comment itself); after a username change, older comments on
 another browser show no Edit until the wire carries a permanent id. Written under a typed name before sign-in was switched on, it carries no

@@ -1643,8 +1643,10 @@ export function mountUi(deps) {
       // owner in the live walk (review of #18, R3). The provider keeps its own
       // session, so "another account" means signing out there first (R4).
       const who = view.signin.who || {};
-      const group = who.members || view.identity.members || 'the group';
-      says = `Your account is not in ${group}. You are signed in to ${provider} as ${who.name || 'someone'}, and only members can ${strict ? 'open this prototype' : 'comment here'}. Ask the author for access, or sign out of ${provider} and sign in here with another account.`;
+      // GitLab rules name a group, GitHub rules a repository (issue #17).
+      const repo = view.identity.mode === 'github';
+      const group = who.members || view.identity.members || (repo ? 'the repository' : 'the group');
+      says = `Your account ${repo ? 'has no access to' : 'is not in'} ${group}. You are signed in to ${provider} as ${who.name || 'someone'}, and only ${repo ? 'people who can open it' : 'members'} can ${strict ? 'open this prototype' : 'comment here'}. Ask the author for access, or sign out of ${provider} and sign in here with another account.`;
       button = `Sign in with ${provider} again`;
       attention = true;
     } else if (on && view.signin.state === 'failed') {

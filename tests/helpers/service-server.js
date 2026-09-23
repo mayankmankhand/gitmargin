@@ -29,7 +29,7 @@ export function testClock(start = '2026-09-18T12:00:00.000Z') {
 }
 
 /**
- * @param {{secret?: string, clock?: {now: () => Date}, down?: () => boolean, gitlab?: object}} [options]
+ * @param {{secret?: string, clock?: {now: () => Date}, down?: () => boolean, gitlab?: object, github?: object}} [options]
  *   `down` lets a test take the service away mid-session and bring it back.
  */
 export async function startService(options = {}) {
@@ -64,10 +64,14 @@ export async function startService(options = {}) {
         now: clock.now,
         secret,
         log: options.log,
-        // Sign-in: `options.gitlab` is a started fake GitLab (tests/helpers/fake-gitlab.js).
+        // Sign-in: `options.gitlab` and `options.github` are started fakes
+        // (tests/helpers/fake-gitlab.js, tests/helpers/fake-github.js).
         fetch: (...args) => fetch(...args),
         origin: `http://127.0.0.1:${server.address().port}`,
-        providers: options.gitlab ? { gitlab: { url: options.gitlab.url, id: options.gitlab.clientId, secret: options.gitlab.clientSecret } } : {},
+        providers: {
+          ...(options.gitlab ? { gitlab: { url: options.gitlab.url, id: options.gitlab.clientId, secret: options.gitlab.clientSecret } } : {}),
+          ...(options.github ? { github: { url: options.github.url, id: options.github.clientId, secret: options.github.clientSecret } } : {}),
+        },
       },
     );
     res.writeHead(answer.status, answer.headers);
