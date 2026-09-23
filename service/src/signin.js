@@ -320,7 +320,7 @@ export const providerLabel = (name) => (PROVIDERS[name] ? PROVIDERS[name].label 
  * allowed by a nonce, and the page refuses to be framed, so Continue cannot be
  * pressed through someone else's page.
  */
-function htmlPage(status, title, bodyHtml, { closes = false } = {}) {
+export function htmlPage(status, title, bodyHtml, { closes = false } = {}) {
   const nonce = randomBytes(12).toString('base64');
   const script = closes ? `<script nonce="${nonce}">setTimeout(function () { window.close(); }, 600);</script>` : '';
   const body =

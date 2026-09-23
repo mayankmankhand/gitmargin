@@ -19,6 +19,7 @@ reviewer receives a prototype in part 1. For a plain file, nothing here starts a
 | `tests/shared.spec.js` | Playwright | shared comments between two and three real browsers |
 | `tests/signin.spec.js` | Playwright | sign-in with a fake GitLab and a real pop-up |
 | `tests/signin-github.spec.js` | Playwright | the same sign-in with a fake GitHub (issue #17): from disk, the stored copy and a web address |
+| `tests/same-project.spec.js`, `tests/cli-same-project.test.js`, `tests/sync-same-origin.test.js`, `service/tests/same-project.test.js` | Playwright, node:test | same-project mode (issue #19) behind a stand-in for Vercel's login wall (`tests/helpers/vercel-wall.js`): reviewers who passed it share comments, nothing answers anyone who has not, the command line passes it with the bypass, and a page talks to the address it was opened from |
 | `service/tests/signin.test.js`, `service/tests/signin-github.test.js` | node:test | every sign-in rule in `service/API.md`, for GitLab and GitHub, against the two fakes in `tests/helpers/` |
 | `service/tests/signin-github-rule.test.js` | node:test | the GitHub repository rule (issue #17's cut line): who counts as having access, and failures that are never a verdict |
 | `tests/cli-identity.test.js` | node:test | `identity` for GitLab and GitHub (a group or one `owner/repo`, the refusals, a service with no sign-in app set up), and `pull --live` marking each author verified or typed |

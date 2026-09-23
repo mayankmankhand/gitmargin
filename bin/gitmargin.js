@@ -50,6 +50,9 @@ Shared comments (optional; needs a comment service you deployed, see service/REA
       prototype from another machine. Needs GITMARGIN_SECRET in the environment.
       The secret is only ever sent to an address you typed here yourself, or
       named in GITMARGIN_SERVICE: never to one that only a file names.
+      Behind Vercel's protection (same-project mode), also set
+      GITMARGIN_VERCEL_BYPASS to the project's Protection Bypass for
+      Automation; it follows the same rule.
   node bin/gitmargin.js pull <prototype.gitmargin.html> --live
       Reads the comments for that copy's version from the service. --version
       <id> or --all for other versions. More files after it merge in as usual.

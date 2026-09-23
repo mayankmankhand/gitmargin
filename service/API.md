@@ -340,3 +340,55 @@ time the provider asks nothing, so that is two presses.
 fetched while they were a member stay in that browser's storage, and a copy of the page they saved is theirs.
 
 **Limits:** a ticket lasts 60 seconds and works once; expired tickets are cleared when a sign-in starts.
+
+## Same-project mode (Vercel)
+
+Optional, and set per **deployment**, not per prototype: a deployment with `GITMARGIN_SAME_PROJECT=1` is a second copy
+of this service that serves one prototype as its own site, so the page and its comment routes are one Vercel project
+behind one protection (Vercel Authentication, or a password on the plans that have one). Nothing about the prototype or
+its comments then answers anyone who has not passed that protection: the refusal comes from Vercel, before this service
+sees the request. The page key stays in the page as a plain label for "which prototype". The design and its reasons
+are in `docs/part-2-design.md`; setup is in `README.md`.
+
+A same-project deployment should have **its own database**. A database shared with an open deployment of the service
+would answer for the same key there, outside the protection.
+
+The switch changes exactly four things. Everything else in this file holds as written.
+
+1. **Stored pages are served as ordinary pages of the site.** `GET /p/<key>/<version>` and `/p/<key>/latest` carry
+   `Referrer-Policy: no-referrer`, `X-Content-Type-Options: nosniff` and `Cache-Control: no-store`, and **no**
+   `Content-Security-Policy: sandbox`. A sandboxed page has the origin "null", and its calls to this address would carry
+   no cookie, so the protection would refuse every one of them. The deployment holds one prototype (item 3), so its
+   scripts share the address only with themselves, or at worst with another page the same author attached.
+2. **`GET /` opens the prototype**: `302` to `/p/<key>/latest`. Before anything is published it answers `404` and a
+   short page saying so. If a race left two, it opens the oldest, ties broken by key.
+3. **One prototype per deployment.** `POST /api/prototypes` when one exists answers
+   `409 { "error": "one_prototype", "key": "gm_..." }`. The caller holds the author secret, so naming the key tells them
+   nothing new. The check is part of the insert, like every limit, and soft at the edge like them: two statements that
+   truly overlap can each miss the other's row. Only the author, who holds the secret, can race it; the refusal and
+   `/` both name the oldest.
+4. **The version answers say so.** `POST /api/prototypes/<key>/versions` carries `"same_project": true`, so the command
+   line knows to check that the address really is behind the protection: it asks `GET /api/ping` once without the
+   bypass, and warns if the service answers.
+
+### Client rule: which address a page talks to
+A page whose own address is `<origin>/p/<its own key>/<latest or a version id>`, over `http` or `https`, whose document
+has a real origin (`self.origin`, not "null"), talks to `<origin>`: its comment calls, its sign-in window and its links
+to older versions. Any other page talks to the address in its `gitmargin-service` tag, as before. Reviewers may open a
+same-project prototype on the main address, a deployment address or a share link, and the protection's login is kept per
+address, so the calls must go where the page is. A sandboxed stored copy's document has the origin "null" (its
+`location` still reports the host, which is why the rule reads the document's origin), so the rule never fires there.
+
+### Clients outside a browser: Vercel's bypass
+The command line reaches a protected deployment with Vercel's **Protection Bypass for Automation**: the secret from
+`GITMARGIN_VERCEL_BYPASS`, sent as the header `x-vercel-protection-bypass`, and only to an address the author typed on
+the command line or named in `GITMARGIN_SERVICE`, under the rule the author secret follows, because it opens every
+deployment of that project. It is never written into a page. A redirect to Vercel's login, or a `401` or `403` that is
+not this service's JSON, is reported as the protection by name, never followed.
+
+### Sign-in on a same-project deployment
+Available as on any deployment, from the address registered with the provider (the main address): the callback is
+built from the address the request arrived on, so a sign-in started on a deployment address or a share-link address
+is refused by the provider. Known limit: the prototype's own scripts share the address with the service's sign-in
+pages, so a hostile script inside the prototype could press Continue for a reviewer. The confirm page still stops a
+link from outside, and a prototype's scripts can already read the pass the overlay holds.

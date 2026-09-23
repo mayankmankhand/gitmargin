@@ -358,14 +358,30 @@ async function changeReply({ query, now }, key, commentId, replyId, token, body,
 
 // ---- author ---------------------------------------------------------------
 
-async function createPrototype({ query, now }, body) {
+async function createPrototype({ query, now, sameProject }, body) {
   const name = cleanName(body && body.name) || 'prototype';
   const key = `gm_${randomBytes(16).toString('base64url')}`;
+  if (sameProject) {
+    // Same-project mode (issue #19): one prototype per deployment. The check is
+    // part of the insert, like every limit, and soft at the edge like them: two
+    // statements that truly overlap can each miss the other's row (review of
+    // #19, R17). Only the author, who holds the secret, can race it. A second
+    // one that slips through is served like the first, on the same address;
+    // this refusal and the front door both name the oldest.
+    const made = await query(
+      'insert into prototypes (key, name, created) select $1::text, $2::text, $3::timestamptz where not exists (select 1 from prototypes) returning key',
+      [key, name, now().toISOString()],
+    );
+    if (made[0]) return json(201, { key });
+    const held = await query('select key from prototypes order by created, key limit 1');
+    return json(409, { error: 'one_prototype', key: held[0] ? held[0].key : null });
+  }
   await query('insert into prototypes (key, name, created) values ($1, $2, $3)', [key, name, now().toISOString()]);
   return json(201, { key });
 }
 
-async function registerVersion({ query, now }, key, body) {
+async function registerVersion(deps, key, body) {
+  const { query, now } = deps;
   if (!body || !isHash(body.hash)) return refuse(400, 'invalid');
   if (body.html !== undefined && typeof body.html !== 'string') return refuse(400, 'invalid');
   const fits = typeof body.html === 'string' && Buffer.byteLength(body.html, 'utf8') <= LIMITS.pageBytes;
@@ -389,6 +405,7 @@ async function registerVersion({ query, now }, key, body) {
       round: newest.round,
       created: false,
       page_stored: newest.has_page || Boolean(html),
+      ...(deps.sameProject ? { same_project: true } : {}),
     });
   }
   if (versions.length >= LIMITS.versions) return refuse(409, 'full');
@@ -405,7 +422,13 @@ async function registerVersion({ query, now }, key, body) {
     key,
     round - LIMITS.pagesKept,
   ]);
-  return json(201, { version_id: versionId, round, created: true, page_stored: Boolean(html) });
+  return json(201, {
+    version_id: versionId,
+    round,
+    created: true,
+    page_stored: Boolean(html),
+    ...(deps.sameProject ? { same_project: true } : {}),
+  });
 }
 
 async function setStatus({ query, now }, key, id, body) {
@@ -439,6 +462,21 @@ const PAGE_HEADERS = {
   'cache-control': 'no-store',
 };
 
+/**
+ * Same-project mode (issue #19): the deployment holds one prototype behind the
+ * host's own protection, and its pages must call this address with the host's
+ * login cookie. A sandboxed page has the origin "null" and sends no cookie, so
+ * here the page is served as an ordinary page of the site. It shares the
+ * address only with pages the same author attached here (one, unless a race
+ * let a second in). Everything else about the headers stays.
+ */
+const OWN_SITE_PAGE_HEADERS = {
+  'content-type': 'text/html; charset=utf-8',
+  'referrer-policy': 'no-referrer',
+  'x-content-type-options': 'nosniff',
+  'cache-control': 'no-store',
+};
+
 async function servePage(deps, key, which, params) {
   const { query } = deps;
   // Strict reading (plan step 9): the copy opens only with a ticket, which the
@@ -455,7 +493,19 @@ async function servePage(deps, key, which, params) {
   // No such key, no such version, or a version whose page was too large or has
   // been pruned: one answer for all of them.
   if (!rows[0] || !rows[0].html) return refuse(404, 'not_found');
-  return { status: 200, headers: PAGE_HEADERS, body: rows[0].html };
+  return { status: 200, headers: deps.sameProject ? OWN_SITE_PAGE_HEADERS : PAGE_HEADERS, body: rows[0].html };
+}
+
+/**
+ * Same-project mode: the site's front door opens its one prototype, or the
+ * oldest if a race left two, ties broken by key so every request picks the same.
+ */
+async function frontDoor({ query }) {
+  const rows = await query('select key from prototypes order by created, key limit 1');
+  if (!rows[0]) {
+    return signin.htmlPage(404, 'Nothing published yet', '<h1>Nothing is published here yet</h1><p>The author has not attached a prototype to this address.</p>');
+  }
+  return { status: 302, headers: { location: `/p/${rows[0].key}/latest`, 'cache-control': 'no-store', 'referrer-policy': 'no-referrer' }, body: '' };
 }
 
 // ---- dispatch -------------------------------------------------------------
@@ -497,6 +547,12 @@ async function dispatch(request, deps) {
   if (method === 'GET' && (m = PAGE.exec(path))) {
     await ensureSchema(query);
     return servePage(deps, m[1], m[2], request.query || {});
+  }
+
+  // Same-project mode only (issue #19); anywhere else `/` is not a route.
+  if (method === 'GET' && path === '/' && deps.sameProject) {
+    await ensureSchema(query);
+    return frontDoor(deps);
   }
 
   // Sign-in (issue #18). These answer small HTML pages in a pop-up, not JSON.

@@ -140,6 +140,13 @@
 - **A copy attached before a feature existed carries the old overlay for good; check its date before a walk uses it.**
 - **Evidence the owner says he does not have is recorded as missing, never asked for again.**
 
+### gitmargin: Vercel same-project mode (issue #19, 2026-09-23)
+- **A sandboxed page's `location` still names its host; only `self.origin` says "null". Measure browser security facts in both engines.**
+- **A stand-in that answers too kindly cannot fail the guard it exists for.**
+- **A limit checked inside one SQL statement is soft under concurrency: say so, and make its tie-breaks deterministic.**
+- **A platform's default protection can leave open the one address people actually visit; check it and warn.**
+- **When a pasted secret is refused, compare it with the platform's record without printing either.**
+
 ## Mistakes to Avoid
 
 - **Fill a plan's Outcomes by replacing the template placeholder, not inserting above it.**
