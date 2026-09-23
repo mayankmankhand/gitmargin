@@ -100,6 +100,26 @@ function assertSecretMayGo(address, { typed }) {
   );
 }
 
+/** Addresses the author typed on this command line, this run. */
+const typedNow = new Set();
+
+/**
+ * Vercel's Protection Bypass for Automation (issue #19): how the command line
+ * reaches a same-project deployment behind Vercel's login. It opens every
+ * deployment of that project, so it follows the author secret's rule: only to
+ * an address the author typed or named in GITMARGIN_SERVICE, never in the clear
+ * except to loopback. It is never written into a page.
+ */
+function bypassFor(address) {
+  const value = process.env.GITMARGIN_VERCEL_BYPASS;
+  if (!value) return {};
+  const { protocol, hostname } = new URL(address);
+  const loopback = ['localhost', '127.0.0.1', '[::1]'].includes(hostname);
+  if (protocol !== 'https:' && !loopback) return {};
+  if (!typedNow.has(address) && !trustedAddresses().includes(address)) return {};
+  return { 'x-vercel-protection-bypass': value };
+}
+
 /** What each refusal in API.md means to the person at the terminal. */
 const REFUSALS = {
   unauthorized: 'The comment service refused the author secret. Check GITMARGIN_SECRET against the deployment.',
@@ -112,6 +132,7 @@ const REFUSALS = {
   unknown_version: 'The comment service has no such version of this prototype.',
   invalid: 'The comment service did not accept that request.',
   sign_in: 'Only signed-in members can read the comments on this prototype, and the author.',
+  one_prototype: 'This address serves one prototype, and it already holds one.',
   provider_not_configured:
     'The comment service has no GitLab application set up yet. Add GITMARGIN_GITLAB_ID and GITMARGIN_GITLAB_SECRET to its\n' +
     'deployment (service/README.md, "Sign-in"), redeploy, and run this again.',
@@ -125,13 +146,42 @@ const NOT_CONFIGURED = {
     'deployment (service/README.md, "Sign-in with GitHub"), redeploy, and run this again.',
 };
 
+/**
+ * What stands in front of the service answered, not the service: a redirect to
+ * Vercel's login, or a 401 or 403 that is not the service's own JSON (issue
+ * #19). Said by name, and never followed.
+ */
+function walled(address, response, answer, bypass) {
+  const redirect = response.status >= 300 && response.status < 400;
+  const refusedPage = (response.status === 401 || response.status === 403) && !(answer && typeof answer.error === 'string');
+  if (!redirect && !refusedPage) return null;
+  if (bypass['x-vercel-protection-bypass']) {
+    return new CliError(
+      `Vercel's protection refused the bypass secret at ${address}.`,
+      EXIT_REFUSED,
+      "Check GITMARGIN_VERCEL_BYPASS against the project's Protection Bypass for Automation (Vercel: the project, Settings, Deployment Protection).\nNothing was written."
+    );
+  }
+  return new CliError(
+    `${address} is behind Vercel's protection, so the command line cannot reach the comment service there.`,
+    EXIT_REFUSED,
+    process.env.GITMARGIN_VERCEL_BYPASS
+      ? 'GITMARGIN_VERCEL_BYPASS is set, but it only goes to an address you typed with attach --service, or named in GITMARGIN_SERVICE.\nNothing was written.'
+      : "Set GITMARGIN_VERCEL_BYPASS to the project's Protection Bypass for Automation (Vercel: the project, Settings, Deployment Protection), and run this again.\nNothing was written."
+  );
+}
+
 async function call(address, method, route, { body, auth } = {}) {
+  const bypass = bypassFor(address);
   let response;
   try {
     response = await fetch(`${address}${route}`, {
       method,
-      headers: { 'content-type': 'application/json', ...(auth ? { authorization: `Bearer ${auth}` } : {}) },
+      headers: { 'content-type': 'application/json', ...(auth ? { authorization: `Bearer ${auth}` } : {}), ...bypass },
       body: body === undefined ? undefined : JSON.stringify(body),
+      // A redirect here is a login wall in front of the service; the service's
+      // own routes never redirect. Following it would read a login page as an answer.
+      redirect: 'manual',
     });
   } catch {
     throw new CliError(`Could not reach the comment service at ${address}.`, EXIT_REFUSED, 'Nothing was written.');
@@ -142,6 +192,8 @@ async function call(address, method, route, { body, auth } = {}) {
   } catch {
     // Not JSON: not our service, or a proxy in front of it. Reported below.
   }
+  const wall = walled(address, response, answer, bypass);
+  if (wall) throw wall;
   if (!response.ok) {
     const code = answer && typeof answer.error === 'string' ? answer.error : null;
     const refusal = new CliError(
@@ -150,6 +202,7 @@ async function call(address, method, route, { body, auth } = {}) {
       'Nothing was written.'
     );
     refusal.refusal = code; // so a caller can tell one refusal from another (`code` is the exit code)
+    refusal.answer = answer;
     throw refusal;
   }
   return answer;
@@ -212,6 +265,7 @@ export async function attachLive(args) {
   const address = cleanAddress(given);
   const auth = secret();
   assertSecretMayGo(address, { typed: Boolean(service.value) });
+  if (service.value) typedNow.add(address);
 
   // Which prototype this is. A key given by hand wins; otherwise the previous
   // copy's key, but only when it was for this same service.
@@ -226,7 +280,19 @@ export async function attachLive(args) {
       `No previous copy of ${path.basename(outPath)} and no --key, so this creates a NEW prototype on the service.\n` +
         'If this prototype is already shared, stop and run again with: --key <its key>\n'
     );
-    key = (await call(address, 'POST', '/api/prototypes', { auth, body: { name: originalName } })).key;
+    try {
+      key = (await call(address, 'POST', '/api/prototypes', { auth, body: { name: originalName } })).key;
+    } catch (refusal) {
+      // A same-project deployment holds one prototype (issue #19). Say which, and
+      // how to publish a new version of it; never reuse the key on our own.
+      const held = refusal.refusal === 'one_prototype' && refusal.answer && refusal.answer.key;
+      if (!held) throw refusal;
+      throw new CliError(
+        `${address} serves one prototype, and it already holds one (key ${held}).`,
+        EXIT_REFUSED,
+        `To publish a new version of it: gitmargin attach ${source} --service ${address} --key ${held}\nNothing was written.`
+      );
+    }
     createdNow = true;
     // Printed the moment it exists. Two more calls follow and either can fail;
     // printed only at the end, a failure lost the key, and every retry made
