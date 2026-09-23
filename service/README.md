@@ -228,12 +228,19 @@ side; each prototype has one mode.
    | Enable Device Flow | leave unticked |
    | Webhook, Active | **untick** it (the App needs no events) |
    | Permissions | leave every one at **No access** |
-   | Where can this GitHub App be installed? | **Only on this account** |
+   | Where can this GitHub App be installed? | **Any account** |
 
    **Create GitHub App.** Its page shows a **Client ID** (it starts with `Iv`). Under Client secrets press **Generate a
    new client secret** and copy it at once: GitHub shows it only this one time. With no permissions, GitHub's screen
    asks reviewers only to let the App verify who they are. That is the point: a frightening permission screen is the
    login friction that most likely sank GitLab's own Visual Reviews.
+
+   **Why Any account:** GitHub lets only the account that owns a private App ("Only on this account") sign in with it,
+   or, for an App an organization owns, only that organization's members. Every other reviewer would be turned away.
+   Any account lets anyone sign in, and lets anyone install your App on their own account, which gives them nothing:
+   the service only ever asks GitHub who a reviewer is. For a team whose reviewers all belong to one GitHub
+   organization, GitHub's documentation describes the other way round: an App the organization owns, left at Only on
+   this account, admits only its members, with no permission at all (not tested here).
 2. **Give both to the deployment**, as sensitive values, then redeploy:
 
    ```bash
