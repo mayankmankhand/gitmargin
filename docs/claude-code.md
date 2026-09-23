@@ -13,7 +13,7 @@ Reviewers install nothing. They open a link or a file, click **Comment**, click 
 ## What you need
 
 - **Claude Code.**
-- **Node.js 20 or newer** (`node --version`). The plugin's commands run on Node, and so does Vercel's command-line tool.
+- **Node.js 18 or newer** (`node --version`). The plugin's commands run on Node, and so does Vercel's command-line tool.
 - **Git, and access to this repository while it is private.** Claude Code installs the plugin with your own git login for github.com. The simplest way: install GitHub's command-line tool `gh`, then run `gh auth login` and `gh auth setup-git` once.
 - **For comments everyone sees live** (the service link and GitHub Pages below): a free [Vercel](https://vercel.com) account. Claude sets up your comment service in it the first time; see [Your comment service](#your-comment-service-once).
 - **For GitHub Pages:** a public GitHub repository, and `gh` logged in.
@@ -31,7 +31,7 @@ Use the `https://` address as written: the short `owner/repo` form clones over S
 
 ## 1. Build a prototype
 
-Ask Claude for a prototype the way you always do: "build a three-step signup flow as one HTML file". The plugin's **build rules** tell Claude how to build it so the comments land well. In short: one self-contained file; each step in its own wrapper with a name; steps hidden with `hidden` and switched by a script; no step inside a pop-up dialog; browser storage used carefully. Claude runs `gitmargin check` at the end to catch anything that would break.
+Ask Claude for a prototype the way you always do: "build a three-step signup flow as one HTML file". The plugin's **build rules** tell Claude how to build it so the comments land well. In short: one self-contained file; each step in its own wrapper with a name; steps hidden with `hidden` and switched by a script; no step inside a pop-up dialog; browser storage used carefully. Claude runs `gitmargin check` at the end to catch anything that would break. The first time, Claude Code asks your permission to run `gitmargin`: see [Permission prompts](#permission-prompts) below.
 
 Why rules at all? Measured on seventeen kinds of prototype: most pages work as they are, but a few common habits break commenting without any warning. React redrawing one area for every step makes a comment's pin jump onto the next step's lookalike button. Steps with no heading of their own all get the same name. Separate CSS or image files go missing once the page is shared. The rules avoid all of that, and cost nothing when a page is never reviewed.
 
@@ -49,9 +49,13 @@ Type `/gitmargin:share`, or `/gitmargin:share signup.html` to name the file.
 
 GitLab Pages and Vercel are coming in the next version of the plugin. Until then, a project on GitLab or Vercel gets the service link.
 
-Claude remembers the answer in `.gitmargin.json` at the top of the project, on this machine only: it adds that file, and the wrapped copies, to your `.gitignore`, because the wrapped copies carry the page's key. **After that, sharing asks nothing**: not for the same prototype, and not for a new one. It asks again only if a share would let more people open the page than before, if the saved place stopped working, or if it would change a repository's settings.
+Claude remembers the answer in `.gitmargin.json` at the top of the project, on this machine only: it adds that file, and the wrapped copies, to your `.gitignore`, because the wrapped copies carry the page's key. **After that, sharing asks nothing**: not for the same prototype, and not for a new one. It asks again only if a share would let more people open the page than before, if the saved place stopped working, or if it would change a repository's settings. If you already shared a prototype from another computer, give Claude its review link at the first share on this one, and it keeps the comments.
 
-**The first time, Claude Code asks permission** to run `gitmargin` and `gitmargin-publish`. Choose **"Yes, and don't ask again"** for each, and it never asks again. To skip even that, add the two rules to `~/.claude/settings.json` yourself:
+To move a project to another place, say so: `/gitmargin:share signup.html on GitHub Pages`.
+
+### Permission prompts
+
+Claude Code asks your permission before it runs a command for the first time. For gitmargin that is `gitmargin` and `gitmargin-publish`: choose **"Yes, and don't ask again"**. Claude Code saves that answer for the current project only, so a new project asks once more. To be asked in no project at all, add the two rules to your own `~/.claude/settings.json`:
 
 ```json
 {
@@ -60,6 +64,8 @@ Claude remembers the answer in `.gitmargin.json` at the top of the project, on t
   }
 }
 ```
+
+On some Claude Code plans, sessions start in auto mode, which shows no permission prompts at all and decides for itself. Everything above works there too.
 
 Sharing a changed prototype makes a new version at the same link. Its comments start empty (the old ones were about a page that no longer exists), and anyone can still open the older versions, with their comments, from the **Version** line in the comments list.
 
@@ -82,9 +88,9 @@ The first `/gitmargin:share` that needs it sets it up. Claude does the work, and
 1. **Log in to Vercel** (`vercel login`, in your own terminal), if you are not logged in already.
 2. **Accept Neon's terms** in your browser, from a link Claude gives you. Vercel does not let a tool accept them.
 3. **Make your secret.** Claude gives you four lines to run in your own terminal. They make a random secret in `~/.config/gitmargin/secret` (readable only by you), give it to Vercel, and add one line to your shell profile. Never paste the secret into the chat. Claude never sees it.
-4. **The first deploy** (`vercel deploy --prod`, in your own terminal). Claude Code does not deploy to a live address on its own.
+4. **The first deploy** (`vercel deploy --prod`, in your own terminal). Claude Code does not deploy to a live address on its own. Paste back the address on the `Aliased` line it prints: that is your service, usually `https://<your-project>.vercel.app`.
 
-Then **restart Claude Code** (`/exit`, then `claude --continue`), so it picks up the secret, and type `/gitmargin:share` again. The service lives in `~/.config/gitmargin/service` on your machine and at `https://<your-project>.vercel.app`.
+Then **restart Claude Code in a new terminal** (`/exit`, close the terminal, open a new one in the project folder, then `claude --continue`): the secret reaches only terminals opened after it was added. Type `/gitmargin:share` again. The service's files live in `~/.config/gitmargin/service` on your machine.
 
 For sign-in, so reviewers comment under their real GitLab or GitHub name, see [the service's guide](../service/README.md#sign-in-with-gitlab-optional-per-prototype). It is optional, set per prototype, and the plugin never asks about it.
 
@@ -93,7 +99,7 @@ For sign-in, so reviewers comment under their real GitLab or GitHub name, see [t
 | What you see | What it means |
 |---|---|
 | `gitmargin: command not found` | The plugin is not installed or not enabled on this machine: run `/plugin`. |
-| "GITMARGIN_SECRET is not set" | Setup is not finished, or Claude Code started before you added the secret. Restart it. |
+| "GITMARGIN_SECRET is not set" | Setup is not finished, or Claude Code started before you added the secret. Restart it from a new terminal. |
 | "this machine has not used that comment service before" | The address in `.gitmargin.json` is new to this machine. Claude asks whether it is yours; say yes only if it is. |
 | The GitHub Pages link shows 404 | The first build takes a minute or two. Try again shortly. |
 | GitHub Pages is refused | The repository is private, or Pages already serves something else. Claude offers the service link instead. |

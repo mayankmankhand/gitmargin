@@ -90,6 +90,7 @@ Desktop.ini
 /_tmp/
 plans/PLAN-*.md
 plans/PLAN-*.html
+plans/WALK-*.md
 reports/
 .cursor/
 .claude/worktrees/
