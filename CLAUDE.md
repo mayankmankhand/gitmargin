@@ -90,4 +90,4 @@ professionally. Explain things simply, in plain English, and tell me why, not ju
 
 ## Skills
 
-The toolkit runs as the `tk` Claude Code plugin (since issue #12; audited at 7.4.1 in issue #23), so its commands carry the `tk:` prefix and only its seeded rules file, state record and `.claude/toolkit/` extensions folder live in this repo. Use `/tk:review` for a unified auto-detected review, or a single lens such as `/tk:review-code` or `/tk:review-ux`. On a new machine, install the plugin and put the debate API keys in `~/.claude/plugins/.env.local`, which is where its scripts look.
+The toolkit runs as the `tk` Claude Code plugin (since issue #12; audited at 7.4.3 in issue #23), so its commands carry the `tk:` prefix and only its seeded rules file, state record and `.claude/toolkit/` extensions folder live in this repo. Use `/tk:review` for a unified auto-detected review, or a single lens such as `/tk:review-code` or `/tk:review-ux`. On a new machine, install the plugin and put the debate API keys in `~/.claude/plugins/.env.local`, which is where its scripts look.
