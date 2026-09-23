@@ -247,6 +247,30 @@ One service can hold GitLab prototypes and GitHub prototypes side by side; each 
 
    Anyone with a GitHub account who can open the page may then comment, under their GitHub name.
 
+### Only people who can open one repository: `--members owner/repo`
+
+GitHub has no groups the way GitLab does, so the GitHub rule names a repository: `--members your-org/your-repo` lets
+in only the people GitHub gives explicit access to it (its owner, its collaborators, and people with access through
+the organization). A public repository does not let everyone in: reading it is not explicit access.
+
+It needs two things from your GitHub App, and one of them changes what reviewers see:
+
+1. **Install the App on that repository.** On the App's page, Install App, your account or organization, **Only
+   select repositories**, pick the repository. The service can only check repositories the App is installed on.
+2. **Give the App one permission:** Permissions and events, Repository permissions, **Metadata: Read-only**. It is
+   what lets the service list which repositories a reviewer can open. GitHub then shows reviewers more on its
+   permission screen than "verify your identity" (it says the App can act on their behalf, even though this App can do
+   nothing but read that list). Decide whether your reviewers will accept that screen before you switch the rule on.
+
+```bash
+node bin/gitmargin.js identity prototype.gitmargin.html github --members your-org/your-repo
+```
+
+The command reminds you of both. The check is made at each sign-in, with the reviewer's own token, and thrown away.
+If the App lacks the permission, reviewers see "The author's GitHub App cannot check who can open ..." rather than a
+wrong "not a member". The rule holds names, not permanent ids: after renaming the repository or its owner, run the
+command again.
+
 **GitHub allows one free personal account per person** (its terms of service), so testing "a second reviewer" alone
 means a second browser that stays signed out, or a second real person, not a second account of your own.
 
