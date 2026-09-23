@@ -9,6 +9,10 @@ text block. A prototype only talks to a service when you attach it with `--servi
 
 What it answers, route by route, is in [API.md](API.md).
 
+**If you use Claude Code,** the gitmargin plugin sets this service up for you the first time you share a prototype,
+and stops only for the four steps that are yours (logging in to Vercel, Neon's terms, the secret, the first deploy):
+see [docs/claude-code.md](../docs/claude-code.md). This page is the by-hand route and the reference behind it.
+
 ## Deploy it
 
 You need a [Vercel](https://vercel.com) account (the free plan is enough) and Node 20 or newer. Two routes. The

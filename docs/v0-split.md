@@ -62,11 +62,13 @@ Three pieces:
    text block, and prints the batch for an agent as JSON. Neither command has a runtime dependency: Node and
    nothing else.
 
-   Not published to npm: only the author ever runs them, so they run from a clone of the repository as
-   `node bin/gitmargin.js attach prototype.html` and `node bin/gitmargin.js pull reviewed.html`, or through npm
-   as `npm run attach -- prototype.html` and `npm run pull -- reviewed.html`. Building the overlay bundle they
-   attach needs one dev dependency, so a fresh clone runs `npm install && npm run build` once first. Publishing
-   would make `npx gitmargin` work and changes nothing else; it is a later decision, not a part-1 one.
+   Not published to npm: only the author ever runs them. Since issue #16 they come with the Claude Code plugin,
+   as `gitmargin attach prototype.html` and `gitmargin pull reviewed.html` ([claude-code.md](claude-code.md)).
+   From a clone of the repository they are `node bin/gitmargin.js attach prototype.html` and
+   `node bin/gitmargin.js pull reviewed.html`, or through npm `npm run attach -- prototype.html` and
+   `npm run pull -- reviewed.html`; building the overlay bundle they attach needs one dev dependency, so a fresh
+   clone runs `npm install && npm run build` once first. Publishing to npm would make `npx gitmargin` work and
+   changes nothing else; it is a later decision, not a part-1 one.
 3. **The batch.** What the agent reads: for each comment, what the reviewer wanted and where they were. The format
    is drafted in [batch-format.md](batch-format.md).
 

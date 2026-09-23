@@ -46,7 +46,14 @@ By default there is no sign-in: a key written into the page is the only gate, an
 
 ## Running it today
 
-gitmargin is not on npm yet, so part 1 runs from a clone of this repo:
+**If you build prototypes with Claude Code**, install the plugin and let Claude do the rest: it builds the prototype so comments land well, shares it (a file, your comment service's link, or GitHub Pages) with `/gitmargin:share`, and reads the comments back when you ask what reviewers said. The whole story, including the one-time setup, is in [docs/claude-code.md](docs/claude-code.md).
+
+```text
+/plugin marketplace add https://github.com/mayankmankhand/gitmargin.git
+/plugin install gitmargin@gitmargin
+```
+
+**By hand**, gitmargin is not on npm yet, so it runs from a clone of this repo:
 
 ```bash
 git clone https://github.com/mayankmankhand/gitmargin.git
@@ -99,9 +106,9 @@ The unclaimed square is still **platform-agnostic, identity-aware commenting on 
 - [ ] **Sign in with GitLab** ([#18](https://github.com/mayankmankhand/gitmargin/issues/18), cycle 1 of part 2). Built and walked live on gitlab.com: optional per prototype, verified names on comments, a members rule on one GitLab group, and strict reading. Chrome end to end; Firefox by the automated suite, and by hand as far as GitLab's login. The company single sign-on pass-through is untested.
 - [x] **Sign in with GitHub** ([#17](https://github.com/mayankmankhand/gitmargin/issues/17), cycle 2 of part 2). Optional per prototype, through a GitHub App that asks for no permissions, with verified names on comments, an optional rule limiting commenting to one repository (the App then needs one read-only permission), and strict reading; tested against a stand-in GitHub in Chromium and Firefox, and walked on the real github.com on 2026-09-23.
 - [x] **Vercel same-project mode** ([#19](https://github.com/mayankmankhand/gitmargin/issues/19), cycle 4 of part 2, built ahead of cycle 3). A second deployment of your comment service serves one prototype and its comments behind Vercel's own protection, so nobody who has not passed it reaches either. Tested behind a stand-in for Vercel's login wall in Chromium and Firefox, and walked on a real Vercel project on 2026-09-23: every address answered only with Vercel's login, and a reviewer on the share link read and wrote comments.
-- [ ] **Parked, part 2:** **a publishing plugin** ([#16](https://github.com/mayankmankhand/gitmargin/issues/16)).
+- [ ] **The Claude Code plugin** ([#16](https://github.com/mayankmankhand/gitmargin/issues/16), cycle 3 of part 2). Built, not yet walked by a second author: build rules that keep comments on their step, `/gitmargin:share` to a file, the service link or GitHub Pages (it asks where once per project, then never again), and reading the comments back. GitLab Pages and Vercel come next. [docs/claude-code.md](docs/claude-code.md).
 - [ ] **v0 part 2, the rest (parked).** A Slack mirror, an MCP server, the phone mode, and the four one-day spikes that sign-in inside a company must pass first: sign-in inside Slack's in-app browser, GitLab consent behaviour, publish timing on GitLab Pages, and corporate MFA policies inside that browser. Parked until there is a gitlab.com group, a Slack workspace, and phones to test with (section 7 of the split doc).
-- [ ] **Publish to npm.** Deliberately not done yet: nothing is published, so part 1 runs from a clone (see [Running it today](#running-it-today)). `package.json` already carries the `bin` entry, so publishing is a single step whenever the shape stops moving.
+- [ ] **Publish to npm.** Deliberately not done yet: nothing is published to npm, so the commands run from the Claude Code plugin or from a clone (see [Running it today](#running-it-today)). `package.json` already carries the `bin` entry, so publishing is a single step whenever the shape stops moving.
 - [ ] **Later ports:** Vercel with Sign in with Slack, ungated hosts (S3, Firebase) with corporate SSO, a Cloudflare Access gate adapter, GitHub Pages (Enterprise Cloud), a self-hosting package, two-way Slack sync.
 
 ## Prior art and credit where it's due
