@@ -105,6 +105,8 @@ test('relative-asset stays silent for addresses that travel, and for what is not
     '<img src="" alt="">',
     '<img data-src="lazy.png" src="data:,x" alt="">',
     '<img src="{{ image }}" alt="">',
+    '<script type="text/babel">const Card = ({ item }) => <img src={item.image} alt="" />;</script>',
+    '<script type="text/babel">const Hero = () => <img src={`img/${name}.png`} />;</script>',
     '<div style="background:url(data:image/svg+xml;utf8,<svg/>)"></div>',
     '<div style="background:url(#grad)"></div>',
     '<link rel="canonical" href="other.html">',
@@ -116,13 +118,18 @@ test('relative-asset stays silent for addresses that travel, and for what is not
   for (const body of silent) assert.deepEqual(rules(page({ body })), [], body);
 });
 
+test('relative-asset still fires on a JSX string that names a file next to the page (review of #16, R3)', () => {
+  const found = only(page({ body: '<script type="text/babel">const Logo = () => <img src="logo.png" alt="" />;</script>' }), 'relative-asset');
+  assert.deepEqual(found.map((f) => f.detail), ['<img src="logo.png">']);
+});
+
 test('relative-asset: one finding per file, however often it is used', () => {
   const found = only(page({ body: '<img src="a.png"><img src="a.png"><div style="background:url(a.png)"></div><img src="b.png">' }), 'relative-asset');
   assert.deepEqual(found.map((f) => f.detail), ['<img src="a.png">', '<img src="b.png">']);
 });
 
 test('isRelative: schemes, protocol-relative, hash and query travel; paths do not', () => {
-  for (const url of ['https://a.b/c', 'HTTP://a.b', '//a.b/c', 'data:,x', 'blob:x', '#x', '?step=2', 'mailto:a@b.c', 'tel:+1', 'javascript:void(0)', '', '  ', '${src}']) {
+  for (const url of ['https://a.b/c', 'HTTP://a.b', '//a.b/c', 'data:,x', 'blob:x', '#x', '?step=2', 'mailto:a@b.c', 'tel:+1', 'javascript:void(0)', '', '  ', '${src}', '{item.image}']) {
     assert.equal(isRelative(url), false, url);
   }
   for (const url of ['a.png', './a.png', '../a.png', '/a.png', 'img/a b.png']) assert.equal(isRelative(url), true, url);

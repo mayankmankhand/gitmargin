@@ -182,6 +182,10 @@ export function isRelative(url) {
   if (/^[a-z][a-z0-9+.-]*:/i.test(u)) return false;
   // A template placeholder, filled in by script: not an address yet.
   if (/\{\{|\$\{/.test(u)) return false;
+  // A JSX expression (<img src={item.image} />, read from a text/babel script):
+  // a script value, not a file next to the page. Flagging it sent the share
+  // skill looking for a file that does not exist (review of #16, R3).
+  if (u.startsWith('{')) return false;
   return true;
 }
 
