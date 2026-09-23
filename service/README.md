@@ -268,7 +268,8 @@ It needs two things from your GitHub App, and one of them changes what reviewers
 2. **Then install the App on that repository.** On the App's page, Install App, your account or organization, **Only
    select repositories**, pick the repository. The service can only check repositories the App is installed on.
    If the App was already installed when you added the permission, GitHub keeps the old permissions until you accept
-   the new one: your Settings, Applications, Installed GitHub Apps, the App, and accept the request. Until then
+   the new one: your Settings, Applications, Installed GitHub Apps, the App, and accept the request (for an App
+   installed on an organization, the organization's own settings, GitHub Apps). Until then
    reviewers see "cannot check who can open ...".
 
 ```bash
