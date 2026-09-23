@@ -193,8 +193,8 @@ either provider is `https://<service>/auth/callback`. Pasted values are trimmed 
   a `state` and a `S256` challenge. The token call sends the secret and the verifier; GitHub may answer a refusal with
   any status and an `error` field, so only a returned `access_token` counts, and only the error's name is logged. Who
   someone is comes from `GET /user`, sent with a `User-Agent` as GitHub requires: `id` (the permanent subject), `login`
-  (the username) and `name` (which may be empty; the login is shown then). No members rule yet: a `members` value with
-  `github` is `400 invalid`.
+  (the username) and `name` (which may be empty; the login is shown then). Its members rule names a repository; see
+  "The members rule (GitHub)".
 
 ### Limits and lifetimes
 
@@ -210,8 +210,8 @@ Expired sign-ins and passes are cleared alongside writes, like the other houseke
 ### `PATCH /api/prototypes/<key>` (author secret)
 Body `{ "identity": "none" | "gitlab" | "github", "members": "group/full/path" | null, "read": "open" | "members" }`.
 `members` and `read` are optional; `members` defaults to null (anyone who signs in may comment) and `read` to `"open"`.
-`members` or `read: "members"` with `identity: "none"` is `400 invalid`, and so is `members` with `github`. A provider
-the deployment has no settings for is `409 provider_not_configured`.
+`members` or `read: "members"` with `identity: "none"` is `400 invalid`, and so is a GitHub `members` that is not
+exactly `owner/repo`. A provider the deployment has no settings for is `409 provider_not_configured`.
 
 **Every call ends every pass for that prototype**, whatever changed. That is the author's way to stop someone now:
 removing a person from the group stops their next sign-in, and this stops the pass they already hold. It is also what
@@ -226,6 +226,29 @@ Never a prefix and never a part of a path: `acme` does not match `acme-design`, 
 `acme/design-team`. Whatever the provider counts as membership counts, inherited membership included; someone who
 belongs only to a subgroup is not a member of its parent. The claim carries paths, not permanent ids, so after a group
 is renamed or deleted the author sets the rule again: a freed path can be registered by someone else.
+
+### The members rule (GitHub)
+One repository, `owner/repo` in GitHub's characters (the owner a login of up to 39 letters, digits and hyphens; the
+name letters, digits, `.`, `_` and `-`), meaning "people GitHub gives explicit access to this repository": its owner, a
+collaborator, or someone with access through the organization. A public repository does not make everyone a member:
+reading it is not explicit access.
+
+It is checked at the callback with the person's own short-lived token, against the author's GitHub App:
+
+1. `GET /user/installations` (needs no permission) must list an installation whose account login equals the rule's
+   owner, compared without regard to case. None: not a member, and nothing more is asked.
+2. `GET /user/installations/<id>/repositories`, 100 a page, at most 10 pages, must list the repository, compared whole
+   and without regard to case, never as a prefix: `acme/app` does not match `acme/app-two`. Not listed within the
+   first 1,000: not a member.
+
+So the App must be **installed on that repository** and must hold **Metadata (read)**, the one repository permission
+the listing needs. GitHub may then show reviewers more on its permission screen than "verify your identity"; the
+author chooses. A listing refused for lack of that permission answers the problem page "The author's GitHub App
+cannot check who can open <repo>" and is logged by name; any other failure answers "GitHub did not confirm the
+sign-in". A failure is never read as "not a member", and never grants anything. With no rule, neither call is made.
+
+The same limit as GitLab's: the rule holds names, not permanent ids, so after the repository or its owner is renamed
+the author sets it again.
 
 ### What a page is told
 When sign-in is on, the `prototype` block of `GET /api/p/<key>/comments` gains `"identity"`, `"read"` and

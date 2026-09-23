@@ -139,3 +139,19 @@ test('GitHub from a web address, two people: one signs in and comments, the othe
   await w.service.close();
   await w.fake.close();
 });
+
+test('GitHub with a repository rule: someone without access is told so in repository words', async ({ browser }, testInfo) => {
+  const w = await world(testInfo, { person: 'dana' });
+  await gitmargin(['identity', join(testInfo.outputPath('signin-github'), 'wizard.gitmargin.html'), 'github', '--members', 'acme/app'], {
+    GITMARGIN_SECRET: w.service.secret,
+  });
+  const page = await (await browser.newContext()).newPage();
+  await open(page, w.disk);
+  await signIn(page);
+  await expect(page.locator('.gm-identity-says')).toContainText('Your account has no access to acme/app', SLOW);
+  await expect(page.locator('.gm-identity-says')).toContainText('only people who can open it can comment here');
+  await expect(page.locator('.gm-identity-btn')).toHaveText('Sign in with GitHub again');
+  expect(await w.service.query('select 1 from sessions')).toEqual([]);
+  await w.service.close();
+  await w.fake.close();
+});

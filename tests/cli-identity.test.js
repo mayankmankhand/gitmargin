@@ -247,13 +247,21 @@ test('identity github switches GitHub sign-in on and says who can do what, in Gi
   assert.match(strict.err, /signed-in members only/);
 });
 
-test('identity github refuses --members, and sends nothing when it does', async (t) => {
+test('identity github --members names one repository, says the App must be on it, and refuses anything else before sending', async (t) => {
   const s = await setup(t, { provider: 'github' });
-  const r = await run(['identity', s.copy, 'github', '--members', 'acme/app'], s.env);
-  assert.equal(r.code, 1);
-  assert.match(r.err, /GitHub sign-in takes no --members/);
+  for (const bad of ['acme', 'acme/app/extra', 'has space/app']) {
+    const r = await run(['identity', s.copy, 'github', '--members', bad], s.env);
+    assert.equal(r.code, 1, bad);
+    assert.match(r.err, /names one repository as owner\/repo/);
+  }
   const listed = await (await fetch(`${s.service.url}/api/p/${s.key}/comments`)).json();
-  assert.deepEqual(listed.prototype, { name: 'proto.html' }, 'the refused command still changed the setting');
+  assert.deepEqual(listed.prototype, { name: 'proto.html' }, 'a refused command still changed the setting');
+
+  const r = await run(['identity', s.copy, 'github', '--members', 'acme/app'], s.env);
+  assert.equal(r.code, 0, r.err);
+  assert.match(r.err, /people GitHub lets open the repository "acme\/app" only/);
+  assert.match(r.err, /must be installed on acme\/app, with read access to repository metadata/);
+  assert.match(r.err, /a freed name can be registered by someone else/);
 });
 
 test('identity github says so when the service has no GitHub App set up', async (t) => {

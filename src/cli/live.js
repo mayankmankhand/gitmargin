@@ -408,11 +408,12 @@ export async function setIdentityMode(args) {
   if (mode === 'none' && (members.present || read.present)) {
     throw new CliError('--members and --read only mean something with a sign-in mode.', EXIT_USAGE, 'Try: gitmargin identity <copy> none');
   }
-  if (mode === 'github' && members.present) {
+  // A GitHub rule names one repository (issue #17): said here, before anything is sent.
+  if (mode === 'github' && members.present && !/^[A-Za-z0-9][A-Za-z0-9-]{0,38}\/[A-Za-z0-9._-]{1,100}$/.test(String(members.value).trim())) {
     throw new CliError(
-      'GitHub sign-in takes no --members yet: anyone who signs in with GitHub may comment.',
+      `--members for GitHub names one repository as owner/repo, not ${members.value}.`,
       EXIT_USAGE,
-      'Try: gitmargin identity <copy> github, with --read members to keep the comments to signed-in people.'
+      'Try: gitmargin identity <copy> github --members your-org/your-repo'
     );
   }
 
@@ -437,19 +438,31 @@ export async function setIdentityMode(args) {
     lines.push(`Sign-in is OFF for ${name}. Anyone who can open the page comments under a name they type.`);
   } else {
     const provider = PROVIDER_NAMES[set.identity] || set.identity;
+    const repo = set.identity === 'github';
     lines.push(`Sign-in is ON for ${name}: people comment under their ${provider} name.`);
     lines.push(
       set.members
-        ? `Who can comment: members of the ${provider} group "${set.members}" only.`
+        ? repo
+          ? `Who can comment: people GitHub lets open the repository "${set.members}" only.`
+          : `Who can comment: members of the ${provider} group "${set.members}" only.`
         : `Who can comment: anyone with a ${provider} account who can open the page.`
     );
+    if (repo && set.members) {
+      lines.push(
+        `Your GitHub App must be installed on ${set.members}, with read access to repository metadata, or nobody gets in.`
+      );
+    }
     lines.push(
       set.read === 'members'
         ? 'Who can read the comments: signed-in members only. The copies stored on the service open only after sign-in too.'
         : 'Who can read the comments: anyone who can open the page.'
     );
     if (set.members) {
-      lines.push(`If you rename or delete "${set.members}", run this again: a freed group path can be registered by someone else.`);
+      lines.push(
+        repo
+          ? `If you rename or delete "${set.members}", or its owner is renamed, run this again: a freed name can be registered by someone else.`
+          : `If you rename or delete "${set.members}", run this again: a freed group path can be registered by someone else.`
+      );
     }
     lines.push('A copy you shared before switching this on can still read, but its comments are refused until you attach and share it again.');
   }

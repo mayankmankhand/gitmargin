@@ -60,8 +60,9 @@ Shared comments (optional; needs a comment service you deployed, see service/REA
   node bin/gitmargin.js identity <prototype.gitmargin.html> <none|gitlab|github> [--members <group>] [--read open|members]
       Who may comment. gitlab: people sign in and comment under their real GitLab
       name; --members limits it to one GitLab group (its full path). github:
-      the same with GitHub (no --members yet). --read members hides the
-      comments from everyone else too. none: typed names, as before. Each run
+      the same with GitHub; --members owner/repo limits it to people GitHub
+      lets open that repository. --read members hides the comments from
+      everyone else too. none: typed names, as before. Each run
       replaces the whole setting, so repeat every flag you still want. Needs
       GITMARGIN_SECRET, and a GitLab application or GitHub App set up on the
       service (service/README.md). Every change signs everyone out.

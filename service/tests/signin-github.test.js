@@ -228,10 +228,9 @@ test('a markup display name is text on every page', async (t) => {
 
 // ---- settings --------------------------------------------------------------------
 
-test('github takes no members rule yet, and a service with no GitHub App says so', async (t) => {
+test('github refuses a rule GitHub cannot mean, and a service with no GitHub App says so', async (t) => {
   const ctx = await setUp(t, { identity: 'none' });
   const path = `/api/prototypes/${ctx.key}`;
-  assert.equal((await ctx.author('PATCH', path, { identity: 'github', members: 'acme/app' })).status, 400);
   assert.equal((await ctx.author('PATCH', path, { identity: 'github', members: 'acme' })).status, 400);
   const on = await ctx.author('PATCH', path, { identity: 'github', read: 'members' });
   assert.deepEqual(on.answer, { identity: 'github', members: null, read: 'members', passes_ended: 0 });
