@@ -109,6 +109,30 @@ function arrivalCodeFromAddress() {
 }
 
 /**
+ * Which address the page talks to (issue #19, API.md "Same-project mode").
+ * A page the comment service serves as its own site, at
+ * `<origin>/p/<its own key>/<latest or a version>`, talks to `<origin>`: the
+ * address it was opened from, because a host's login (Vercel's, in
+ * same-project mode) is kept per address and must ride along on every call.
+ * Anything else talks to the address written into the page, as before. A
+ * sandboxed stored copy has the origin "null", so the rule never fires there.
+ *
+ * @param {{service: string, key: string}} stamp
+ * @param {?{protocol: string, origin: string, pathname: string}} where the page's own location
+ */
+export function serviceAddress(stamp, where) {
+  const written = new URL(stamp.service).origin;
+  try {
+    if (!where || !/^https?:$/.test(where.protocol) || !where.origin || where.origin === 'null') return written;
+    const found = /^\/p\/([^/]+)\/(latest|v\d{1,4}-[0-9a-f]{6})$/.exec(where.pathname);
+    if (found && decodeURIComponent(found[1]) === stamp.key) return where.origin;
+  } catch {
+    /* an address that cannot be read is not the service's own page */
+  }
+  return written;
+}
+
+/**
  * @param {object} deps
  * @param {{service: ?string, key: ?string, versionId: ?string}} deps.stamp
  * @param {object} deps.store  src/overlay/store.js
@@ -136,14 +160,19 @@ export function startSync({
   // (review of the #18 cycle, R7). The edit token was always shared this way;
   // it opens only what this browser wrote, a pass opens a person's name.
   sharedStorage = () => typeof location !== 'undefined' && location.protocol === 'file:',
+  // The page's own address, for the same-project rule above. A function, read
+  // after the is-this-page-shared check, like everything that touches the page.
+  pageLocation = () => (typeof location !== 'undefined' ? location : null),
 }) {
   if (!stamp || !stamp.service || !stamp.key || !stamp.versionId) return null;
 
   let base;
+  let origin; // the comment service, as this page reaches it
   try {
     const url = new URL(stamp.service);
     if (!/^https?:$/.test(url.protocol)) return null;
-    base = `${url.origin}/api/p/${encodeURIComponent(stamp.key)}/comments`;
+    origin = serviceAddress(stamp, pageLocation());
+    base = `${origin}/api/p/${encodeURIComponent(stamp.key)}/comments`;
   } catch {
     return null;
   }
@@ -162,7 +191,6 @@ export function startSync({
   // an author can switch it without re-attaching. The PASS is kept like the edit
   // token: in browser storage when there is some, for this tab only on a disk
   // page that is refused it and inside every stored page.
-  const origin = new URL(stamp.service).origin;
   const passKey = `gitmargin:pass:${stamp.key}`;
   const identity = { mode: 'none', read: 'open', members: null };
   const passDisk = sharedStorage() ? safeStorage(() => { throw new Error('tab only'); }) : disk;
@@ -677,7 +705,7 @@ export function startSync({
       }
     },
     /** Where a stored copy of a version lives (plan step 6). */
-    pageUrl: (versionId) => `${new URL(stamp.service).origin}/p/${encodeURIComponent(stamp.key)}/${encodeURIComponent(versionId)}`,
+    pageUrl: (versionId) => `${origin}/p/${encodeURIComponent(stamp.key)}/${encodeURIComponent(versionId)}`,
 
     // The store's three writes, local first and then queued.
     add(comment) {
