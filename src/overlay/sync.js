@@ -116,9 +116,12 @@ function arrivalCodeFromAddress() {
  * same-project mode) is kept per address and must ride along on every call.
  * Anything else talks to the address written into the page, as before. A
  * sandboxed stored copy has the origin "null", so the rule never fires there.
+ * `where.origin` must be the DOCUMENT's origin: a sandboxed page's `location`
+ * still reports its host, and only `self.origin` says "null" (measured in
+ * Chromium and Firefox, review of #19, R2).
  *
  * @param {{service: string, key: string}} stamp
- * @param {?{protocol: string, origin: string, pathname: string}} where the page's own location
+ * @param {?{protocol: string, origin: string, pathname: string}} where the page's address, with the document's own origin
  */
 export function serviceAddress(stamp, where) {
   const written = new URL(stamp.service).origin;
@@ -160,9 +163,18 @@ export function startSync({
   // (review of the #18 cycle, R7). The edit token was always shared this way;
   // it opens only what this browser wrote, a pass opens a person's name.
   sharedStorage = () => typeof location !== 'undefined' && location.protocol === 'file:',
-  // The page's own address, for the same-project rule above. A function, read
-  // after the is-this-page-shared check, like everything that touches the page.
-  pageLocation = () => (typeof location !== 'undefined' ? location : null),
+  // The page's own address, for the same-project rule above, with the
+  // document's origin rather than the address's (see serviceAddress). A
+  // function, read after the is-this-page-shared check, like everything that
+  // touches the page.
+  pageLocation = () =>
+    typeof location === 'undefined'
+      ? null
+      : {
+          protocol: location.protocol,
+          pathname: location.pathname,
+          origin: typeof self !== 'undefined' && typeof self.origin === 'string' ? self.origin : 'null',
+        },
 }) {
   if (!stamp || !stamp.service || !stamp.key || !stamp.versionId) return null;
 

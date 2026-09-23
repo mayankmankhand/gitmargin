@@ -118,3 +118,25 @@ test('a page opened on the deployment\'s second address talks to that address, w
   expect(a.errors).toEqual([]);
   await w.close();
 });
+
+test('the address rule reads the document\'s origin: a locked-down stored copy keeps the address in the page (review of #19, R2)', async ({ browser }, testInfo) => {
+  for (const sameProject of [false, true]) {
+    const service = await startService({ sameProject });
+    const port = new URL(service.url).port;
+    const dir = testInfo.outputPath(`address-rule-${sameProject}`);
+    await mkdir(dir, { recursive: true });
+    const source = join(dir, 'wizard.html');
+    await copyFile(resolve('fixtures/wizard.html'), source);
+    // The page is attached naming one address of the service and opened at another.
+    await gitmargin(['attach', source, '--service', `http://localhost:${port}`], { GITMARGIN_SECRET: service.secret });
+    const [{ key }] = await service.query('select key from prototypes');
+    const page = await (await browser.newContext()).newPage();
+    await page.goto(`http://127.0.0.1:${port}/p/${key}/latest`);
+    await page.waitForFunction(() => !!window.__gitmargin);
+    const used = await page.evaluate(() => window.__gitmargin.sync.pageUrl('v1-aaaaaa'));
+    // Default mode serves a sandboxed copy: it keeps the address written in it.
+    // Same-project mode serves the site's own page: it talks to where it was opened.
+    expect(new URL(used).hostname, `sameProject ${sameProject}`).toBe(sameProject ? '127.0.0.1' : 'localhost');
+    await service.close();
+  }
+});
