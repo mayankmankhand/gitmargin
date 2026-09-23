@@ -89,15 +89,31 @@ function providerAddressOk(address) {
 export const cleanSetting = (value) => String(value || '').trim().replace(/^['"\s]+|['"\s]+$/g, '');
 
 export function providerSettings(deps, name) {
+  const provider = PROVIDERS[name];
   const settings = deps.providers && deps.providers[name];
-  if (!settings || !deps.origin || !deps.fetch) return null;
+  if (!provider || !settings || !deps.origin || !deps.fetch) return null;
   const id = cleanSetting(settings.id);
   const secret = cleanSetting(settings.secret);
   if (!id || !secret) return null;
-  const url = (cleanSetting(settings.url) || 'https://gitlab.com').replace(/\/+$/, '');
+  const url = (cleanSetting(settings.url) || provider.defaultUrl).replace(/\/+$/, '');
   if (!providerAddressOk(url)) return null;
   return { url, id, secret };
 }
+
+/**
+ * Where GitHub keeps its API. github.com keeps it on a host of its own; GitHub
+ * Enterprise Server, and the test suite's fake, keep it under `/api/v3`.
+ */
+export function githubApi(url) {
+  return /^https:\/\/github\.com$/i.test(url) ? 'https://api.github.com' : `${url}/api/v3`;
+}
+
+/** GitHub refuses an API call with no User-Agent, and asks callers to name the API version. */
+const GITHUB_HEADERS = {
+  accept: 'application/vnd.github+json',
+  'user-agent': 'gitmargin-comment-service',
+  'x-github-api-version': '2022-11-28',
+};
 
 /** One discovery per provider address per warm function. A failure is not remembered. */
 const discovered = new Map();
@@ -120,11 +136,13 @@ function discover(deps, settings) {
 
 /**
  * Providers are adapters with two jobs, so GitHub is a second entry here and
- * not a second flow. `openid` is the only permission ever asked for.
+ * not a second flow (issue #17). Neither asks for more than "who are you":
+ * GitLab's `openid`, and a GitHub App created with no permissions.
  */
 const PROVIDERS = {
   gitlab: {
     label: 'GitLab',
+    defaultUrl: 'https://gitlab.com',
     async authorizeUrl(deps, settings, { redirectUri, state, challenge }) {
       const meta = await discover(deps, settings);
       const go = new URL(meta.authorization_endpoint);
@@ -169,6 +187,59 @@ const PROVIDERS = {
         username,
         name: cleanName(who.name) || username || 'Someone',
         groups: Array.isArray(who.groups) ? who.groups.filter((g) => typeof g === 'string').slice(0, 2000) : null,
+      };
+    },
+  },
+  github: {
+    label: 'GitHub',
+    defaultUrl: 'https://github.com',
+    // A GitHub App's permissions are set on the App, so no `scope` is sent.
+    async authorizeUrl(deps, settings, { redirectUri, state, challenge }) {
+      const go = new URL(`${settings.url}/login/oauth/authorize`);
+      go.search = new URLSearchParams({
+        client_id: settings.id,
+        redirect_uri: redirectUri,
+        state,
+        code_challenge: challenge,
+        code_challenge_method: 'S256',
+      }).toString();
+      return go.toString();
+    },
+    /** Who is this? The token lives for the length of this function. */
+    async identify(deps, settings, { code, verifier, redirectUri }) {
+      const tokenAnswer = await deps.fetch(`${settings.url}/login/oauth/access_token`, {
+        method: 'POST',
+        // Without `accept: application/json` GitHub answers form-encoded text.
+        headers: { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json', 'user-agent': GITHUB_HEADERS['user-agent'] },
+        body: new URLSearchParams({
+          client_id: settings.id,
+          client_secret: settings.secret,
+          code,
+          redirect_uri: redirectUri,
+          code_verifier: verifier,
+        }).toString(),
+      });
+      const token = await tokenAnswer.json().catch(() => ({}));
+      // GitHub reports most refusals as a 200 with an `error` field (and an
+      // unknown client as a 404), so only a returned token means yes. The
+      // error NAME only: a provider's error body can echo what it was sent.
+      if (typeof token.access_token !== 'string' || !token.access_token) {
+        throw new Error(`token call refused: ${typeof token.error === 'string' ? token.error.slice(0, 40) : tokenAnswer.status}`);
+      }
+      const whoAnswer = await deps.fetch(`${githubApi(settings.url)}/user`, {
+        headers: { ...GITHUB_HEADERS, authorization: `Bearer ${token.access_token}` },
+      });
+      if (!whoAnswer.ok) throw new Error(`user answered ${whoAnswer.status}`);
+      const who = await whoAnswer.json();
+      if (!Number.isSafeInteger(who.id) && !(typeof who.id === 'string' && /^\d{1,20}$/.test(who.id))) throw new Error('user has no id');
+      const username = cleanName(who.login || '');
+      return {
+        // The numeric id is permanent; the login can be changed and reused.
+        subject: String(who.id),
+        username,
+        // A display name is optional on GitHub, so the login stands in.
+        name: cleanName(who.name) || username || 'Someone',
+        groups: null,
       };
     },
   },
@@ -254,6 +325,8 @@ export async function setIdentity(deps, key, body, { json, refuse }) {
   const read = body.read === undefined ? 'open' : body.read;
   if (members === undefined || !['open', 'members'].includes(read)) return refuse(400, 'invalid');
   if (identity === 'none' && (members || read !== 'open')) return refuse(400, 'invalid');
+  // GitHub has no members rule: the first cycle of it proves the plug alone (issue #17).
+  if (identity === 'github' && members) return refuse(400, 'invalid');
   if (identity !== 'none' && !providerSettings(deps, identity)) return refuse(409, 'provider_not_configured');
 
   await query('update prototypes set identity = $2, members = $3, read_rule = $4 where key = $1', [key, identity, members, read]);
@@ -510,10 +583,15 @@ export async function takeTicket({ query, now }, key, which, ticket) {
 export function gatePage(prototype, which) {
   const label = providerLabel(prototype.identity);
   const go = `/auth/start?key=${encodeURIComponent(prototype.key)}&return=${encodeURIComponent(which)}`;
+  // GitLab rules name a group; a GitHub prototype names no one yet.
+  const audience =
+    prototype.identity === 'github'
+      ? 'Its author shares it only with people who sign in with GitHub.'
+      : `Its author shares it with members of one ${label} group only.`;
   return htmlPage(
     401,
     'Sign in to open this page',
-    `<h1>Sign in to open this page</h1><p>Its author shares it with members of one ${escapeHtml(label)} group only.</p>` +
+    `<h1>Sign in to open this page</h1><p>${escapeHtml(audience)}</p>` +
       `<p style="margin-top:14px"><a id="gm-signin" class="button primary" href="${escapeHtml(go)}">Sign in with ${escapeHtml(label)}</a></p>`,
   );
 }
