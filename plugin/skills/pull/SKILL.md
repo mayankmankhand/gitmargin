@@ -45,7 +45,7 @@ gitmargin status <name>.gitmargin.html <comment-id> rejected
 
 `accepted` means agreed but not done yet; `open` puts it back. Comments from a returned file or pasted text have no service, so there is nothing to mark.
 
-If `gitmargin status` says the author secret (`GITMARGIN_SECRET`) is not set, the changes are still applied; say that the comments could not be marked yet, and that the secret reaches Claude Code only after a restart from a new terminal (step 7 of the share skill's service setup).
+If `gitmargin status` refuses because there is no author secret on this computer, or because the service could not prove it holds it or is "from before the proof of trust", the changes are still applied. Say that the comments could not be marked yet, and hand over the line in `setupCommand` from `gitmargin services --json`: the author runs it in their own terminal, it sets up or updates the service, and nothing needs restarting. Do not run it yourself.
 
 ## 5. Report
 
