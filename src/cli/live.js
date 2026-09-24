@@ -54,7 +54,7 @@ function secretShapeProblem(value, where) {
  * refused instead of waited on, and nothing can be swapped in between the
  * check and the read.
  */
-function readSecretFile(file) {
+export function readSecretFile(file) {
   let fd;
   try {
     fd = openSync(file, fsConstants.O_RDONLY | (fsConstants.O_NONBLOCK || 0));
@@ -77,7 +77,8 @@ function readSecretFile(file) {
     const value = readFileSync(fd, 'utf8').replace(/^\uFEFF/, '').replace(/\r?\n$/, '');
     if (!value) return { value: null, problem: `${file} is empty.` };
     const problem = secretShapeProblem(value, file);
-    return problem ? { value: null, problem } : { value, problem: null };
+    // `short` lets the setup command offer a new secret instead of stopping.
+    return problem ? { value: null, problem, short: !/\s/.test(value) && value.length < MIN_SECRET_LENGTH } : { value, problem: null };
   } finally {
     closeSync(fd);
   }
@@ -125,7 +126,7 @@ function secret() {
   return found.value;
 }
 
-function cleanAddress(value) {
+export function cleanAddress(value) {
   let url;
   try {
     url = new URL(String(value));
@@ -173,7 +174,7 @@ const SERVICE_SOURCE = fileURLToPath(new URL('../../service', import.meta.url));
 /** Never compared and never read: Vercel's link, installs, tests, the Neon installer's guide files, and (by prefix) every .env file. */
 const SERVICE_SKIP = new Set(['.vercel', 'node_modules', 'tests', '.agents', '.claude', 'skills-lock.json']);
 
-function serviceFiles(root, rel = '') {
+export function serviceFiles(root, rel = '') {
   const found = [];
   for (const entry of readdirSync(path.join(root, rel), { withFileTypes: true })) {
     if (SERVICE_SKIP.has(entry.name) || entry.name.startsWith('.env')) continue;
@@ -208,6 +209,23 @@ function serviceCopyState(configDir) {
 }
 
 /**
+ * The line that runs the setup command, for the author to paste into their own
+ * terminal (issue #36): next to this command line in the plugin, under
+ * plugin/ in a clone. Written with an absolute path because a plugin's
+ * commands are on PATH only inside Claude Code. null when neither exists.
+ */
+function setupCommand() {
+  for (const rel of ['../../scripts/setup.mjs', '../../plugin/scripts/setup.mjs']) {
+    const file = fileURLToPath(new URL(rel, import.meta.url));
+    if (!existsSync(file)) continue;
+    // Double quotes read the same in bash, zsh and PowerShell; a path they would
+    // expand goes in single quotes instead.
+    return /["$`\\]/.test(file) ? `node '${file.replace(/'/g, "'\\''")}'` : `node "${file}"`;
+  }
+  return null;
+}
+
+/**
  * `gitmargin services [--json]`: what this machine knows about comment
  * services, read-only (issue #16). The Claude Code plugin asks this before a
  * first share: to propose the service link when the author already has a
@@ -227,6 +245,7 @@ export function listServices(args) {
     // Where the secret came from, and why it cannot be used when it cannot.
     secretFrom: found.from,
     secretProblem: found.problem,
+    setupCommand: setupCommand(),
   };
   answer.serviceCopy = serviceCopyState(answer.configDir);
   if (args.includes('--json')) {
@@ -337,13 +356,15 @@ async function readCapped(response, cap) {
 /** A server's own words, safe to print: anything but plain printable characters becomes "?". */
 const printable = (text) => String(text).slice(0, 200).replace(/[^\x20-\x7e]/g, '?');
 
-function notProven(address, why, hint = '') {
-  return new CliError(`Refusing to send your author secret to ${address}: ${why}`, EXIT_REFUSED, `${hint ? `${hint}\n` : ''}Nothing was sent.`);
+function notProven(address, kind, why, hint = '') {
+  const refusal = new CliError(`Refusing to send your author secret to ${address}: ${why}`, EXIT_REFUSED, `${hint ? `${hint}\n` : ''}Nothing was sent.`);
+  refusal.proof = kind; // what the setup command branches on: 'mismatch', 'weak_secret', 'no_secret', ...
+  return refusal;
 }
 
 /** Ask the service at `address` to prove it holds `secretValue`. Refuses, having sent nothing, unless it does. */
-export async function proveService(address, secretValue) {
-  if (proven.has(address)) return;
+export async function proveService(address, secretValue, { again = false } = {}) {
+  if (proven.has(address) && !again) return;
   const host = dialedHost(address);
   const challenge = randomBytes(32).toString('hex');
   const bypass = bypassFor(address);
@@ -365,14 +386,17 @@ export async function proveService(address, secretValue) {
     text = await readCapped(response, PROOF_MAX_BYTES);
   } catch (error) {
     if (error && (error.name === 'TimeoutError' || error.name === 'AbortError')) {
-      throw notProven(address, `it did not answer within ${PROOF_TIMEOUT_MS / 1000} seconds.`);
+      throw notProven(address, 'timeout', `it did not answer within ${PROOF_TIMEOUT_MS / 1000} seconds.`);
     }
-    throw new CliError(`Could not reach the comment service at ${address}.`, EXIT_REFUSED, 'Nothing was sent.');
+    const unreachable = new CliError(`Could not reach the comment service at ${address}.`, EXIT_REFUSED, 'Nothing was sent.');
+    unreachable.proof = 'unreachable';
+    throw unreachable;
   }
   if (status >= 300 && status < 400) {
     if (/\/sso-api(?:[/?#]|$)/.test(location)) {
       throw notProven(
         address,
+        'wall',
         bypass['x-vercel-protection-bypass'] ? "Vercel's protection refused the bypass secret." : "it is behind Vercel's protection.",
         bypass['x-vercel-protection-bypass']
           ? "Check GITMARGIN_VERCEL_BYPASS against the project's Protection Bypass for Automation (Vercel: the project, Settings, Deployment Protection)."
@@ -382,11 +406,12 @@ export async function proveService(address, secretValue) {
     }
     throw notProven(
       address,
+      'redirect',
       `it answered with a redirect to ${location ? printable(location) : 'another address'}, and a redirect changes who is answering.`,
       'Use the address the service itself answers on.'
     );
   }
-  if (text === null) throw notProven(address, 'it answered with far more than a proof, so it is not a gitmargin comment service.');
+  if (text === null) throw notProven(address, 'not_service', 'it answered with far more than a proof, so it is not a gitmargin comment service.');
   let answer = null;
   try {
     answer = JSON.parse(text);
@@ -396,14 +421,14 @@ export async function proveService(address, secretValue) {
   const error = answer && typeof answer.error === 'string' ? answer.error : null;
   const own = "If it is yours, run gitmargin's setup command in your own terminal (gitmargin services prints it).";
   if (status === 404 && error === 'not_found') {
-    throw notProven(address, 'it answers like a gitmargin comment service from before the proof of trust.', `${own} It deploys the newer one.`);
+    throw notProven(address, 'old', 'it answers like a gitmargin comment service from before the proof of trust.', `${own} It deploys the newer one.`);
   }
-  if (status === 409 && error === 'no_secret') throw notProven(address, 'the service there has no author secret set.', own);
+  if (status === 409 && error === 'no_secret') throw notProven(address, 'no_secret', 'the service there has no author secret set.', own);
   if (status === 409 && error === 'weak_secret') {
-    throw notProven(address, 'its author secret is shorter than 32 characters, so the service will not prove with it.', `${own} It offers to make a new secret.`);
+    throw notProven(address, 'weak_secret', 'its author secret is shorter than 32 characters, so the service will not prove with it.', `${own} It offers to make a new secret.`);
   }
   const proof = status === 200 && answer && typeof answer.proof === 'string' ? answer.proof : '';
-  if (!/^[0-9a-f]{64}$/.test(proof)) throw notProven(address, `it is not a gitmargin comment service (it answered ${status}).`);
+  if (!/^[0-9a-f]{64}$/.test(proof)) throw notProven(address, 'not_service', `it is not a gitmargin comment service (it answered ${status}).`);
   const expected = createHmac('sha256', secretValue).update(`${PROOF_LABEL}\n${challenge}\n${host}`, 'utf8').digest();
   if (!timingSafeEqual(expected, Buffer.from(proof, 'hex'))) {
     forgetAddress(address);
@@ -411,6 +436,7 @@ export async function proveService(address, secretValue) {
     const seen = answer && typeof answer.host === 'string' && /^[a-z0-9.:[\]-]{1,255}$/.test(answer.host) && answer.host !== host;
     throw notProven(
       address,
+      'mismatch',
       'it could not prove it holds your author secret: it is not your service, or its secret is not the one this computer has.',
       seen ? `The service says it was reached as ${answer.host}; this command dialed ${host}.` : ''
     );

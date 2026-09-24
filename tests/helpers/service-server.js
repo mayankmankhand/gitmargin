@@ -29,7 +29,9 @@ export function testClock(start = '2026-09-18T12:00:00.000Z') {
 }
 
 /**
- * @param {{secret?: string, clock?: {now: () => Date}, down?: () => boolean, gitlab?: object, github?: object}} [options]
+ * @param {{secret?: string | (() => string), clock?: {now: () => Date}, down?: () => boolean, gitlab?: object, github?: object}} [options]
+ *   `secret` may be a function, read on every request: the setup command's tests
+ *   let a stand-in `vercel deploy` decide which secret the service holds.
  *   `down` lets a test take the service away mid-session and bring it back.
  */
 export async function startService(options = {}) {
@@ -62,7 +64,7 @@ export async function startService(options = {}) {
       {
         query: database.query,
         now: clock.now,
-        secret,
+        secret: typeof secret === 'function' ? secret() : secret,
         log: options.log,
         // Issue #19: the deployment switch, off unless a test turns it on.
         sameProject: Boolean(options.sameProject),
