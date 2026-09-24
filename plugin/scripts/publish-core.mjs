@@ -190,8 +190,23 @@ const GIT_LOCATION_VARS = [
   'GIT_QUARANTINE_PATH',
 ];
 
+/**
+ * The author's own secrets: the one that opens the comment service and the one
+ * that opens Vercel's protection (issue #33). git, gh and glab never need
+ * them, and a hook, a credential helper or an extension could read the
+ * environment, so every program the publishers run starts without them.
+ */
+export const AUTHOR_SECRETS = ['GITMARGIN_SECRET', 'GITMARGIN_VERCEL_BYPASS'];
+
+/** A copy of `env` without the author's secrets. */
+export function withoutAuthorSecrets(env) {
+  const clean = { ...env };
+  for (const name of AUTHOR_SECRETS) delete clean[name];
+  return clean;
+}
+
 function gitEnv() {
-  const env = { ...process.env };
+  const env = withoutAuthorSecrets(process.env);
   for (const name of GIT_LOCATION_VARS) delete env[name];
   // Claude Code runs this without a terminal, where a username prompt would
   // wait forever. Credential helpers (gh auth setup-git, a keychain) still work.

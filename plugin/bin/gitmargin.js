@@ -65,7 +65,8 @@ Shared comments (optional; needs a comment service you deployed, see service/REA
       Registers the prototype and this version with your service and writes the
       address and a page key into the copy, so everyone who opens it sees the
       same comments. Later attaches need only --service. --key <key> reuses a
-      prototype from another machine. Needs GITMARGIN_SECRET in the environment.
+      prototype from another machine. Needs the author secret: GITMARGIN_SECRET,
+      or else the file "secret" in the settings folder (see services).
       The secret is only ever sent to an address you typed here yourself, or
       named in GITMARGIN_SERVICE: never to one that only a file names.
       --require-trusted refuses, sending nothing, an address this machine has
@@ -79,12 +80,13 @@ Shared comments (optional; needs a comment service you deployed, see service/REA
   node bin/gitmargin.js status <prototype.gitmargin.html> <comment-id> <status>
       open, accepted, rejected or applied. Reviewers see it on their page.
   node bin/gitmargin.js remove <prototype.gitmargin.html> <comment-id>
-      Removes anyone's comment. Both need GITMARGIN_SECRET.
+      Removes anyone's comment. Both need the author secret.
   node bin/gitmargin.js services [--json]
       The settings folder, the comment services this machine trusts, whether
-      GITMARGIN_SECRET is set (never its value), and whether the service copy
-      in the settings folder differs from the one that came with this command
-      line (after a plugin update: deploy it again). Sends nothing.
+      the author secret is set and where from (never its value), and whether
+      the service copy in the settings folder differs from the one that came
+      with this command line (after a plugin update: deploy it again). Sends
+      nothing.
   node bin/gitmargin.js identity <prototype.gitmargin.html> <none|gitlab|github> [--members <group>] [--read open|members]
       Who may comment. gitlab: people sign in and comment under their real GitLab
       name; --members limits it to one GitLab group (its full path). github:
@@ -92,7 +94,7 @@ Shared comments (optional; needs a comment service you deployed, see service/REA
       lets open that repository. --read members hides the comments from
       everyone else too. none: typed names, as before. Each run
       replaces the whole setting, so repeat every flag you still want. Needs
-      GITMARGIN_SECRET, and a GitLab application or GitHub App set up on the
+      the author secret, and a GitLab application or GitHub App set up on the
       service (service/README.md). Every change signs everyone out.
 
 Exit codes

@@ -47,6 +47,7 @@ import {
   requireCommits,
   sleep,
   webAddress,
+  withoutAuthorSecrets,
 } from './publish-core.mjs';
 
 const HOST = 'gitlab.com';
@@ -237,7 +238,7 @@ export function assess({ full, project, role, pages, defaultBuildFile, branchOnR
 // Running glab
 
 function glabEnv() {
-  const env = { ...process.env };
+  const env = withoutAuthorSecrets(process.env);
   for (const name of GLAB_STRIPPED) delete env[name];
   return { ...env, ...GLAB_QUIET };
 }

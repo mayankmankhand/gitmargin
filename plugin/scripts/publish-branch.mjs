@@ -72,6 +72,7 @@ import {
   requireCommits,
   sleep,
   unsafeFolder,
+  withoutAuthorSecrets,
 } from './publish-core.mjs';
 import { parseGitLabRemote, publish as publishGitLab, status as statusGitLab } from './publish-gitlab.mjs';
 
@@ -218,7 +219,7 @@ function gh(args) {
     encoding: 'utf8',
     // No prompts, no pager and no "a new version is out" line mixed into the
     // JSON: this is read by a program, not a person at a terminal.
-    env: { ...process.env, GH_PROMPT_DISABLED: '1', GH_NO_UPDATE_NOTIFIER: '1', GH_PAGER: 'cat', NO_COLOR: '1' },
+    env: { ...withoutAuthorSecrets(process.env), GH_PROMPT_DISABLED: '1', GH_NO_UPDATE_NOTIFIER: '1', GH_PAGER: 'cat', NO_COLOR: '1' },
     maxBuffer: 16 * 1024 * 1024,
   });
   if (result.error) {

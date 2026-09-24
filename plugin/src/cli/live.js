@@ -12,7 +12,7 @@
 //
 // Node and nothing else: `fetch` is built in from Node 18.
 
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { closeSync, constants as fsConstants, existsSync, fstatSync, mkdirSync, openSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -24,17 +24,104 @@ const STATUSES = ['open', 'accepted', 'rejected', 'applied'];
 /** Under Vercel's 4.5 MB request limit, with room for headers. */
 const MAX_UPLOAD_BYTES = 4_400_000;
 
-/** The author secret comes from the environment and from nowhere else. */
+/** gitmargin's settings folder: GITMARGIN_CONFIG_DIR, or ~/.config/gitmargin. */
+export const configDir = () => process.env.GITMARGIN_CONFIG_DIR || path.join(os.homedir(), '.config', 'gitmargin');
+
+/** Where the author secret is kept when GITMARGIN_SECRET is not set (issue #36). */
+export const secretFile = () => path.join(configDir(), 'secret');
+
+/**
+ * The author secret's bounds (issue #33). The service signs a proof with it
+ * for anyone who asks, so a short one could be guessed offline from a proof;
+ * the setup command makes 43 characters.
+ */
+export const MIN_SECRET_LENGTH = 32;
+const MAX_SECRET_LENGTH = 256;
+const MAX_SECRET_FILE_BYTES = 4096;
+
+/** Why a secret cannot be used, or null. Names where it came from, never the value. */
+function secretShapeProblem(value, where) {
+  if (/\s/.test(value)) return `${where} has a space or a line break inside the secret.`;
+  if (value.length < MIN_SECRET_LENGTH) return `${where} holds a secret shorter than ${MIN_SECRET_LENGTH} characters.`;
+  if (value.length > MAX_SECRET_LENGTH) return `${where} holds more than ${MAX_SECRET_LENGTH} characters, more than a secret.`;
+  return null;
+}
+
+/**
+ * Read the secret file, or say why not. It is opened without blocking and
+ * checked through the open handle, so a pipe or a device put in its place is
+ * refused instead of waited on, and nothing can be swapped in between the
+ * check and the read.
+ */
+function readSecretFile(file) {
+  let fd;
+  try {
+    fd = openSync(file, fsConstants.O_RDONLY | (fsConstants.O_NONBLOCK || 0));
+  } catch (error) {
+    if (error.code === 'ENOENT') return { value: null, problem: null };
+    return { value: null, problem: `${file} cannot be read (${error.code || error.message}).` };
+  }
+  try {
+    const info = fstatSync(fd);
+    if (!info.isFile()) return { value: null, problem: `${file} is not a plain file.` };
+    if (info.size > MAX_SECRET_FILE_BYTES) return { value: null, problem: `${file} is larger than a secret can be.` };
+    // Mode bits mean nothing on Windows. Elsewhere, a secret the other users
+    // of the computer can read is not a secret.
+    if (process.platform !== 'win32' && info.mode & 0o077) {
+      return { value: null, problem: `${file} can be read by other users of this computer. Fix it with: chmod 600 ${file}` };
+    }
+    // A BOM and one final line break are what an editor or `echo` adds, and
+    // Vercel strips the same line break when it stores a value. Nothing else
+    // is trimmed: the value must stay the exact characters the service holds.
+    const value = readFileSync(fd, 'utf8').replace(/^\uFEFF/, '').replace(/\r?\n$/, '');
+    if (!value) return { value: null, problem: `${file} is empty.` };
+    const problem = secretShapeProblem(value, file);
+    return problem ? { value: null, problem } : { value, problem: null };
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/**
+ * The author secret and where it came from: GITMARGIN_SECRET when it is set
+ * and not empty, otherwise the secret file. A file needs no profile line, so
+ * nothing has to restart after setup (issue #36). Answers
+ * { value, from: 'environment' | 'file', problem: null }, or
+ * { value: null, from: null, problem } where problem is null when there is
+ * simply no secret yet. The value is never printed anywhere.
+ */
+export function resolveSecret() {
+  const env = process.env.GITMARGIN_SECRET;
+  if (env) {
+    const problem = secretShapeProblem(env, 'GITMARGIN_SECRET');
+    return problem ? { value: null, from: null, problem } : { value: env, from: 'environment', problem: null };
+  }
+  const file = readSecretFile(secretFile());
+  return file.value ? { value: file.value, from: 'file', problem: null } : { value: null, from: null, problem: file.problem };
+}
+
+let warnedTwoSecrets = false;
+
+/** The author secret for a command that needs it, or a refusal before anything is sent. */
 function secret() {
-  const value = process.env.GITMARGIN_SECRET;
-  if (!value) {
+  const found = resolveSecret();
+  if (!found.value) {
     throw new CliError(
-      'This command needs the author secret of your comment service.',
+      found.problem ? `The author secret cannot be used: ${found.problem}` : 'This command needs the author secret of your comment service.',
       EXIT_USAGE,
-      'Set GITMARGIN_SECRET to the value you gave the service when you deployed it.'
+      `It is read from GITMARGIN_SECRET, or when that is not set, from ${secretFile()}. Nothing was sent.`
     );
   }
-  return value;
+  if (found.from === 'environment' && !warnedTwoSecrets) {
+    // An old profile line can keep exporting a secret the file has moved on
+    // from. The environment still wins; say so, without either value.
+    const file = readSecretFile(secretFile());
+    if (file.value && file.value !== found.value) {
+      warnedTwoSecrets = true;
+      process.stderr.write(`Note: GITMARGIN_SECRET and ${secretFile()} hold different secrets; using GITMARGIN_SECRET.\n`);
+    }
+  }
+  return found.value;
 }
 
 function cleanAddress(value) {
@@ -58,8 +145,7 @@ function cleanAddress(value) {
  * line themselves, which `attach --service <address>` remembers here, or named
  * in GITMARGIN_SERVICE. The list lives outside the repo and holds no secret.
  */
-const trustFile = () =>
-  path.join(process.env.GITMARGIN_CONFIG_DIR || path.join(os.homedir(), '.config', 'gitmargin'), 'trusted-services.json');
+const trustFile = () => path.join(configDir(), 'trusted-services.json');
 
 function trustedAddresses() {
   const named = process.env.GITMARGIN_SERVICE ? [cleanAddress(process.env.GITMARGIN_SERVICE)] : [];
@@ -124,11 +210,15 @@ function serviceCopyState(configDir) {
 export function listServices(args) {
   const unknown = args.filter((a) => a !== '--json');
   if (unknown.length) throw new CliError(`Unknown option: ${unknown[0]}`, EXIT_USAGE, 'Try: gitmargin services --json');
+  const found = resolveSecret();
   const answer = {
-    configDir: path.dirname(trustFile()),
+    configDir: configDir(),
     trusted: [...new Set(trustedAddresses())],
     fromEnvironment: process.env.GITMARGIN_SERVICE ? cleanAddress(process.env.GITMARGIN_SERVICE) : null,
-    secretSet: Boolean(process.env.GITMARGIN_SECRET),
+    secretSet: Boolean(found.value),
+    // Where the secret came from, and why it cannot be used when it cannot.
+    secretFrom: found.from,
+    secretProblem: found.problem,
   };
   answer.serviceCopy = serviceCopyState(answer.configDir);
   if (args.includes('--json')) {
@@ -140,7 +230,13 @@ export function listServices(args) {
       'Comment services this machine trusts:\n' +
       (answer.trusted.length ? answer.trusted.map((a) => `  ${a}\n`).join('') : '  (none)\n') +
       `GITMARGIN_SERVICE: ${answer.fromEnvironment || 'not set'}\n` +
-      `Author secret (GITMARGIN_SECRET): ${answer.secretSet ? 'set' : 'not set'}\n` +
+      (answer.secretFrom === 'environment'
+        ? 'Author secret (GITMARGIN_SECRET): set\n'
+        : answer.secretFrom === 'file'
+          ? `Author secret (${secretFile()}): set\n`
+          : answer.secretProblem
+            ? `Author secret: cannot be used. ${answer.secretProblem}\n`
+            : `Author secret (GITMARGIN_SECRET or ${secretFile()}): not set\n`) +
       `Service copy in ${path.join(answer.configDir, 'service')}: ${
         {
           none: 'none yet',
@@ -205,7 +301,7 @@ function bypassFor(address) {
 
 /** What each refusal in API.md means to the person at the terminal. */
 const REFUSALS = {
-  unauthorized: 'The comment service refused the author secret. Check GITMARGIN_SECRET against the deployment.',
+  unauthorized: 'The comment service refused the author secret. Check that GITMARGIN_SECRET, or the secret file, holds the one the deployment has.',
   not_found: 'The comment service does not know that prototype key or comment.',
   full:
     'The comment service is at its limit for this prototype. At 500 comments, remove some (gitmargin remove). ' +
@@ -517,11 +613,12 @@ export async function pullLive(args) {
     } catch (refusal) {
       if (refusal.refusal !== 'sign_in' || auth) throw refusal;
       assertSecretMayGo(stamp.service, { typed: false });
-      if (!process.env.GITMARGIN_SECRET) {
+      const found = resolveSecret();
+      if (!found.value && !found.problem) {
         throw new CliError(
           'The comments on this prototype are for members only, so reading them here needs your author secret.',
           EXIT_USAGE,
-          'Set GITMARGIN_SECRET to the value you gave the service when you deployed it, and run this again.'
+          `Set GITMARGIN_SECRET, or keep the secret in ${secretFile()}, and run this again.`
         );
       }
       auth = secret();

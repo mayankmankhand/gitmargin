@@ -29,6 +29,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { GLAB_STRIPPED, ciFile, parseGitLabRemote, publishesPages } from '../plugin/scripts/publish-gitlab.mjs';
+import { secretSpies } from './helpers/secret-spy.js';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const SCRIPT = path.join(ROOT, 'plugin', 'scripts', 'publish-branch.mjs');
@@ -727,4 +728,22 @@ test('--status after a publish gives the link', (t) => {
   assert.equal(state.pages.deployed, true);
   assert.equal(state.link, `${SITE}/one/`);
   assert.equal(state.publish, 'ready');
+});
+
+
+test('git and glab never receive the author secret or the Vercel bypass, and the spies did run (#33)', (t) => {
+  const w = world(t);
+  const spies = path.join(w.base, 'spies');
+  const seen = secretSpies(spies, ["git","glab"], path.join(w.base, 'spies.log'), w.env.PATH);
+  const r = run(w, [attached(w, 'one', 'first'), '--folder', 'one'], {
+    env: {
+      PATH: [spies, w.env.PATH].join(path.delimiter),
+      GITMARGIN_SECRET: 'an-author-secret-that-must-stay-home-0123',
+      GITMARGIN_VERCEL_BYPASS: 'a-bypass-value-that-must-stay-home',
+    },
+  });
+  assert.equal(r.code, 0, r.err);
+  const lines = seen();
+  for (const name of ["git","glab"]) assert.ok(lines.includes(`${name} clean`), `${name} ran through its spy: ${lines.join(', ')}`);
+  assert.deepEqual(lines.filter((line) => line.endsWith(' leaked')), []);
 });
