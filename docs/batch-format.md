@@ -154,12 +154,16 @@ AI-regenerated page changes shape. They are tried in that order:
    the quote is not tried, and its markdown line is not marked nearby or orphaned, because the spot is elsewhere, not
    approximate (issue #24). A visible match on another screen is judged first (issue #34), because a prototype that
    draws every step into the same area keeps the saved address alive on every step. When the comment's screen was
-   named from around its element (a `data-gm-screen` wrapper or a heading) and the match sits inside the box that holds
-   the current screen's own content, it is that screen's lookalike and the comment is on another screen, as above. That
-   box is the tagged wrapper, the dialog holding the match, or the box around the heading that names the screen; a box
-   that holds only the heading and a line or two of text counts as part of the heading, so the box around it is used,
-   and the whole page never counts. A match anywhere else sits beside the step, like a header, a help line or a footer
-   button every step shares, and it is the comment's element while it still carries the quoted words.
+   named from around its element (a `data-gm-screen` wrapper, a heading, or a dialog when the match sits in a dialog
+   too) and the match sits inside the box that holds the current screen's own content, it is that screen's lookalike
+   and the comment is on another screen, as above. That box is the tagged wrapper, the dialog holding the match, or the
+   box around the heading that names the screen. A box that holds only the heading and a line or two of text counts as
+   part of the heading, so the box around it is used, unless that is the page's own wrapper (`body`, or what it holds
+   alone all the way down, such as a React mount); the whole page never counts. A match anywhere else sits beside the
+   step, like a header, a help line or a footer button every step shares, and it is the comment's element while it
+   still carries the quoted words, numbers aside: a counter that reads "Step 3 of 7" is still the one commented on as
+   "Step 2 of 7". When the match is rejected, the quote is tried only if the comment's own screen is also in view, as
+   on a long page with several headed sections; a step drawn in place of the comment's step gets no guess.
 2. **The quote.** The tightest element whose text *contains* the quote. Containment rather than equality, because a
    highlighted quote is a fragment of a longer paragraph and an element quote is truncated at 160 characters, so
    equality could never rescue either. Whitespace is ignored on both sides of this comparison, so a quote finds its
@@ -182,14 +186,25 @@ prototype rewords) reads as on another screen rather than as nearby; that one er
 section 6 gives the agent.
 
 The rule issue #34 added reads only the page and the saved comment, so every reviewer and every reload see the same
-pins, and where the page does not say which step an element belongs to it keeps the pin, as before. So a lookalike at
-the saved address still takes the pin on a redrawn step that is named only by the page as a whole (a current-step
-marker, a selected tab, the hash) or not named at all, on a step whose title is drawn apart from its controls, and on
-steps that share one name. A footer button every step shares keeps its pin while it reads what the reviewer saw, and
-loses it where its words change ("Continue" on one step, "Pay now" on the last). One limit errs the other way: a
-heading that rewords itself while the reviewer stays on its step (a greeting that fills in a name) makes the comments
-in its box read as on another screen. A prototype that gives each step's wrapper its own `id` and `data-gm-screen`,
-which the plugin's build rules ask for, avoids every one of these.
+pins. Where the page does not say which step an element belongs to, it keeps the pin, as before, so a lookalike at the
+saved address still takes the pin:
+
+- on a redrawn step named only by the page as a whole (a current-step marker, a selected tab, the hash) or not named
+  at all;
+- on a step whose title is drawn apart from its controls;
+- on steps that share one name.
+
+A footer button every step shares keeps its pin while it reads what the reviewer saw, numbers aside, and loses it where
+its words change ("Continue" on one step, "Pay now" on the last). Two limits err the other way, taking the pin off the
+step the comment was made on:
+
+- a heading that rewords itself while the reviewer stays on its step (a greeting that fills in a name, a sub-heading
+  with a live count) makes the comments in its box read as on another screen;
+- when a step's heading sits straight in the box its whole page is drawn in, beside things every step shares, those
+  shared things read as part of the step, so their comments show only on the step they were made on.
+
+A prototype that gives each step's wrapper its own `id` and `data-gm-screen`, which the plugin's build rules ask for,
+avoids every one of these.
 
 **state**, the where: `hash` is the page's URL fragment; `title` the page title; `screen` the name of the step, tab,
 or dialog that was open, and how it was found (section 4); `trail` the clicks since the page loaded, oldest first,
