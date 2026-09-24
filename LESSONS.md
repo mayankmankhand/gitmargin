@@ -155,6 +155,10 @@
 - **A trust rule that assumes a person typed the command breaks the day an agent types it.**
 - **Check what a validator actually validates before counting its pass as evidence.**
 - **A mutation that does not apply proves nothing; make the harness say so.**
+- **Record the permission mode at every restart of a walk, or its "no prompt" results mean nothing.**
+- **To test what happens on the next message, send it only after the turn has ended.**
+- **Pin every choice a skill leaves open when a walk or a guide depends on the answer.**
+- **Have a cold reader and a code checker read a live-walk runbook before anyone follows it.**
 
 ## Mistakes to Avoid
 

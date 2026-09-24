@@ -13,8 +13,8 @@ walked on two computers with two gitlab.com accounts. Cycle 2, the GitHub plug (
 a stand-in GitHub in Chromium and Firefox and walked on the real github.com (a file on disk, the service link and a
 GitHub Pages page). Same-project mode, the second half of cycle 4 (issue #19), is built ahead of cycle 3 and tested
 behind a stand-in for Vercel's login wall; it was walked on a real Vercel project, including a reviewer on the share
-link. Cycle 3, the plugin (issue #16), is built with the file, service-link and GitHub Pages channels and not yet
-walked (section 7). Everything else here is decided and not yet built, and says so.
+link. Cycle 3, the plugin (issue #16), is built with the file, service-link and GitHub Pages channels and was
+walked on a second computer on 2026-09-23 (section 7). Everything else here is decided and not yet built, and says so.
 The contract is `service/API.md`; setup and warnings are in `service/README.md`.
 
 ## 1. Why one design
@@ -273,7 +273,7 @@ Each cycle ends in a live test on accounts one person owns, before the next star
    names the repository. A GitLab prototype and a GitHub prototype live side by side on one service.
 3. **The plugin** ([#16](https://github.com/mayankmankhand/gitmargin/issues/16)): install, service setup, publish
    with detect, propose, confirm once, remember, and the file, link, GitHub Pages and GitLab Pages channels.
-   **Built 2026-09-23 with three channels, not yet walked:** the file, the service link and GitHub Pages, from a
+   **Built and walked 2026-09-23 with three channels:** the file, the service link and GitHub Pages, from a
    `plugin/` folder in this repository installed as `gitmargin@gitmargin`. Three skills: build rules that keep a
    comment on its step (measured on seventeen prototype shapes during the exploration), `/gitmargin:share`, and
    reading the comments back. Two commands arrived with it: `gitmargin check` says what will not survive the host,
