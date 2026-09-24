@@ -23,7 +23,7 @@ import os from 'node:os';
 import path from 'node:path';
 import readline from 'node:readline/promises';
 import { CliError, EXIT_OK, EXIT_REFUSED, EXIT_USAGE } from './errors.js';
-import { cleanAddress, configDir, proveService, readSecretFile, secretFile, serviceFiles } from './live.js';
+import { cleanAddress, configDir, proveService, readSecretFile, secretFile, secretShapeProblem, serviceFiles } from './live.js';
 
 /** Set when an agent, not a person, is at the keyboard. Claude Code sets CLAUDECODE; Vercel's tool reads all three. */
 const AGENT_VARS = ['CLAUDECODE', 'CLAUDE_CODE', 'AI_AGENT'];
@@ -142,10 +142,10 @@ export function makeSecret(file) {
   return value;
 }
 
-/** A secret from GITMARGIN_SECRET that has the shape of one, or null. */
+/** A secret from GITMARGIN_SECRET that has the shape of one (the command line's own rule), or null. */
 function envSecret(env) {
   const value = env.GITMARGIN_SECRET;
-  return value && value.length >= 32 && value.length <= 256 && !/\s/.test(value) ? value : null;
+  return value && !secretShapeProblem(value, 'GITMARGIN_SECRET') ? value : null;
 }
 
 /** A profile file that still exports GITMARGIN_SECRET, the way the old setup told authors to. */
@@ -191,6 +191,7 @@ async function ping(address) {
 export async function runSetup(io) {
   const { env, say, ask, run, serviceSource } = io;
   const home = io.home || os.homedir();
+  const platform = io.platform || process.platform;
 
   // -- Who is at the keyboard, and what Vercel would use
   if (!io.stdinIsTTY || !io.stdoutIsTTY) {
@@ -198,7 +199,9 @@ export async function runSetup(io) {
       'Run this in your own terminal window, not through Claude Code or a script.',
       EXIT_USAGE,
       'It deploys your comment service and handles its secret, which Claude Code does not do on its own.\n' +
-        'On Windows, run it in PowerShell or Windows Terminal: Git Bash does not show it a terminal.'
+        (platform === 'win32'
+          ? 'Run it in PowerShell or Windows Terminal: Git Bash does not show it a terminal.'
+          : 'Open a terminal window of the same kind Claude Code runs in (on Windows with WSL, the WSL Ubuntu terminal) and run it there.')
     );
   }
   const agent = AGENT_VARS.find((name) => env[name]);
@@ -379,6 +382,20 @@ export async function runSetup(io) {
   }
 
   const profile = oldExportLine(home);
+  // GITMARGIN_SECRET wins over the file in every gitmargin command. A different
+  // one in this terminal (an old profile line, or one set by hand) is almost
+  // certainly in Claude Code's environment too, and every command there would
+  // be refused, so the job is not done until it is gone.
+  if (env.GITMARGIN_SECRET && env.GITMARGIN_SECRET !== secret) {
+    say(
+      `\nYour comment service is at ${address}, and it proved it holds the secret in ${file}.\n` +
+        'One thing is left: this terminal also sets GITMARGIN_SECRET, to a different secret, and gitmargin uses that one first,\n' +
+        'so its commands would be refused. Remove the line that sets it' +
+        (profile ? ` (it is in ${profile})` : '') +
+        ', then open a new terminal, start Claude Code again, and type /gitmargin:share'
+    );
+    return EXIT_OK;
+  }
   say(
     `\nDone. Your comment service is at ${address}, and it proved it holds your secret.\n` +
       `Settings folder: ${dir}\n` +

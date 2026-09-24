@@ -141,6 +141,15 @@ test('without a terminal, or with an agent marker, it refuses before running any
   assert.equal(existsSync(w.secretPath), false);
 });
 
+test('the no-terminal refusal names PowerShell only on Windows itself, never to a WSL or Mac author', async (t) => {
+  const w = await world(t);
+  const elsewhere = await refusal({ ...w.io, stdinIsTTY: false, platform: 'linux' });
+  assert.doesNotMatch(elsewhere.hint, /PowerShell/);
+  assert.match(elsewhere.hint, /same kind Claude Code runs in \(on Windows with WSL, the WSL Ubuntu terminal\)/);
+  const windows = await refusal({ ...w.io, stdinIsTTY: false, platform: 'win32' });
+  assert.match(windows.hint, /PowerShell or Windows Terminal/);
+});
+
 test("a variable that would steer Vercel's tool elsewhere is refused by name", async (t) => {
   const w = await world(t);
   for (const name of ['VERCEL_TOKEN', 'VERCEL_ORG_ID', 'VERCEL_PROJECT_ID', 'CI']) {
@@ -295,6 +304,23 @@ test('a secret file this computer already has is what the new service is given, 
   assert.equal(w.secretText(), RIGHT);
   assert.equal(w.vercelState().env['gitmargin-comments'].GITMARGIN_SECRET, RIGHT);
   assert.deepEqual(w.trusted(), [w.service.url]);
+});
+
+test('a different GITMARGIN_SECRET in this terminal is not "Done": it says the line must go, and to restart once', async (t) => {
+  const w = await world(t, { answers: [true], secret: RIGHT, env: { GITMARGIN_SECRET: OTHER }, profile: 'export GITMARGIN_SECRET="an-old-value-typed-long-ago-0123456789"\n' });
+  assert.equal(await runSetup(w.io), 0);
+  assert.equal(w.vercelState().env['gitmargin-comments'].GITMARGIN_SECRET, RIGHT, 'the service got the file, not the terminal');
+  const last = w.said.at(-1);
+  assert.doesNotMatch(last, /^\s*Done\./m);
+  assert.match(last, /this terminal also sets GITMARGIN_SECRET, to a different secret/);
+  assert.match(last, /it is in .*\.bashrc/);
+  assert.match(last, /start Claude Code again/);
+  assert.ok(!last.includes(OTHER) && !last.includes(RIGHT), 'no secret is printed');
+
+  // The same value in the terminal and the file is no reason to stop.
+  const same = await world(t, { answers: [true], secret: RIGHT, env: { GITMARGIN_SECRET: RIGHT } });
+  assert.equal(await runSetup(same.io), 0);
+  assert.match(same.said.at(-1), /Done\./);
 });
 
 test('a new secret is never written over an existing file', (t) => {

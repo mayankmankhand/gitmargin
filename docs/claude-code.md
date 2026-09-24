@@ -100,6 +100,8 @@ The first `/gitmargin:share` that needs it gives you **one line to run in a term
 
 When it says `Done`, go back to Claude Code and type `/gitmargin:share` again. Nothing needs restarting: gitmargin reads the secret from its file. Running the line again is always safe: it skips what is done and never replaces your secret without asking.
 
+One exception: an older version of this guide had you add a line to your shell profile that exports `GITMARGIN_SECRET`, and that value comes before the file. If the setup line says your terminal still sets a different one, remove that line from your profile, then open a new terminal and start Claude Code again, once.
+
 **Why a line of your own, and not Claude?** It deploys to a live address and makes your secret, and Claude Code does not do either on its own. So the line refuses to run inside Claude Code.
 
 **Why the secret only goes to a service that proves itself.** Claude types the commands, and a comment on a page, or a settings file in a project you cloned, could suggest an address. So before any gitmargin command sends your secret, it asks the service to answer a fresh challenge that only a service holding the same secret can answer, and sends nothing when the answer is wrong. An address someone else chose can never receive your secret, whoever typed it.
@@ -116,7 +118,7 @@ For sign-in, so reviewers comment under their real GitLab or GitHub name, see th
 | "needs the author secret" | Setup is not finished, or it ran in another kind of terminal (PowerShell instead of WSL keeps its settings elsewhere). Run the setup line Claude gives you, in the same kind of terminal Claude Code runs in. |
 | "could not prove it holds your author secret" | That address is not your service, or its secret is not the one on this computer. Nothing was sent. For your own service, run the setup line again: it offers to fix the secret. |
 | "from before the proof of trust" | Your service is older than this plugin. Run the setup line again to deploy the newer one. |
-| The setup line says "Run this in your own terminal window" | It was run inside Claude Code, or in Git Bash on Windows. Open a terminal window of your own (on Windows: PowerShell, Windows Terminal or WSL) and run it there. |
+| The setup line says "Run this in your own terminal window" | It was run inside Claude Code, or in Git Bash on Windows. Open a terminal window of your own, of the same kind Claude Code runs in (with WSL, the WSL Ubuntu terminal; on Windows without WSL, PowerShell or Windows Terminal), and run it there. |
 | The GitHub Pages link shows 404 | The first build takes a minute or two. Try again shortly. |
 | GitHub Pages is refused | The repository is private, or Pages already serves something else. Claude offers the service link instead. |
 | GitLab Pages is refused | The project is public or internal, its Pages already serves another site, its default branch's build file already publishes Pages, it reads its build file from somewhere other than `.gitlab-ci.yml`, CI/CD is off, or you are not a Maintainer or Owner. Claude says which, and offers the service link. |

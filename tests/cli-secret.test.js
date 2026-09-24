@@ -22,13 +22,17 @@ const CLI = path.join(ROOT, 'bin', 'gitmargin.js');
 const PAGE = '<!doctype html>\n<html><head><meta charset="utf-8"><title>t</title></head>\n<body><p>hi</p>\n</body></html>\n';
 const OTHER = 'another-secret-this-machine-also-holds-0123';
 
-/** Async, because the service it calls runs in this process. The timeout is the "never hangs" guard. */
+/**
+ * Async, because the service it calls runs in this process. The timeout is the
+ * "never hangs" guard: 60 seconds, because a whole-suite run on a loaded machine
+ * once took 16 for the first attach (review of #33/#36, R23), and a hang still fails.
+ */
 function run(args, env) {
   return new Promise((resolve) => {
     execFile(
       process.execPath,
       [CLI, ...args],
-      { env: { ...process.env, GITMARGIN_SECRET: '', GITMARGIN_SERVICE: '', GITMARGIN_VERCEL_BYPASS: '', ...env }, timeout: 15000 },
+      { env: { ...process.env, GITMARGIN_SECRET: '', GITMARGIN_SERVICE: '', GITMARGIN_VERCEL_BYPASS: '', ...env }, timeout: 60000 },
       (error, out, err) => resolve({ code: error ? error.code : 0, killed: Boolean(error && error.killed), out, err })
     );
   });

@@ -93,6 +93,16 @@ test('a wrong bypass is named as refused, not as missing', async (t) => {
   assert.match(r.err, /refused the bypass secret/);
 });
 
+test('a typed address alone never gets the bypass: with no GITMARGIN_SERVICE the wall sees none (issue #33)', async (t) => {
+  const s = await setup(t);
+  const r = await s.cli(['attach', s.source, '--service', s.wall.url], { GITMARGIN_VERCEL_BYPASS: s.wall.bypass });
+  assert.equal(r.code, 2);
+  assert.match(r.err, /behind Vercel's protection/);
+  assert.ok(s.wall.seen.length > 0, 'the wall was asked, so this proves something');
+  assert.equal(s.wall.seen.filter((c) => c.bypassHeader).length, 0, 'the bypass followed an address that was only typed');
+  assert.equal(existsSync(s.copy), false);
+});
+
 test('the bypass never follows an address that only a file names', async (t) => {
   const s = await setup(t);
   assert.equal((await s.cli(['attach', s.source, '--service', s.wall.url], { GITMARGIN_VERCEL_BYPASS: s.wall.bypass, GITMARGIN_SERVICE: s.wall.url })).code, 0);

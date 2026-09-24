@@ -9,14 +9,14 @@ text block. A prototype only talks to a service when you attach it with `--servi
 
 What it answers, route by route, is in [API.md](API.md).
 
-**If you use Claude Code,** the gitmargin plugin sets this service up for you the first time you share a prototype,
-and stops only for the four steps that are yours (logging in to Vercel, Neon's terms, the secret, the first deploy):
-see [docs/claude-code.md](../docs/claude-code.md). This page is the by-hand route and the reference behind it.
+**If you use Claude Code,** the gitmargin plugin gives you one line to run in your own terminal the first time you share
+a prototype, and that line sets this service up: see [docs/claude-code.md](../docs/claude-code.md). This page is the same
+command from a clone, the by-hand route, and the reference behind them.
 
 ## Deploy it
 
-You need a [Vercel](https://vercel.com) account (the free plan is enough) and Node 20 or newer. Two routes. The
-command line is the one that has been run end to end.
+You need a [Vercel](https://vercel.com) account (the free plan is enough) and Node 20 or newer. Three routes. The
+command line by hand has been run end to end on a real account; the one command runs the same steps for you.
 
 ### With one command
 
@@ -59,10 +59,10 @@ ignored by git and by the deploy, and are safe to delete.
 The button copies this folder into a repository of your own, creates a Vercel project from it, adds a Neon database
 from the Vercel Marketplace (so there is no separate database account to open), and asks for one value:
 
-- **`GITMARGIN_SECRET`**: a long random string only you know. It is what lets the `gitmargin` commands act as the
-  author. Make one with `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`.
+- **`GITMARGIN_SECRET`**: a long random string only you know, at least 32 characters (the commands refuse a shorter
+  one). It is what lets the `gitmargin` commands act as the author. Make one with `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`.
 
-### After either route
+### After any route
 
 The tables create themselves on first use. There is no migration step.
 

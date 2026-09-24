@@ -41,7 +41,7 @@ const MAX_SECRET_LENGTH = 256;
 const MAX_SECRET_FILE_BYTES = 4096;
 
 /** Why a secret cannot be used, or null. Names where it came from, never the value. */
-function secretShapeProblem(value, where) {
+export function secretShapeProblem(value, where) {
   if (/\s/.test(value)) return `${where} has a space or a line break inside the secret.`;
   if (value.length < MIN_SECRET_LENGTH) return `${where} holds a secret shorter than ${MIN_SECRET_LENGTH} characters.`;
   if (value.length > MAX_SECRET_LENGTH) return `${where} holds more than ${MAX_SECRET_LENGTH} characters, more than a secret.`;
