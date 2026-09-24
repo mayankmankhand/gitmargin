@@ -19,10 +19,12 @@
     title   'direct'   the step's h2 sits straight in the card         (default)
             'wrapped'  h2 and its lead line in their own box (the Tailwind habit)
             'page'     the title block drawn at the top of the page, apart from the card
+            'app'      the title block drawn first inside the app's own wrapper, apart from the card
     footer  'card'     Back and Continue inside the card               (default)
             'app'      one Back and Continue shared by every step, outside the card
     tag     true       the card carries data-gm-screen with the step's title
     dialog  'last'     the last step's card is itself a role="dialog" box, at the same address
+            'all'      every step's card is a role="dialog" box (a wizard drawn in a modal)
 
   It never sets the URL hash and keeps no state, so a reload is always the
   default shape on step 1. The script sits in <head> so the steps' words are
@@ -79,22 +81,23 @@
   function cardMarkup(s) {
     var head = shape.title === 'direct' ? titleMarkup(s) : shape.title === 'wrapped' ? '<div class="head">' + titleMarkup(s) + '</div>' : '';
     var tag = shape.tag ? ' data-gm-screen="' + s.title + '"' : '';
-    var dialog = shape.dialog === 'last' && last() ? ' role="dialog" aria-label="' + s.title + '"' : '';
+    var dialog = shape.dialog === 'all' || (shape.dialog === 'last' && last()) ? ' role="dialog" aria-label="' + s.title + '"' : '';
     return '<section class="card"' + tag + dialog + '>' + head + '<div class="fields">' + s.body + '</div>' +
       (shape.footer === 'card' ? actionsMarkup() : '') + '</section>';
   }
 
-  // The title block of the 'page' habit: a direct child of <body>, above everything else.
+  // The title block of the 'page' and 'app' habits: a direct child of <body>
+  // above everything else, or the first thing inside the app's own wrapper.
   function pageTitle(s) {
-    var bar = document.querySelector('body > .titlebar');
-    if (shape.title !== 'page') {
+    var bar = document.querySelector('.titlebar');
+    if (shape.title !== 'page' && shape.title !== 'app') {
       if (bar) bar.remove();
       return;
     }
     if (!bar) {
       bar = document.createElement('div');
       bar.className = 'titlebar';
-      document.body.prepend(bar);
+      (shape.title === 'page' ? document.body : document.querySelector('.app')).prepend(bar);
     }
     bar.innerHTML = titleMarkup(s);
   }

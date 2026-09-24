@@ -140,6 +140,7 @@ for (const [habit, shape] of [
   ['the same nodes are kept with new words (React)', { nodes: 'keep' }],
   ['the step title sits in its own box', { title: 'wrapped' }],
   ['each step is tagged with data-gm-screen', { tag: true }],
+  ['every step is drawn as a dialog', { dialog: 'all' }],
 ]) {
   test(`a comment on step 2's Continue stays on step 2 when ${habit}`, async ({ page }, testInfo) => {
     const errors = await open(page, await attached(testInfo));
@@ -215,6 +216,59 @@ test('a step title drawn at the top of the page does not make the whole page one
   }
 });
 
+test('a heading straight inside the page body does not make the whole page one step', async ({ page }, testInfo) => {
+  // The body holds everything that stays, so it is never a step's box, even
+  // when a heading sits straight in it: a note under that heading keeps its pin
+  // when the heading rewords itself.
+  await open(page, await attached(testInfo));
+  await page.evaluate(() => {
+    document.body.append(Object.assign(document.createElement('h2'), { id: 'flat-title', textContent: 'Questions' }));
+    document.body.append(Object.assign(document.createElement('p'), { id: 'flat-note', textContent: 'Call us any time.' }));
+  });
+  await comment(page, '#flat-note', 'Give the opening hours.');
+  await page.evaluate(() => {
+    document.getElementById('flat-title').textContent = 'Questions and answers';
+  });
+  await pinnedOn(page, '#flat-note', 'Give the opening hours.');
+});
+
+test('a step title drawn first inside the app\'s own wrapper does not make the whole app one step', async ({ page }, testInfo) => {
+  // The title block is the first thing in the wrapper that holds the whole app,
+  // as a React app drawing a title bar above its step does. Climbing past the
+  // title block lands on that wrapper, which is the whole page again, so the
+  // help line below still stays beside the step (review of #34, R1).
+  await open(page, await attached(testInfo));
+  await page.evaluate(() => window.redrawShape({ title: 'app' }));
+  await goTo(page, 2);
+  await comment(page, '.help', 'This number is wrong.');
+  for (const step of [1, 3]) {
+    await goTo(page, step);
+    await pinnedOn(page, '.help', 'This number is wrong.');
+  }
+});
+
+test('a comment whose address now points into another section still finds its words in its own section', async ({ page }, testInfo) => {
+  // A long page shows several headed sections at once. When the page changes so
+  // the saved address lands in another section, the comment's own section is
+  // still showing, so its words are looked for there rather than the comment
+  // being sent to another screen (review of #34, R13).
+  await open(page, await attached(testInfo));
+  await goTo(page, 2);
+  await comment(page, '#stage .lead', 'Say which receipts.');
+  await page.evaluate(() => {
+    const card = document.querySelector('#stage .card');
+    const wrap = document.createElement('div');
+    card.querySelector('.lead').replaceWith(wrap);
+    wrap.append(Object.assign(document.createElement('p'), { className: 'lead', textContent: 'We only use your email for receipts.' }));
+    const promo = document.createElement('section');
+    promo.className = 'card';
+    promo.innerHTML = '<h2>Save on a year</h2><p class="lead">Annual billing saves 20 percent.</p>';
+    document.getElementById('stage').prepend(promo);
+  });
+  await expect.poll(() => pinDistanceTo(page, '#stage .card:nth-of-type(2) .lead')).toBeLessThan(40);
+  await expect(page.locator('.gm-card', { hasText: 'Say which receipts.' }).locator('.gm-flag')).not.toHaveText(['on another screen']);
+});
+
 test('a comment on step 2\'s Back has no pin on a last step drawn as a dialog', async ({ page }, testInfo) => {
   // Back reads the same on every step and sits at the same address, so only
   // the dialog the last step is drawn as says its Back belongs to that step.
@@ -244,6 +298,22 @@ test('on the Sony wizard, a comment on the subtitle made on step 2 keeps its pin
   await page.click('#step-2 .next');
   await expect(page.locator('#step-3')).toHaveClass(/active/);
   await pinnedOn(page, '.shell > .lede', 'Say which headphones.');
+});
+
+test('on the Sony wizard, the step counter every step shares keeps its pin while only its number changes', async ({ page }, testInfo) => {
+  // "Step 2 of 7" becomes "Step 3 of 7": the same element, with only a number
+  // changed, so it is still what the reviewer commented on (review of #34, R18).
+  await open(page, await attached(testInfo, 'onboarding.html'));
+  await page.click('#step-1 .next');
+  await expect(page.locator('#count')).toHaveText('Step 2 of 7');
+  await comment(page, '#count', 'Make the counter bigger.');
+  await page.click('#step-2 .next');
+  await expect(page.locator('#count')).toHaveText('Step 3 of 7');
+  await pinnedOn(page, '#count', 'Make the counter bigger.');
+  await page.click('#step-3 .back');
+  await page.click('#step-2 .back');
+  await expect(page.locator('#count')).toHaveText('Step 1 of 7');
+  await pinnedOn(page, '#count', 'Make the counter bigger.');
 });
 
 test('a returned file whose comments name their screen in an older shape opens cleanly and is judged by the words', async ({ page }, testInfo) => {

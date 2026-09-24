@@ -19,7 +19,7 @@
 
 import { selectorFor } from './selector.js';
 import { ROOT } from './root.js';
-import { screenAt, screenFor } from './screen.js';
+import { screenAt, screenFor, screenShowing } from './screen.js';
 import { collapse, renderedText, visibleText } from './text.js';
 
 /** Characters of context kept either side of the quote. */
@@ -64,6 +64,31 @@ function agrees(el, exact) {
 const NAMED_AROUND = new Set(['data-gm-screen', 'heading']);
 
 /**
+ * Whether the comment's screen was named from around its element, so that the
+ * box the match now sits in says something about it. A comment saved with a
+ * dialog's name was made either inside that dialog or behind a modal one, and
+ * the saved shape does not say which; when the match at its address now sits in
+ * a dialog that holds it, the comment's element sat in one too, as in a wizard
+ * drawn inside a modal (review of #34, R4).
+ */
+const namedAround = (saved, here) => NAMED_AROUND.has(saved.source) || (saved.source === 'dialog' && here.source === 'dialog');
+
+/** Text in the form a match beside the step is compared in: whitespace and every number taken out. */
+const wordsOnly = (value) => squeeze(value).replace(/\d+/g, '');
+
+/**
+ * Whether a match beside the step still reads what the reviewer saw. Numbers
+ * do not count: a counter, a price or a date changes while the element stays,
+ * so "Step 3 of 7" is still the counter the reviewer commented on as "Step 2 of
+ * 7" (review of #34, R18). Words do: a footer button that said "Continue" and
+ * now says "Pay now" is not the one the comment was about.
+ */
+function sameWords(el, exact) {
+  const wanted = wordsOnly(exact);
+  return !wanted || wordsOnly(el.textContent).includes(wanted);
+}
+
+/**
  * The screen a comment was made on, as `{ name, source }`. Every build saves
  * that shape, but a returned file is read back as it comes, so anything else
  * is read defensively: a bare name has no source, and a source that is not a
@@ -84,15 +109,15 @@ function savedScreen(screen) {
  * named from around its element too: a name that came from the page as a whole
  * (the Sony wizard's step marker) says nothing about where its element sat.
  * Anywhere else it is something every step shares, and keeps the pin while it
- * still reads what the reviewer saw: a footer button that said Continue does
- * not follow the comment onto the step where it says "Pay now".
+ * still reads what the reviewer saw (sameWords): a footer button that said
+ * Continue does not follow the comment onto the step where it says "Pay now".
  */
 function belongsHere(el, saved, exact) {
   if (!screenKey(saved.name)) return true;
   const here = screenAt(el);
   if (sameScreen(saved.name, here.name)) return true;
-  if (NAMED_AROUND.has(saved.source) && here.box && here.box.contains(el)) return false;
-  return agrees(el, exact);
+  if (namedAround(saved, here) && here.box && here.box.contains(el)) return false;
+  return sameWords(el, exact);
 }
 
 /**
@@ -279,7 +304,8 @@ function ancestorFor(selector) {
  * saved address alive on every step, so a visible match is judged before it
  * wins: on another screen it counts only beside the step and with its words
  * intact (belongsHere). One that does not count makes the comment "on another
- * screen" at once, after only the check for its own element on a hidden step.
+ * screen", after the check for its own element on a hidden step, unless the
+ * comment's own screen is in view too; then its words are looked for there.
  *
  * A visible selector match on the comment's own screen returns immediately.
  * That is not only the common case, it is the hot one: this runs once per
@@ -318,13 +344,17 @@ export function resolve(anchor, screen = null) {
   if (kept) return { element: kept, status: 'hidden', via: 'selector' };
 
   // The page is showing another screen's lookalike at the comment's own
-  // address, so the comment is on another screen, and the quote scan below
-  // could only add a guess. Skipping it is also what keeps a redrawn step
-  // cheap: that scan reads every element in the page, once per comment per
-  // frame, and here it would run for every comment made on another step.
-  // Timed in issue #34: with it, a redraw-per-step page with 15 comments took a
-  // quarter longer to lay out than before the fix; without it, less than before.
-  if (elsewhere) return { element: null, status: 'hidden', via: 'screen' };
+  // address. When the comment's own screen is not in view either - a step drawn
+  // in place of the one it was made on - the comment is on another screen, and
+  // the quote scan below could only add a guess. Skipping it is also what keeps
+  // a redrawn step cheap: that scan reads every element in the page, once per
+  // comment per frame, and here it would run for every comment made on another
+  // step. Timed in issue #34: with it, a redraw-per-step page with 15 comments
+  // took a quarter longer to lay out than before the fix; without it, less than
+  // before. A long page shows several headed sections at once, so there the
+  // comment's own section may still be in view with its words, and the scan
+  // runs (review of #34, R13).
+  if (elsewhere && !screenShowing(saved.name)) return { element: null, status: 'hidden', via: 'screen' };
 
   // A visible lookalike on another screen is not this comment's element. Only
   // visible ones are judged: screenFor names the screen being SHOWN, which is
