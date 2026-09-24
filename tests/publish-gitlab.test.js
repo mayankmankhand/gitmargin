@@ -631,7 +631,8 @@ test('--status reports the state, gives the verdict, and changes nothing', (t) =
   assert.equal(needs.visibility, 'private');
   assert.equal(needs.role, 'Owner');
   assert.equal(needs.branchOnRemote, 'absent');
-  assert.deepEqual(needs.pages, { access: 'enabled', deployed: false, url: null });
+  // GitLab gives the address before anything is deployed; deployed says whether a site is up.
+  assert.deepEqual(needs.pages, { access: 'enabled', deployed: false, url: SITE });
   assert.equal(needs.sharedRunners, false);
   assert.equal(needs.link, null);
   assert.equal(needs.publish, 'needs-enable');

@@ -329,7 +329,11 @@ function readRole(project) {
   return Number((member && member.access_level) || 0);
 }
 
-/** The Pages settings, or null when GitLab has none for the project yet. */
+/**
+ * The Pages settings, or null when Pages is off for the project (GitLab's 404).
+ * Before the first deployment GitLab still answers, with the site's address
+ * and an empty `deployments` list (lib/api/pages.rb, read 2026-09-24).
+ */
 function readPages(project) {
   return api(`projects/${project.id}/pages`, { notFoundOk: true });
 }
@@ -563,7 +567,12 @@ export async function publish(opts, root, page) {
   }
 
   const site = readPages(project);
-  const link = site && site.url ? pageLink(site.url, opts.folder) : null;
+  // GitLab answers with the site's address even before anything is deployed
+  // (only a project with Pages off answers 404), so whether the site is up is
+  // read from its deployments, not from the address. A first publish whose
+  // build has not finished therefore has no link to hand out yet.
+  const live = Boolean(site && Array.isArray(site.deployments) && site.deployments.length);
+  const link = site && site.url && (live || build.status === 'built') ? pageLink(site.url, opts.folder) : null;
   const result = {
     host: 'gitlab',
     project: target.full,
@@ -612,10 +621,10 @@ export async function publish(opts, root, page) {
   }
 
   if (build.status !== 'built' && !link) {
-    // A first publish still building: there is no address to hand out yet.
+    // A first publish still building: the site is not up yet.
     printJson();
     throw new PublishError(
-      `${describeUnfinished(build, project)} The page is pushed, but GitLab has no address for it until the first build finishes.`,
+      `${describeUnfinished(build, project)} The page is pushed, but GitLab puts the site up only when the first build finishes.`,
       EXIT_REFUSED,
       `Run gitmargin-publish --status --folder ${opts.folder} in a minute for the link.`
     );

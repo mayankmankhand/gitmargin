@@ -14,8 +14,9 @@
 // Like glab it counts a GITLAB_TOKEN in its environment as a login, and like
 // GitLab it filters pipelines by commit and branch only when asked to.
 //
-// State switches: loggedIn, role (GitLab's access number), project, pages,
-// pagesAfter (Pages stays unpublished for the first N looks), defaultCi (null
+// State switches: loggedIn, role (GitLab's access number), project, pages (null
+// until the first deployment, then the settings with it), pagesAfter (no
+// deployment for the first N looks at Pages), defaultCi (null
 // for no build file), pipelines ([{ id, sha: 'TIP' | <sha>, ref, statuses }],
 // one status per look, 'none' for not there yet), failedJob ({ reason, log }),
 // projectMissing, putRefused, putIgnored.
@@ -98,13 +99,17 @@ if (method === 'GET' && where === 'user') return answer({ id: 7, username: 'acme
 if (method === 'GET' && where === `projects/${id}/members/all/7`) return state.role ? answer({ id: 7, access_level: state.role }) : refuse(404, 'Not found');
 if (method === 'GET' && where === `projects/${id}/pages`) {
   if (state.role < 40) return refuse(403, 'Forbidden');
+  // Like GitLab (lib/api/pages.rb): a 404 only when Pages is off for the
+  // project. Otherwise the settings, with the site's address, and an empty
+  // deployments list until the first deployment.
+  if (state.project.pages_access_level === 'disabled') return refuse(404, 'Not Found');
   state.pagesLooks = (state.pagesLooks || 0) + 1;
   save();
   if (state.pagesAfter && state.pagesLooks >= state.pagesAfter && !state.pages) {
     state.pages = { url: state.siteUrl, is_unique_domain_enabled: true, deployments: [{ created_at: '2026-09-24T10:00:00Z', url: state.siteUrl, path_prefix: null, root_directory: 'public' }] };
     save();
   }
-  return state.pages ? answer(state.pages) : refuse(404, 'Not Found');
+  return answer(state.pages || { url: state.siteUrl, is_unique_domain_enabled: true, deployments: [] });
 }
 if (method === 'GET' && where === `projects/${id}/repository/files/.gitlab-ci.yml/raw`) {
   if (params.get('ref') !== state.project.default_branch) unknown();
