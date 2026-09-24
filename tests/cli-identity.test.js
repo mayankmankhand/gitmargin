@@ -112,7 +112,7 @@ test('identity refuses: a bad mode, options that mean nothing, no secret, and an
   writeFileSync(forged, readFileSync(s.copy, 'utf8').replace(s.service.url, elsewhere.url));
   const refused = await run(['identity', forged, 'gitlab'], s.env);
   assert.notEqual(refused.code, 0);
-  assert.match(refused.err, /attach <prototype\.html> --service|GITMARGIN_SERVICE/);
+  assert.match(refused.err, /could not prove it holds your author secret/);
   // An author route makes the tables on first use, so no table means no author call ever arrived.
   assert.equal((await elsewhere.query("select to_regclass('prototypes') as made"))[0].made, null, 'the other service was reached');
 });
@@ -207,7 +207,8 @@ test('pull --live under strict reading: the secret goes only when reading needs 
   const refused = await run(['pull', forged, '--live'], s.env);
   assert.notEqual(refused.code, 0);
   assert.match(refused.err, /Refusing to send your author secret/);
-  assert.deepEqual(seen, [null], 'the secret followed an address that only a file named');
+  assert.ok(seen.length > 0, 'the address was asked, so this proves something');
+  assert.ok(seen.every((a) => a === null), 'the secret followed an address that only a file named');
 });
 
 test('pull --live with reading open never sends the secret, even when it is set', async (t) => {

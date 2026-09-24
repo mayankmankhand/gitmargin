@@ -36,7 +36,7 @@ async function world(testInfo) {
   await mkdir(dir, { recursive: true });
   const source = join(dir, 'wizard.html');
   await copyFile(resolve('fixtures/wizard.html'), source);
-  await gitmargin(['attach', source, '--service', wall.url], { GITMARGIN_SECRET: service.secret, GITMARGIN_VERCEL_BYPASS: wall.bypass });
+  await gitmargin(['attach', source, '--service', wall.url], { GITMARGIN_SECRET: service.secret, GITMARGIN_VERCEL_BYPASS: wall.bypass, GITMARGIN_SERVICE: wall.url });
   const [{ key }] = await service.query('select key from prototypes');
   return { service, wall, key, close: async () => (await wall.close(), await service.close()) };
 }

@@ -71,18 +71,28 @@ export async function startVercelWall(target, { bypass = FAKE_BYPASS, host = '12
       return res.end(`Redirecting to ${escapeHtml('/sso-api')}...`);
     }
 
-    // Through the wall: the service answers as it would on Vercel.
+    // Through the wall: the service answers as it would on Vercel, which hands
+    // the function the Host the client asked for. The proof of trust (issue
+    // #33) signs over that Host, so it has to arrive unchanged. Node's fetch
+    // replaces a Host header with the target's own, so this forwards with
+    // http.request, which keeps it.
     const body = req.method === 'GET' || req.method === 'HEAD' ? undefined : await readBody(req);
     const headers = { ...req.headers };
-    delete headers.host;
     delete headers.connection;
-    const upstream = await fetch(`${target}${req.url}`, { method: req.method, headers, body, redirect: 'manual' });
-    const out = {};
-    upstream.headers.forEach((value, name) => {
-      if (!['content-length', 'transfer-encoding', 'connection', 'content-encoding'].includes(name)) out[name] = value;
+    const to = new URL(target);
+    const upstream = await new Promise((resolve, reject) => {
+      const forward = http.request({ hostname: to.hostname, port: to.port, path: req.url, method: req.method, headers }, resolve);
+      forward.on('error', reject);
+      forward.end(body);
     });
-    res.writeHead(upstream.status, out);
-    res.end(Buffer.from(await upstream.arrayBuffer()));
+    const chunks = [];
+    for await (const chunk of upstream) chunks.push(chunk);
+    const out = {};
+    for (const [name, value] of Object.entries(upstream.headers)) {
+      if (!['content-length', 'transfer-encoding', 'connection', 'content-encoding'].includes(name)) out[name] = value;
+    }
+    res.writeHead(upstream.statusCode, out);
+    res.end(Buffer.concat(chunks));
   });
 
   await new Promise((resolve) => server.listen(0, host, resolve));

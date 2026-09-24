@@ -67,13 +67,13 @@ Shared comments (optional; needs a comment service you deployed, see service/REA
       same comments. Later attaches need only --service. --key <key> reuses a
       prototype from another machine. Needs the author secret: GITMARGIN_SECRET,
       or else the file "secret" in the settings folder (see services).
-      The secret is only ever sent to an address you typed here yourself, or
-      named in GITMARGIN_SERVICE: never to one that only a file names.
-      --require-trusted refuses, sending nothing, an address this machine has
-      not used before; for scripts that read the address from a file.
-      Behind Vercel's protection (same-project mode), also set
-      GITMARGIN_VERCEL_BYPASS to the project's Protection Bypass for
-      Automation; it follows the same rule.
+      The secret is only ever sent to a service that first proves it holds
+      it (service/API.md, "The proof of trust"), however the address reached
+      this command. --require-trusted also refuses, sending nothing, an
+      address this machine has not seen prove itself before.
+      Behind Vercel's protection (same-project mode), set GITMARGIN_SERVICE to
+      the address and GITMARGIN_VERCEL_BYPASS to the project's Protection
+      Bypass for Automation; the bypass goes to that address only.
   node bin/gitmargin.js pull <prototype.gitmargin.html> --live
       Reads the comments for that copy's version from the service. --version
       <id> or --all for other versions. More files after it merge in as usual.

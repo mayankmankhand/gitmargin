@@ -1,8 +1,10 @@
 // The command line in front of Vercel's login wall (issue #19). A same-project
 // deployment sits behind the host's protection, so `attach --service` and the
-// other commands reach it with Vercel's automation bypass, under the rule the
-// author secret already follows: only to an address the author typed or named in
-// GITMARGIN_SERVICE. Without it, they stop and name the wall. The wall is
+// other commands reach it with Vercel's automation bypass, sent only to the
+// address the author named in GITMARGIN_SERVICE (issue #33: a typed address
+// proves nothing once an agent types). It rides on the proof of trust as well,
+// which has to pass the wall; the author secret still waits for the proof.
+// Without it, they stop and name the wall. The wall is
 // tests/helpers/vercel-wall.js in front of the real router on an in-process
 // Postgres; attached copies go to a scratch folder, never into the repo.
 
@@ -52,12 +54,15 @@ async function setup(t) {
 
 test('attach reaches a protected deployment with the bypass, on every call it makes', async (t) => {
   const s = await setup(t);
-  const r = await s.cli(['attach', s.source, '--service', s.wall.url], { GITMARGIN_VERCEL_BYPASS: s.wall.bypass });
+  const r = await s.cli(['attach', s.source, '--service', s.wall.url], { GITMARGIN_VERCEL_BYPASS: s.wall.bypass, GITMARGIN_SERVICE: s.wall.url });
   assert.equal(r.code, 0, r.err);
   assert.ok(existsSync(s.copy));
   const calls = s.wall.seen.filter((c) => c.path.startsWith('/api/prototypes'));
   assert.ok(calls.length >= 3, 'register, version, page');
   assert.ok(calls.every((c) => c.bypassed), 'a call went without the bypass');
+  const proofs = s.wall.seen.filter((c) => c.path === '/api/prove');
+  assert.equal(proofs.length, 1, 'one proof of trust, before the first call that carries the secret');
+  assert.ok(proofs[0].bypassed, 'the proof has to pass the wall too');
   // The one call made without it on purpose: the check that the address is walled.
   const probe = s.wall.seen.filter((c) => c.path === '/api/ping');
   assert.equal(probe.length, 1);
@@ -66,7 +71,7 @@ test('attach reaches a protected deployment with the bypass, on every call it ma
   assert.ok(!readFileSync(s.copy, 'utf8').includes(s.wall.bypass), 'the bypass was written into the page');
 
   // pull --live comes back through the wall the same way.
-  const pulled = await s.cli(['pull', s.copy, '--live'], { GITMARGIN_VERCEL_BYPASS: s.wall.bypass });
+  const pulled = await s.cli(['pull', s.copy, '--live'], { GITMARGIN_VERCEL_BYPASS: s.wall.bypass, GITMARGIN_SERVICE: s.wall.url });
   assert.equal(pulled.code, 0, pulled.err);
   assert.equal(JSON.parse(pulled.out).gitmargin, '0.1');
 });
@@ -83,14 +88,14 @@ test('without the bypass the command stops, names Vercel\'s protection, and writ
 
 test('a wrong bypass is named as refused, not as missing', async (t) => {
   const s = await setup(t);
-  const r = await s.cli(['attach', s.source, '--service', s.wall.url], { GITMARGIN_VERCEL_BYPASS: 'not-the-bypass-at-all' });
+  const r = await s.cli(['attach', s.source, '--service', s.wall.url], { GITMARGIN_VERCEL_BYPASS: 'not-the-bypass-at-all', GITMARGIN_SERVICE: s.wall.url });
   assert.equal(r.code, 2);
   assert.match(r.err, /refused the bypass secret/);
 });
 
 test('the bypass never follows an address that only a file names', async (t) => {
   const s = await setup(t);
-  assert.equal((await s.cli(['attach', s.source, '--service', s.wall.url], { GITMARGIN_VERCEL_BYPASS: s.wall.bypass })).code, 0);
+  assert.equal((await s.cli(['attach', s.source, '--service', s.wall.url], { GITMARGIN_VERCEL_BYPASS: s.wall.bypass, GITMARGIN_SERVICE: s.wall.url })).code, 0);
 
   // A copy that came back naming some other protected address.
   const other = await startService({ sameProject: true });
@@ -101,15 +106,15 @@ test('the bypass never follows an address that only a file names', async (t) => 
   });
   const forged = path.join(s.dir, 'forged.gitmargin.html');
   writeFileSync(forged, readFileSync(s.copy, 'utf8').replace(s.wall.url, otherWall.url));
-  const r = await s.cli(['pull', forged, '--live'], { GITMARGIN_VERCEL_BYPASS: s.wall.bypass });
+  const r = await s.cli(['pull', forged, '--live'], { GITMARGIN_VERCEL_BYPASS: s.wall.bypass, GITMARGIN_SERVICE: s.wall.url });
   assert.notEqual(r.code, 0);
-  assert.match(r.err, /only goes to an address you typed/);
+  assert.match(r.err, /only goes to the address named in GITMARGIN_SERVICE/);
   assert.equal(otherWall.seen.filter((c) => c.bypassHeader).length, 0, 'the bypass reached an address only a file named');
 });
 
 test('the bypass never goes in the clear, even to an address the author named', async (t) => {
   const s = await setup(t);
-  assert.equal((await s.cli(['attach', s.source, '--service', s.wall.url], { GITMARGIN_VERCEL_BYPASS: s.wall.bypass })).code, 0);
+  assert.equal((await s.cli(['attach', s.source, '--service', s.wall.url], { GITMARGIN_VERCEL_BYPASS: s.wall.bypass, GITMARGIN_SERVICE: s.wall.url })).code, 0);
 
   // The same service behind a wall on plain http at an address that is not
   // loopback by name: 127.0.0.2 reaches this computer, but the command line
@@ -126,7 +131,7 @@ test('the bypass never goes in the clear, even to an address the author named', 
 
 test('a second prototype is refused with the first one\'s key, and nothing is written', async (t) => {
   const s = await setup(t);
-  const env = { GITMARGIN_VERCEL_BYPASS: s.wall.bypass };
+  const env = { GITMARGIN_VERCEL_BYPASS: s.wall.bypass, GITMARGIN_SERVICE: s.wall.url };
   const first = await s.cli(['attach', s.source, '--service', s.wall.url], env);
   assert.equal(first.code, 0, first.err);
   const key = /<meta name="gitmargin-key" content="([^"]+)"/.exec(readFileSync(s.copy, 'utf8'))[1];
@@ -156,7 +161,7 @@ test('publishing to a same-project address that answers without Vercel\'s login 
   assert.match(open.err, /choose All Deployments/);
 
   // Behind the wall, the same publish says nothing about it.
-  const walled = await s.cli(['attach', s.source, '--service', s.wall.url, '--key', /<meta name="gitmargin-key" content="([^"]+)"/.exec(readFileSync(s.copy, 'utf8'))[1]], { GITMARGIN_VERCEL_BYPASS: s.wall.bypass });
+  const walled = await s.cli(['attach', s.source, '--service', s.wall.url, '--key', /<meta name="gitmargin-key" content="([^"]+)"/.exec(readFileSync(s.copy, 'utf8'))[1]], { GITMARGIN_VERCEL_BYPASS: s.wall.bypass, GITMARGIN_SERVICE: s.wall.url });
   assert.equal(walled.code, 0, walled.err);
   assert.ok(!/answers without Vercel's login/.test(walled.err), walled.err);
 });
@@ -167,7 +172,7 @@ test('a redirect that is not Vercel\'s login is named with where it points, not 
   await new Promise((done) => moved.listen(0, '127.0.0.1', done));
   t.after(() => moved.close());
   const address = `http://127.0.0.1:${moved.address().port}`;
-  const r = await s.cli(['attach', s.source, '--service', address], { GITMARGIN_VERCEL_BYPASS: s.wall.bypass });
+  const r = await s.cli(['attach', s.source, '--service', address], { GITMARGIN_VERCEL_BYPASS: s.wall.bypass, GITMARGIN_SERVICE: s.wall.url });
   assert.equal(r.code, 2);
   assert.match(r.err, /answered with a redirect to https:\/\/www\.example\.test\//);
   assert.ok(!/refused the bypass/.test(r.err), 'a moved address was blamed on the bypass secret');
