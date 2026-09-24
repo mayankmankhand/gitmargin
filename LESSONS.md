@@ -160,6 +160,18 @@
 - **Pin every choice a skill leaves open when a walk or a guide depends on the answer.**
 - **Have a cold reader and a code checker read a live-walk runbook before anyone follows it.**
 
+### gitmargin: GitLab Pages in /gitmargin:share (issue #37, 2026-09-24)
+- **A stand-in's guess at an answer the code branches on is a bug waiting for the walk: read the host's own source for it.**
+- **Write the rule you mean ("look once"), not a timing that happens to produce it at today's rate.**
+- **A typed-only skill starts only when the message starts with its slash command; a sentence ending in one never runs it.**
+- **A harness that hosts a service in-process must never block its own event loop.**
+- **`pkill -f` with a pattern that appears in its own command line kills the shell running it.**
+- **A rehearsal remote reached through insteadOf makes `git remote get-url` print the local path, so detection tests nothing.**
+- **Background jobs die on a session restart; run a long suite in the foreground, split to fit the tool's limit.**
+- **Before calling a browser-test failure real, check whether another session is running its suite on the same machine.**
+- **A skeptic's refutation is a claim too: check its reason against the sourced research before repeating it.**
+- **A standing page can be republished by a parallel session in the same repo; merge from the live version, not the local copy.**
+
 ## Mistakes to Avoid
 
 - **Fill a plan's Outcomes by replacing the template placeholder, not inserting above it.**
