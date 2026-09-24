@@ -21,10 +21,7 @@ function headingIn(container) {
   return h ? renderedText(h) : '';
 }
 
-/**
- * The heading that names `el`'s screen: `{ heading, own }`, where own says the
- * heading is `el` itself or holds it, or null when no visible heading is found.
- */
+/** The heading that names `el`'s screen, or null when no visible heading is found. */
 function headingAbove(el) {
   // A comment left ON a heading is named by that heading, not by the one above
   // it. compareDocumentPosition returns 0 for a node compared with itself, so
@@ -35,7 +32,7 @@ function headingAbove(el) {
   // is the one thing the screen field exists to get right. `closest` also
   // covers an element nested inside a heading, such as a <span> in an <h2>.
   const own = el && el.closest ? el.closest(HEADINGS) : null;
-  if (isVisible(own)) return { heading: own, own: true };
+  if (isVisible(own)) return own;
 
   const headings = Array.from(document.querySelectorAll(HEADINGS)).filter(isVisible);
   let best = null;
@@ -45,7 +42,7 @@ function headingAbove(el) {
     const contains = position & Node.DOCUMENT_POSITION_CONTAINED_BY;
     if (isBefore || contains) best = h;
   }
-  return best ? { heading: best, own: false } : null;
+  return best;
 }
 
 /**
@@ -53,21 +50,22 @@ function headingAbove(el) {
  * the step (issue #34): the heading's parent, or, when that parent holds only
  * the heading and a line or two of text (the "title and lead in their own div"
  * habit), the box around it. The whole page is never one step's box: `body`
- * holds everything that stays on every step, so it gives no box at all.
+ * holds everything that stays on every step, so a climb that reaches it gives
+ * no box at all. (`body` itself is never a heading group: the overlay's own
+ * host element is a child of it.)
  */
 function stepBox(heading) {
   const isGroup = (box) => box.children.length <= 3 && Array.from(box.children).every((c) => HEADING_GROUP.has(c.localName));
   let box = heading.parentElement;
-  while (box && isGroup(box) && box.parentElement && box.parentElement !== document.body) box = box.parentElement;
-  return box && box !== document.body && box !== document.documentElement ? box : null;
+  while (box && isGroup(box)) box = box.parentElement;
+  return box && box !== document.body ? box : null;
 }
 
 /**
  * Name the screen for `el`, and find the box that holds that screen's own
  * content when the name came from around `el` itself. Returns
  * `{ name, source, box }`; box is null when the name came from the page as a
- * whole (a modal elsewhere, the current-step marker, the selected tab, the
- * hash) or from `el`'s own heading, which names itself rather than a step.
+ * whole (a modal elsewhere, the current-step marker, the selected tab, the hash).
  */
 function nameScreen(el) {
   // 1. The convention: an ancestor tagged by the prototype itself.
@@ -100,8 +98,8 @@ function nameScreen(el) {
 
   // 5. The nearest visible heading above the element.
   const above = el ? headingAbove(el) : null;
-  const heading = above ? renderedText(above.heading) : '';
-  if (heading) return { name: heading, source: 'heading', box: above.own ? null : stepBox(above.heading) };
+  const heading = above ? renderedText(above) : '';
+  if (heading) return { name: heading, source: 'heading', box: stepBox(above) };
 
   // 6. The page hash, which is all a hash-routed prototype gives away.
   const hash = collapse(location.hash);

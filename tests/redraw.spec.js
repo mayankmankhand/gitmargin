@@ -189,8 +189,8 @@ for (const nodes of ['replace', 'keep']) {
   });
 
   test(`a comment on step 2's own heading has no pin on step 3 (nodes ${nodes})`, async ({ page }, testInfo) => {
-    // A heading names its own step, so it has no box to be judged by: it is the
-    // words that say step 3's heading is not the one the reviewer commented on.
+    // A heading names its own step: on step 3 the heading at the same address
+    // names another step, and sits in that step's card.
     await open(page, await attached(testInfo));
     await page.evaluate((n) => window.redrawShape({ nodes: n }), nodes);
     await goTo(page, 2);

@@ -278,8 +278,8 @@ function ancestorFor(selector) {
  * A prototype that draws every step into the same area (issue #34) keeps the
  * saved address alive on every step, so a visible match is judged before it
  * wins: on another screen it counts only beside the step and with its words
- * intact (belongsHere). One that does not count is a lookalike on another
- * screen, like any other, and never falls through to the fallbacks below.
+ * intact (belongsHere). One that does not count makes the comment "on another
+ * screen" at once, after only the check for its own element on a hidden step.
  *
  * A visible selector match on the comment's own screen returns immediately.
  * That is not only the common case, it is the hot one: this runs once per
@@ -316,6 +316,15 @@ export function resolve(anchor, screen = null) {
   // The saved element, still in the page, on a screen that is not being shown.
   const kept = hiddenHits.find((el) => agrees(el, exact));
   if (kept) return { element: kept, status: 'hidden', via: 'selector' };
+
+  // The page is showing another screen's lookalike at the comment's own
+  // address, so the comment is on another screen, and the quote scan below
+  // could only add a guess. Skipping it is also what keeps a redrawn step
+  // cheap: that scan reads every element in the page, once per comment per
+  // frame, and here it would run for every comment made on another step.
+  // Timed in issue #34: with it, a redraw-per-step page with 15 comments took a
+  // quarter longer to lay out than before the fix; without it, less than before.
+  if (elsewhere) return { element: null, status: 'hidden', via: 'screen' };
 
   // A visible lookalike on another screen is not this comment's element. Only
   // visible ones are judged: screenFor names the screen being SHOWN, which is

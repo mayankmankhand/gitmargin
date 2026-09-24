@@ -25,7 +25,11 @@
     dialog  'last'     the last step's card is itself a role="dialog" box, at the same address
 
   It never sets the URL hash and keeps no state, so a reload is always the
-  default shape on step 1. Deliberately NOT stamped: `attach` runs on it.
+  default shape on step 1. The script sits in <head> so the steps' words are
+  not in the page's body text: the quote search reads the body, and a script
+  there would answer for a comment whose element is gone, which hides the rule
+  that counts a rejected match as on another screen. Deliberately NOT stamped:
+  `attach` runs on it.
 -->
 
 <style>
@@ -46,15 +50,6 @@
   button:disabled { opacity: .45; cursor: default; }
   .help { color: #6e6e73; font-size: 13px; margin-top: 28px; }
 </style>
-</head>
-<body>
-
-<div class="app">
-  <div class="logo">Acme</div>
-  <div id="stage"></div>
-  <div id="shared"></div>
-  <p class="help">Questions? Call 0800 123 456.</p>
-</div>
 
 <script>
   var STEPS = [
@@ -156,8 +151,17 @@
     }
   });
 
-  render();
+  document.addEventListener('DOMContentLoaded', render);
 </script>
+</head>
+<body>
+
+<div class="app">
+  <div class="logo">Acme</div>
+  <div id="stage"></div>
+  <div id="shared"></div>
+  <p class="help">Questions? Call 0800 123 456.</p>
+</div>
 
 </body>
 </html>
