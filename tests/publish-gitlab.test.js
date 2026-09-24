@@ -9,9 +9,9 @@
 //   so the script sees a real gitlab.com remote while every fetch and push
 //   stays on disk. GIT_ALLOW_PROTOCOL=file makes git refuse any other
 //   transport, so a rewrite that missed would fail the test instead.
-// - `glab` is a stand-in put first on PATH. It answers the API calls from a
-//   JSON state file, records every call, and refuses anything else. Its
-//   refusals copy what glab 1.119.0 really printed (plans/PLAN-issue-37.md,
+// - `glab` is a stand-in put first on PATH (tests/helpers/fake-glab.cjs). It
+//   answers the API calls from a JSON state file, records every call, and
+//   refuses anything else. Its refusals copy what glab 1.119.0 really printed (plans/PLAN-issue-37.md,
 //   Outcomes, Step 1): GitLab's JSON on stdout with no newline, one
 //   "glab: <message> (HTTP <code>)" line on stderr, exit 1. Like the real
 //   thing it counts a GITLAB_TOKEN in its environment as a login, and filters
@@ -35,135 +35,12 @@ const SCRIPT = path.join(ROOT, 'plugin', 'scripts', 'publish-branch.mjs');
 const LAUNCHER = path.join(ROOT, 'plugin', 'bin', 'gitmargin-publish');
 const REMOTE_URL = 'https://gitlab.com/acme/team/site.git';
 const PROJECT = 'acme/team/site';
-const ENCODED = 'acme%2Fteam%2Fsite';
 const SITE = 'https://site-a1b2c3.gitlab.io';
 const BRANCH = 'gitmargin-pages';
 
-/**
- * The stand-in glab. Written out as its own CommonJS file, so it runs the same
- * whatever the scratch folder's surroundings say about modules.
- */
-function fakeGlab() {
-  const fs = require('fs');
-  const { execFileSync: run } = require('child_process');
-  const args = process.argv.slice(2);
-  const file = process.env.FAKE_GLAB_STATE;
-  const state = JSON.parse(fs.readFileSync(file, 'utf8'));
-  const save = () => fs.writeFileSync(file, JSON.stringify(state, null, 2));
-  const pushes = () => fs.readFileSync(process.env.FAKE_GLAB_PUSHES, 'utf8').split('\n').filter(Boolean).length;
-  // Every call, with the host and token variables it could see and how many
-  // pushes had reached the remote, so order and stripping can be checked.
-  const seen = JSON.parse(process.env.FAKE_GLAB_WATCH).filter((name) => name in process.env);
-  fs.appendFileSync(process.env.FAKE_GLAB_LOG, `${JSON.stringify({ args, seen, pushes: pushes(), quiet: process.env.GLAB_SEND_TELEMETRY })}\n`);
-
-  const answer = (body) => {
-    process.stdout.write(typeof body === 'string' ? body : JSON.stringify(body));
-    process.exit(0);
-  };
-  // What glab 1.119.0 does with a refusal (measured).
-  const refuse = (code, message) => {
-    process.stdout.write(JSON.stringify({ message: `${code} ${message}` }));
-    process.stderr.write(`glab: ${code} ${message} (HTTP ${code})\n`);
-    process.exit(1);
-  };
-  const unknown = () => {
-    process.stderr.write(`fake glab: no answer for ${JSON.stringify(args)}\n`);
-    process.exit(3);
-  };
-  const tip = (branch) => {
-    try {
-      return run('git', ['--git-dir', process.env.FAKE_GLAB_BARE, 'rev-parse', '--verify', '--quiet', `refs/heads/${branch}`], { encoding: 'utf8' }).trim();
-    } catch {
-      return null;
-    }
-  };
-  // Real glab counts a token in its environment as a login.
-  const loggedIn = state.loggedIn || 'GITLAB_TOKEN' in process.env;
-
-  if (args[0] === 'auth' && args[1] === 'status') {
-    if (args[2] !== '--hostname' || args[3] !== 'gitlab.com') unknown();
-    if (loggedIn) {
-      process.stderr.write('gitlab.com\n  ✓ Logged in to gitlab.com as acme-owner (config file)\n');
-      process.exit(0);
-    }
-    process.stderr.write(
-      'gitlab.com\n  x gitlab.com: API call failed: GET https://gitlab.com/api/v4/user: 401 {message: 401 Unauthorized}\n' +
-        '  ! No token found (checked config file, keyring, and environment variables).\n'
-    );
-    process.exit(1);
-  }
-  if (args[0] !== 'api') unknown();
-  let method = 'GET';
-  let endpoint = null;
-  let host = null;
-  const fields = {};
-  for (let i = 1; i < args.length; i++) {
-    const a = args[i];
-    if (a === '--method' || a === '-X') method = args[++i];
-    else if (a === '--hostname') host = args[++i];
-    else if (a === '--raw-field' || a === '-f') {
-      const [key, ...rest] = args[++i].split('=');
-      fields[key] = rest.join('=');
-    } else if (a.startsWith('-')) unknown();
-    else if (endpoint === null) endpoint = a;
-    else unknown();
-  }
-  if (host !== 'gitlab.com') unknown();
-  if (!loggedIn) refuse(401, 'Unauthorized');
-  const [where, query = ''] = endpoint.split('?');
-  const params = new URLSearchParams(query);
-  const id = state.project.id;
-  const resolve = (sha) => (sha === 'TIP' ? tip('gitmargin-pages') : sha);
-
-  if (method === 'GET' && where === `projects/acme%2Fteam%2Fsite`) return state.projectMissing ? refuse(404, 'Project Not Found') : answer(state.project);
-  if (method === 'GET' && where === 'user') return answer({ id: 7, username: 'acme-owner' });
-  if (method === 'GET' && where === `projects/${id}/members/all/7`) return state.role ? answer({ id: 7, access_level: state.role }) : refuse(404, 'Not found');
-  if (method === 'GET' && where === `projects/${id}/pages`) {
-    if (state.role < 40) return refuse(403, 'Forbidden');
-    return state.pages ? answer(state.pages) : refuse(404, 'Not Found');
-  }
-  if (method === 'GET' && where === `projects/${id}/repository/files/.gitlab-ci.yml/raw`) {
-    if (params.get('ref') !== state.project.default_branch) unknown();
-    return state.defaultCi === null ? refuse(404, 'File Not Found') : answer(state.defaultCi);
-  }
-  if (method === 'PUT' && where === `projects/${id}`) {
-    if (state.role < 40) return refuse(403, 'Forbidden');
-    if (state.putRefused) return refuse(400, 'Bad request');
-    if (!state.putIgnored && fields.pages_access_level) state.project.pages_access_level = fields.pages_access_level;
-    save();
-    return answer(state.project);
-  }
-  if (method === 'GET' && where === `projects/${id}/pipelines`) {
-    // Like GitLab: sha and ref filter only when given.
-    const visible = [];
-    for (const p of state.pipelines) {
-      if (params.has('sha') && resolve(p.sha) !== params.get('sha')) continue;
-      if (params.has('ref') && p.ref !== params.get('ref')) continue;
-      const status = p.statuses.length > 1 ? p.statuses.shift() : p.statuses[0];
-      p.current = status;
-      if (status === 'none') continue;
-      if (status === 'success' && resolve(p.sha) && !state.pages) {
-        // GitLab creates the site with its first deployment.
-        state.pages = { url: state.siteUrl, is_unique_domain_enabled: true, deployments: [{ created_at: '2026-09-24T10:00:00Z', url: state.siteUrl, path_prefix: null, root_directory: 'public' }] };
-      }
-      visible.push({ id: p.id, iid: p.id - 800, project_id: id, sha: resolve(p.sha), ref: p.ref, status, source: 'push', web_url: `https://gitlab.com/${state.project.path_with_namespace}/-/pipelines/${p.id}`, name: null });
-    }
-    save();
-    return answer(visible);
-  }
-  const one = /^projects\/\d+\/pipelines\/(\d+)$/.exec(where);
-  if (method === 'GET' && one) {
-    const p = state.pipelines.find((x) => String(x.id) === one[1]);
-    return p ? answer({ id: p.id, status: p.current, duration: 20.4, queued_duration: 3.6, web_url: `https://gitlab.com/x/-/pipelines/${p.id}` }) : refuse(404, 'Not found');
-  }
-  const jobs = /^projects\/\d+\/pipelines\/(\d+)\/jobs$/.exec(where);
-  if (method === 'GET' && jobs) {
-    if (params.get('scope[]') !== 'failed') unknown();
-    return answer(state.failedJob ? [{ id: 55, name: 'pages', stage: 'deploy', status: 'failed', failure_reason: state.failedJob.reason }] : []);
-  }
-  if (method === 'GET' && where === `projects/${id}/jobs/55/trace`) return state.failedJob ? answer(state.failedJob.log) : refuse(404, 'Not Found');
-  return unknown();
-}
+// The stand-in glab lives in tests/helpers/fake-glab.cjs, shared with the
+// headless rehearsals of the share skill.
+const FAKE_GLAB = path.join(ROOT, 'tests', 'helpers', 'fake-glab.cjs');
 
 const PROJECT_DEFAULTS = {
   id: 4242,
@@ -244,9 +121,7 @@ function world(t, glab = {}) {
       '',
     ].join('\n')
   );
-  const fake = path.join(w.bin, 'fake-glab.cjs');
-  writeFileSync(fake, `'use strict';\n(${fakeGlab.toString()})();\n`);
-  writeFileSync(path.join(w.bin, 'glab'), `#!/bin/sh\nexec "${process.execPath}" "${fake}" "$@"\n`);
+  writeFileSync(path.join(w.bin, 'glab'), `#!/bin/sh\nexec "${process.execPath}" "${FAKE_GLAB}" "$@"\n`);
   chmodSync(path.join(w.bin, 'glab'), 0o755);
   setGlab(w, glab);
   w.env = cleanEnv({
@@ -472,6 +347,19 @@ test('a second prototype adds a second folder, and the same bytes again change n
   assert.equal(tipOf(w), tipBefore);
   assert.equal(pushAttempts(w), 2);
   assert.ok(pipelineLooks(w).length - looksBefore <= 1, 'one look, no wait');
+});
+
+test('the same bytes while the last build still runs: one look, the link, and a note', (t) => {
+  const w = world(t);
+  assert.equal(run(w, [attached(w, 'one', 'first'), '--folder', 'one']).code, 0);
+  setGlab(w, { pages: deployedSite, pipelines: [{ id: 901, sha: 'TIP', ref: BRANCH, statuses: ['running'] }] });
+  const looksBefore = pipelineLooks(w).length;
+  const r = run(w, [attached(w, 'one', 'first'), '--folder', 'one', '--wait', '2']);
+  assert.equal(r.code, 0, r.err);
+  assert.equal(r.out, `${SITE}/one/\n`);
+  assert.match(r.err, /Nothing changed/);
+  assert.match(r.err, /GitLab is still building the page\. Until it finishes, the link shows the previous version, or a 404 if this is the first\./);
+  assert.equal(pipelineLooks(w).length - looksBefore, 1, 'nothing was pushed, so nothing is waited for');
 });
 
 test("the author's checkout is exactly as it was, their own build file included", (t) => {
@@ -715,7 +603,7 @@ test('a republish still building prints the known link and says the old version 
   const r = run(w, [attached(w, 'one', 'changed', { version: 'v2-def456' }), '--folder', 'one', '--wait', '1']);
   assert.equal(r.code, 0, r.err);
   assert.equal(r.out, `${SITE}/one/\n`);
-  assert.match(r.err, /GitLab is still building the page\. Until it finishes, the link shows the previous version\./);
+  assert.match(r.err, /GitLab is still building the page\. Until it finishes, the link shows the previous version, or a 404 if this is the first\./);
 });
 
 // ---------------------------------------------------------------------------

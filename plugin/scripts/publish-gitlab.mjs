@@ -403,9 +403,10 @@ function explainFailure(project, pipeline) {
  * Follow GitLab's pipeline for THIS commit on the branch until it succeeds or
  * stops, or the time is up. The newest pipeline for the commit is the one that
  * counts. In the first seconds after a push there is none yet, which is not a
- * failure: waiting goes on until the deadline.
+ * failure: waiting goes on until the deadline. With `once`, it looks one time
+ * and reports what it saw.
  */
-async function waitForPipeline(project, commit, branch, seconds) {
+async function waitForPipeline(project, commit, branch, seconds, { once = false } = {}) {
   if (seconds <= 0) return { status: 'not-waited', pipeline: null };
   const interval = pollInterval();
   const deadline = Date.now() + seconds * 1000;
@@ -422,7 +423,7 @@ async function waitForPipeline(project, commit, branch, seconds) {
     if (state === 'success') return { status: 'built', pipeline: newest };
     if (state === 'failed') return { status: 'failed', pipeline: newest };
     if (state === 'canceled' || state === 'skipped' || state === 'manual') return { status: 'not-run', pipeline: newest };
-    if (Date.now() + interval > deadline) {
+    if (once || Date.now() + interval > deadline) {
       if (!newest) return { status: 'not-started', pipeline: null };
       return { status: state === 'running' ? 'running' : 'waiting', pipeline: newest };
     }
@@ -543,7 +544,7 @@ export async function publish(opts, root, page) {
   if (pushed && wait > 0) process.stderr.write(`Waiting up to ${wait} seconds for GitLab to build the page.\n`);
   // Unchanged bytes get one look at the commit's pipeline, not a wait: it may
   // be the last publish's build, still running, or one that failed.
-  const build = await waitForPipeline(project, commit, opts.branch, pushed ? wait : Math.min(wait, 1));
+  const build = await waitForPipeline(project, commit, opts.branch, wait, { once: !pushed });
   const seconds = pushed && build.status === 'built' ? Math.round((Date.now() - pushedAt) / 1000) : null;
 
   let detail = null;
@@ -625,7 +626,7 @@ export async function publish(opts, root, page) {
   }
   const unfinished = build.status === 'running' || build.status === 'waiting' || (pushed && build.status === 'not-started');
   if (unfinished) {
-    process.stderr.write(`${describeUnfinished(build, project)} Until it finishes, the link shows the previous version.\n`);
+    process.stderr.write(`${describeUnfinished(build, project)} Until it finishes, the link shows the previous version, or a 404 if this is the first.\n`);
   }
   process.stdout.write(opts.json ? `${JSON.stringify(result, null, 2)}\n` : `${link}\n`);
   return EXIT_OK;
