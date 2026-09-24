@@ -9,7 +9,7 @@
 // production hands in Neon and real time while the tests hand in an in-process
 // Postgres and a clock they control.
 
-import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { ensureSchema } from './schema.js';
 import * as signin from './signin.js';
 import {
@@ -59,6 +59,47 @@ function secretMatches(headers, secret) {
   const sent = /^Bearer (.+)$/i.exec(String(headers.authorization || ''));
   if (!sent) return false;
   return timingSafeEqual(Buffer.from(sha256(sent[1]), 'hex'), Buffer.from(sha256(secret), 'hex'));
+}
+
+// ---- the proof of trust (issue #33) ---------------------------------------
+
+/**
+ * The command line sends the author secret only to a service that first
+ * answers a fresh challenge with an HMAC keyed by that secret, so an address
+ * that does not hold the secret can never be handed it. Typing an address
+ * proved nothing once Claude types the commands.
+ *
+ * The HMAC covers the Host header the request arrived with, and nothing a
+ * client can set freely: a relay that forwards the challenge to the real
+ * service must send the real host (Vercel routes by Host), so the proof it
+ * gets back names the real host, and the command line, which computes over the
+ * host it dialed, sees a mismatch. X-Forwarded-Host (and deps.origin, built
+ * from it) would let the relay name itself and forge a match, so neither is
+ * read here. The label keeps this output from ever doubling as another use of
+ * the same key. Anyone may ask for a proof, so a short secret could be guessed
+ * offline from one: the service refuses to sign with a secret under
+ * MIN_SECRET_LENGTH characters.
+ */
+export const PROOF_LABEL = 'gitmargin-prove-v1';
+export const MIN_SECRET_LENGTH = 32;
+const CHALLENGE = /^[0-9a-f]{64}$/;
+
+/** Lowercased, without a default port, so the service and the command line agree on one spelling. */
+export function proofHost(host) {
+  return String(host || '').toLowerCase().replace(/:(443|80)$/, '');
+}
+
+/** The answer to a challenge. It reads no database, so it answers even when Neon is down. */
+function prove(headers, body, secret) {
+  const challenge = body && typeof body.challenge === 'string' ? body.challenge : '';
+  if (!CHALLENGE.test(challenge)) return refuse(400, 'invalid');
+  const host = proofHost(headers.host);
+  // The host rides on these refusals too, so a deployment with a missing or
+  // short secret still shows which host it was reached as.
+  if (!secret) return json(409, { error: 'no_secret', host });
+  if (String(secret).length < MIN_SECRET_LENGTH) return json(409, { error: 'weak_secret', host });
+  const proof = createHmac('sha256', String(secret)).update(`${PROOF_LABEL}\n${challenge}\n${host}`, 'utf8').digest('hex');
+  return json(200, { proof, host });
 }
 
 // ---- reads ----------------------------------------------------------------
@@ -543,6 +584,9 @@ async function dispatch(request, deps) {
     const rows = await query('select 1 as ok');
     return json(200, { ok: rows[0] && rows[0].ok === 1, time: deps.now().toISOString() });
   }
+
+  // Before the author routes: it needs no secret from the caller, only the service's own.
+  if (method === 'POST' && path === '/api/prove') return prove(headers, body, deps.secret);
 
   if (method === 'GET' && (m = PAGE.exec(path))) {
     await ensureSchema(query);
