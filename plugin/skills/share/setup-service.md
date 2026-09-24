@@ -17,14 +17,14 @@ Tell the author all of this, in a few lines:
   <setupCommand, exactly as services printed it>
   ```
 
-- It may open the browser to log in to Vercel, and it asks yes or no in the terminal: which account to use, and, the first time only, Neon's terms. The secret it makes is never shown, and never needs to be pasted anywhere.
+- It may open the browser to log in to Vercel, and it asks yes or no in the terminal: which account to use; whether an existing Vercel project named `gitmargin-comments` is their comment service (no, unless it is); Neon's terms, the first time only; and, only if the service's secret is not the one on this computer, whether to make a new one. The secret it makes is never shown, and never needs to be pasted anywhere.
 - When it says `Done`, come back here and type `/gitmargin:share <prototype.html>` (write the prototype's file name out). Nothing needs restarting.
 
 Then stop and wait for that line.
 
 ## 2. When the author comes back
 
-`/gitmargin:share` runs again, and so does `gitmargin services --json`. The new service is in `trusted` and `secretSet` is true: share to it as usual (step 3 of the skill). Its address is the one in `trusted` that was not there before; with several and no way to tell, ask which.
+`/gitmargin:share` runs again, and so does `gitmargin services --json`. The new service is in `trusted` and `secretSet` is true: share to it as usual (step 3 of the skill). Its address is the one in `trusted` that was not there before; with several and no way to tell, ask which. Write that address into `.gitmargin.json` as `service` with the Write tool (as in step 2 of the skill), so later shares use it without asking.
 
 - If `secretSet` is still false, or `trusted` has nothing new: the line ran in a different kind of terminal (PowerShell instead of WSL, for example), which keeps its settings somewhere else, or it stopped before `Done`. `configDir` is where this Claude Code looks; the setup command printed the folder it used. Ask which happened.
 - If it stopped with a message: the message says what to do, and running the line again is always safe. It skips what is done, and never replaces a secret without asking.
