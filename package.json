@@ -10,6 +10,7 @@
   },
   "scripts": {
     "build": "esbuild src/overlay/index.js --bundle --minify --format=iife --target=es2020 --loader:.css=text --outfile=dist/gitmargin.js",
+    "build:plugin": "npm run build && node scripts/sync-plugin.js",
     "attach": "node bin/gitmargin.js attach",
     "pull": "node bin/gitmargin.js pull",
     "test": "npm run build && node --test tests/*.test.js service/tests/*.test.js && playwright test",

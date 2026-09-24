@@ -38,10 +38,11 @@ An agent can read the markdown directly; the JSON is for tools. **JSON is the de
 a coding agent, and a markdown preamble sitting on top of JSON is not parseable. That is why the section 6 rules
 travel inside the JSON rather than above it.
 
-The commands are not published to npm, so they run from a clone of the repository:
+The commands are not published to npm. Installed through the Claude Code plugin ([claude-code.md](claude-code.md))
+they are `gitmargin pull reviewed.html`; from a clone of the repository they are
 `node bin/gitmargin.js pull reviewed.html`, or `npm run pull -- reviewed.html` (the `--` is what passes the
-filename through npm). A fresh clone runs `npm install && npm run build` once first. Only the author ever runs
-them; a reviewer only ever opens an HTML file.
+filename through npm), after `npm install && npm run build` once. Only the author ever runs them; a reviewer only
+ever opens an HTML file.
 
 Four rules the embedded carrier lives by, all settled by building against it:
 

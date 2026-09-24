@@ -35,6 +35,9 @@ venv/
 # Build output & deploy artifacts
 # ---------------------------------------------------------------
 dist/
+# The plugin carries its own copy of the built overlay, because an installed
+# plugin cannot read files outside its own folder (scripts/sync-plugin.js).
+!plugin/dist/
 build/
 out/
 .output/
@@ -87,6 +90,7 @@ Desktop.ini
 /_tmp/
 plans/PLAN-*.md
 plans/PLAN-*.html
+plans/WALK-*.md
 reports/
 .cursor/
 .claude/worktrees/
@@ -104,6 +108,8 @@ fixtures/.tmp-*
 # Both are rebuilt from the source prototype, so neither belongs in git.
 *.gitmargin.html
 *.reviewed.html
+# A reviewer's name folds into the download: onboarding.reviewed.priya.html (review of #16, R4)
+*.reviewed.*.html
 
 # Added by the LLM Peer Review toolkit (/tk:setup)
 .claude/.toolkit-migration.json

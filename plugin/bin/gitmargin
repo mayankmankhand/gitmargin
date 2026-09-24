@@ -1,0 +1,37 @@
+#!/bin/sh
+# gitmargin, as installed by the Claude Code plugin.
+#
+# Claude Code puts this plugin's bin/ folder on the Bash tool's PATH, so
+# `gitmargin attach page.html` finds this file by name. All it does is run the
+# real command, gitmargin.js, which sits next to it, with every argument passed
+# through untouched.
+#
+# Why a launcher rather than gitmargin.js itself: the command is called
+# `gitmargin` whatever plugin version is installed, so a permission rule such
+# as Bash(gitmargin *) keeps working after an update. A rule naming the
+# versioned cache folder the plugin lives in would stop matching.
+#
+# Why it works out its own folder: it runs from the author's project, not from
+# here, and may be reached through a link, so the folder has to come from
+# where this file really is, never from the working directory.
+
+self=$0
+# Follow links one hop at a time. `readlink -f` would do it in one go, but it
+# is not in POSIX and older macOS lacks it.
+while [ -h "$self" ]; do
+  link=$(readlink "$self")
+  case $link in
+    /*) self=$link ;;
+    *) self=$(dirname "$self")/$link ;;
+  esac
+done
+here=$(CDPATH= cd -- "$(dirname -- "$self")" && pwd -P) || exit 1
+
+# Without this, a machine with no Node prints only "node: not found", which
+# does not say what gitmargin needs.
+if ! command -v node >/dev/null 2>&1; then
+  echo "gitmargin: needs Node.js 18 or later, and no node command was found on PATH." >&2
+  exit 127
+fi
+
+exec node "$here/gitmargin.js" "$@"

@@ -13,7 +13,8 @@ walked on two computers with two gitlab.com accounts. Cycle 2, the GitHub plug (
 a stand-in GitHub in Chromium and Firefox and walked on the real github.com (a file on disk, the service link and a
 GitHub Pages page). Same-project mode, the second half of cycle 4 (issue #19), is built ahead of cycle 3 and tested
 behind a stand-in for Vercel's login wall; it was walked on a real Vercel project, including a reviewer on the share
-link. Everything else here is decided and not yet built, and says so.
+link. Cycle 3, the plugin (issue #16), is built with the file, service-link and GitHub Pages channels and was
+walked on a second computer on 2026-09-23 (section 7). Everything else here is decided and not yet built, and says so.
 The contract is `service/API.md`; setup and warnings are in `service/README.md`.
 
 ## 1. Why one design
@@ -164,10 +165,10 @@ Enterprise Cloud), so "it went to GitHub automatically" would turn a private pro
 
 | The plugin finds | It proposes | Who will see the page |
 |---|---|---|
-| A GitLab remote | GitLab Pages, access set to project members only | the project's members |
+| A GitLab remote | GitLab Pages, access set to project members only (cycle 4; until then the service link) | the project's members |
 | A GitHub remote, public repo | GitHub Pages | the whole internet, said plainly |
-| A GitHub remote, private repo | the service link or a file; Pages only after an explicit "this makes it public" | whoever holds the link or the file |
-| A `.vercel` folder or `vercel.json` | Vercel, and it asks which protection is on | depends on that protection |
+| A GitHub remote, private repo | the service link or a file, never GitHub Pages (as built in cycle 3, `gitmargin-publish` refuses a private repo) | whoever holds the link or the file |
+| A `.vercel` folder or `vercel.json` | Vercel, and it asks which protection is on (cycle 4; until then the service link) | depends on that protection |
 | Nothing | the service link when a service exists, otherwise a file sent by hand | whoever holds the link or the file |
 
 **It asks when:**
@@ -178,19 +179,31 @@ Enterprise Cloud), so "it went to GitHub automatically" would turn a private pro
 4. two signals disagree, for example a GitHub remote and a Vercel folder;
 5. the step creates a project, costs money, or changes repo settings;
 6. identity mode needs choosing: once per prototype, typed names by default, and sign-in is offered only when the
-   author's service has a sign-in application set up.
+   author's service has a sign-in application set up. As built in cycle 3 this is never asked: a service the plugin
+   sets up has no sign-in application, so every prototype starts with typed names, and sign-in stays a separate
+   `gitmargin identity` step the author runs.
 
-**It never asks** on a republish of the same prototype to the same channel, or on `pull`.
+**It never asks** on a republish of the same prototype to the same channel, on a new prototype to a channel already
+chosen in that project, or on `pull`.
 
-**What lands in an author's repo:** their prototype, untouched; the attached copy; one small config file holding
-the channel, the service address and the identity mode, and no secrets (the author secret stays outside the repo);
-and, on the GitLab channel only, a short Pages build file, because GitLab Pages publishes only through a build.
-The plugin carries the command-line tool and the overlay inside itself, so an author who uses the plugin needs
-nothing from npm.
+**What lands in an author's repo:** their prototype, untouched, and three lines in its `.gitignore`. As built in
+cycle 3 (issue #16), the attached copy and the small settings file (`.gitmargin.json`: the channel, the service
+address, the Pages branch; never a secret) stay on the author's machine and out of git, because the copy carries
+the page key and a committed link would carry it too: committing either to a public repo would widen who can
+comment. A second machine therefore asks once. On GitHub Pages the copy is pushed only to its own
+`gitmargin-pages` branch, never to the author's branches; on the GitLab channel, when it comes, a short Pages build
+file too, because GitLab Pages publishes only through a build. The plugin carries the command-line tool and the
+overlay inside itself, so an author who uses the plugin needs nothing from npm.
 
-One tension the plugin has to handle: this repository never commits a copy attached with `--service`, because it
-carries a service address and a page key. A Pages channel publishes by pushing exactly that copy. That is fine when
-the page and the repo have the same audience, and never fine when a private repo feeds a public site.
+The tension this rule was written for: this repository never commits a copy attached with `--service`, because it
+carries a service address and a page key, and a Pages channel publishes by pushing exactly that copy. The plugin
+publishes GitHub Pages only from a public repo, so the page and the repo have the same audience, and the first
+publish says plainly that the key stays in the `gitmargin-pages` branch's history (no route revokes a key yet).
+A private repo feeds the service link or a file, never a public site.
+
+**Settings from a file never carry the secret somewhere new.** The plugin reads the service address from
+`.gitmargin.json` and passes it with `attach --require-trusted`, which refuses an address this machine has not
+used before, so a settings file from a cloned repo cannot send the author secret to its own server.
 
 ### The GitLab Pages channel, done by hand once
 
@@ -260,13 +273,20 @@ Each cycle ends in a live test on accounts one person owns, before the next star
    names the repository. A GitLab prototype and a GitHub prototype live side by side on one service.
 3. **The plugin** ([#16](https://github.com/mayankmankhand/gitmargin/issues/16)): install, service setup, publish
    with detect, propose, confirm once, remember, and the file, link, GitHub Pages and GitLab Pages channels.
+   **Built and walked 2026-09-23 with three channels:** the file, the service link and GitHub Pages, from a
+   `plugin/` folder in this repository installed as `gitmargin@gitmargin`. Three skills: build rules that keep a
+   comment on its step (measured on seventeen prototype shapes during the exploration), `/gitmargin:share`, and
+   reading the comments back. Two commands arrived with it: `gitmargin check` says what will not survive the host,
+   and `gitmargin-publish` pushes one attached copy to a `gitmargin-pages` branch without touching the author's
+   checkout. The GitLab Pages channel and the plain Vercel channel move to the next cycle, beside same-project mode.
+   The author's guide is [claude-code.md](claude-code.md).
 4. **The Vercel channel and same-project mode** ([#19](https://github.com/mayankmankhand/gitmargin/issues/19)). The
    page key stays as a plain label for "which prototype"; Vercel's own protection wraps the page and the comments
    together, so the service barely changes. **Same-project mode built 2026-09-23, before the plugin:** a second
    deployment of the author's service with `GITMARGIN_SAME_PROJECT=1` serves one prototype as its own site (not
    sandboxed, so its calls carry Vercel's login), opens it at `/`, and holds one prototype, with a database of its
    own; a page opened at its own `/p/<key>/...` talks to the address it was opened from; the command line passes
-   Vercel's wall with Vercel's bypass for automation. The plain Vercel channel stays with the plugin (cycle 3).
+   Vercel's wall with Vercel's bypass for automation. The plain Vercel channel joins it here: the plugin (cycle 3) was built with the file, service-link and GitHub Pages channels, and the GitLab Pages and plain Vercel channels moved to this cycle.
 
 ## 8. Honest limits
 
