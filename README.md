@@ -65,10 +65,9 @@ node bin/gitmargin.js attach prototype.html   # writes prototype.gitmargin.html
 node bin/gitmargin.js pull reviewed.html      # prints the batch as JSON
 ```
 
-For shared, live comments, deploy the service once ([service/README.md](service/README.md)) and add one flag:
+For shared, live comments, deploy the service once (`node plugin/scripts/setup.mjs`, in a terminal of your own; see [service/README.md](service/README.md)) and add one flag:
 
 ```bash
-export GITMARGIN_SECRET=...                     # the value you gave your deployment
 node bin/gitmargin.js attach prototype.html --service https://your-service.vercel.app
 node bin/gitmargin.js pull prototype.gitmargin.html --live
 ```

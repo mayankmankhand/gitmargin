@@ -203,8 +203,9 @@ members, so in both the page and the repo have the same audience, and the first 
 A private repo feeds the service link or a file, never a public site.
 
 **Settings from a file never carry the secret somewhere new.** The plugin reads the service address from
-`.gitmargin.json` and passes it with `attach --require-trusted`, which refuses an address this machine has not
-used before, so a settings file from a cloned repo cannot send the author secret to its own server.
+`.gitmargin.json`, and every command that sends the author secret first asks the service to prove it already holds
+it (issue #33, `POST /api/prove`), so a settings file from a cloned repo cannot send the secret to its own server. The
+proof replaced the first rule, "only an address the author typed": under the plugin, Claude does the typing.
 
 ### The GitLab Pages channel, done by hand once
 

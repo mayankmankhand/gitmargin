@@ -18,7 +18,20 @@ see [docs/claude-code.md](../docs/claude-code.md). This page is the by-hand rout
 You need a [Vercel](https://vercel.com) account (the free plan is enough) and Node 20 or newer. Two routes. The
 command line is the one that has been run end to end.
 
-### From the command line
+### With one command
+
+From this repository, in a terminal of your own (not inside Claude Code: it refuses to run there):
+
+```bash
+node plugin/scripts/setup.mjs
+```
+
+It does everything below for you: Vercel's login if needed, the project, the Neon database, a random secret kept in
+`~/.config/gitmargin/secret` (only you can read it; it is never shown), the deploy, and a check that the service proves
+it holds that secret. Run it again after pulling a newer version of the service: it redeploys and asks only which
+account. It is the same command the Claude Code plugin hands its authors.
+
+### From the command line, by hand
 
 ```bash
 npm install --global vercel      # Vercel's command-line tool, once
@@ -61,7 +74,7 @@ Check it: `curl https://<project>.vercel.app/api/ping` answers `{"ok":true,...}`
 ## Use it
 
 ```bash
-export GITMARGIN_SECRET=...                                   # the value you gave the deployment
+export GITMARGIN_SECRET=...     # the value you gave the deployment, unless it is in ~/.config/gitmargin/secret
 node bin/gitmargin.js attach prototype.html --service https://<project>.vercel.app
 # send prototype.gitmargin.html by hand, or publish it anywhere; everyone who opens it shares one set of comments
 
@@ -70,11 +83,19 @@ node bin/gitmargin.js status prototype.gitmargin.html c_7f3a9b applied
 node bin/gitmargin.js remove prototype.gitmargin.html c_7f3a9b
 ```
 
-**Your secret only goes where you sent it.** `status`, `remove` and a bare `attach --service` read the service's
-address from the attached copy, and a copy that came back from a reviewer could name any address. So the commands send
-your secret only to an address you have typed yourself with `attach --service <address>` (remembered in
-`~/.config/gitmargin/trusted-services.json`, which holds no secret) or named in `GITMARGIN_SERVICE`, and never over
-plain `http` except to your own machine. Anything else is refused, with the reason.
+**Your secret only goes to a service that proves it already holds it.** The commands read the secret from
+`GITMARGIN_SECRET`, or when that is not set, from `~/.config/gitmargin/secret` (a file only you can read). An address
+can come from anywhere: a copy that came back from a reviewer, a settings file in a project you cloned, or a command an
+agent typed for you. So before any command sends your secret, it asks the service to answer a fresh challenge with a
+value only a holder of the same secret can compute, bound to the address the command dialed (`POST /api/prove`,
+[API.md](API.md)). It sends the secret only when the answer is right, and never over plain `http` except to your own
+machine. A wrong answer, a redirect, or an older deployment without the proof is refused, with nothing sent. Addresses
+that proved themselves are listed in `~/.config/gitmargin/trusted-services.json` (no secret in it), which `services`
+shows; the list itself unlocks nothing.
+
+If you ever change the secret, the old one keeps working on older deployment addresses of the same project (Vercel
+keeps each deployment's settings); those sit behind Vercel's own login. And if you point a custom domain at the service,
+remove it from the project before you let the domain lapse: whoever registers it next could answer for it.
 
 The first `attach --service` prints a **prototype key**. Keep it: `--key <key>` is how another machine, or a fresh
 checkout, attaches a new version of the same prototype instead of starting a new one. Later attaches from the same
@@ -189,7 +210,7 @@ reading needs what commenting needs:
   nothing about the prototype; after GitLab and Continue the person lands on the page, already signed in. A stored
   copy cannot remember anyone, so a reload asks again: two presses, since GitLab no longer asks anything.
 - `pull --live` sends your author secret, because reading now needs it, under the same rule as every other command:
-  only to an address you typed yourself.
+  only to a service that has proved it holds it.
 - **What it does not do:** it cannot take back what someone already has. Comments a member's browser fetched while
   they were a member stay in that browser, and a page they saved is theirs. The page on your own host is still
   guarded only by your host.
@@ -372,6 +393,7 @@ Back in the folder you cloned gitmargin into (the setup above left you in the co
 
 ```bash
 export GITMARGIN_SECRET="$(cat ~/.config/gitmargin/secret-onboarding)"
+export GITMARGIN_SERVICE=https://onboarding-review.vercel.app
 export GITMARGIN_VERCEL_BYPASS=...   # this project's bypass for automation
 node bin/gitmargin.js attach prototype.html --service https://onboarding-review.vercel.app
 ```
@@ -380,8 +402,10 @@ A new version is the same `attach` again: no redeploy. Two lines `attach` prints
 and do not hold here: "Send or publish prototype.gitmargin.html" and "The key is inside the page, and it is the only
 gate". Here Vercel's login is the gate, and reviewers get the address below, not the file. Keep the file for
 yourself: `pull --live`, `status`, `remove` and `identity` read the address and key from it. `pull --live`, `status`, `remove` and `identity` work the same
-way with the two values set. The bypass goes only to an address you typed yourself (or named in `GITMARGIN_SERVICE`),
-never into the page. Without it, the commands stop and say the address is behind Vercel's protection.
+way with the three values set. The bypass goes only to the address named in `GITMARGIN_SERVICE`, exactly, and never into
+the page: an address typed on a command line proves nothing, since an agent may have typed it. It also carries the
+proof of trust past Vercel's login; the author secret still waits for the proof. Without it, the commands stop and say
+the address is behind Vercel's protection.
 
 ### What reviewers do
 

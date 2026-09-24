@@ -318,7 +318,7 @@ or ten, the shape is the same.
   Anything listed after the attached copy is an ordinary source and merges by id as above, so a file someone sent
   by hand and the service's copy of the same comment become one. Reading needs only the key, so `--live` needs no
   author secret, unless the author limited reading to members (`identity ... --read members`): then it sends the
-  secret, and only to an address the author typed themselves. In the markdown rendering a shared comment gains up to three kinds of line beneath its text, each
+  secret, and only to a service that has first proved it holds it (issue #33). In the markdown rendering a shared comment gains up to three kinds of line beneath its text, each
   only when there is something to say: `From <name>.`, or `From <name> (GitLab, verified).` for an author the service
   verified, `Status: <status>.` when it is no longer open, and one
   `Reply from <name>: "<text>"` per reply. Names and replies are folded to one line like the comment text, for the
