@@ -1996,9 +1996,9 @@ export function mountUi(deps) {
 
   function render(force) {
     const resolved = store.comments().map((comment) => {
-      // The screen it was made on: a lookalike on any other screen is not its element (issue #24).
-      const screen = comment.state && comment.state.screen ? comment.state.screen.name : null;
-      const { element, status, via } = resolve(comment.anchor, screen);
+      // The screen it was made on, with how it was named: a lookalike on any
+      // other screen is not its element (issues #24 and #34).
+      const { element, status, via } = resolve(comment.anchor, comment.state && comment.state.screen);
       return { comment, element, status, via };
     });
     resolvedNow = resolved;

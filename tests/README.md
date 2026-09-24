@@ -26,6 +26,7 @@ reviewer receives a prototype in part 1. For a plain file, nothing here starts a
 | `tests/overlay-rethink.spec.js` | Playwright | the redrawn overlay (issue #21): the light/dark switch, initials and colours, pin placement, the sheet's links to the pins, Unread, open state across a rebuild |
 | `tests/theme.test.js`, `tests/author.test.js` | node:test | the luminance maths behind the switch, and the initials and colour a chip carries |
 | `tests/screens.spec.js` | Playwright | a prototype with more than one screen (issue #24): a comment's pin stays on the screen it was made on, and the light/dark look follows a page that changes after load |
+| `tests/redraw.spec.js` | Playwright | a prototype that draws every step into the same area (issue #34), on `fixtures/redraw.html` in one redraw habit at a time (`window.redrawShape`: new markup or the same nodes with new words, the title in the card, in its own box, at the top of the page or first in the app's wrapper, a footer every step shares, tagged steps, a dialog step or every step a dialog): a comment's pin stays on its step, while the logo, the help line and a shared footer keep theirs; also a long page whose saved address drifts into another section, a heading straight in the page body, and the Sony wizard's step counter; each rule in `anchor.js` and `screen.js` has a test that fails when that rule alone is broken |
 | `tests/anchor.test.js` | node:test | the screen comparison behind "a lookalike counts only on its own screen" |
 | `tests/check.test.js` | node:test | `gitmargin check` (issue #16): each rule fires on its trigger and stays silent without it, the channel filter, the JSON output. `tests/cli-service.test.js` also covers `attach --require-trusted` refusing an address this machine has not used, with nothing reaching the service, `gitmargin services`, and the review link `attach` prints |
 | `tests/plugin.test.js` | node:test | the Claude Code plugin (issue #16): `scripts/sync-plugin.js` copies only what git would commit, `--check` catches drift, and a copy of `plugin/` outside the repository runs `gitmargin` through its launcher. Its last test fails whenever `plugin/` is out of date with the sources: run `npm run build:plugin` |
@@ -49,6 +50,12 @@ browsers, several in a row, so that spec has a 90 second budget per test instead
 any test can run on both. The dark ground is painted on a wrapper `div`, not on `body`, on purpose: that is how most
 AI-made prototypes do it, and the overlay's light/dark switch (`src/overlay/theme.js`) has to find it there. The maths
 behind the switch runs in `tests/theme.test.js` under Node, on the exact colour strings a browser returns.
+
+**A fixture that redraws one area.** `fixtures/redraw.html` is a three-step checkout with only the step being shown in
+the page, the way React and a `render()` that replaces `innerHTML` build one; `window.redrawShape({ ... })` switches it
+to one redraw habit at a time, back on step 1, and a reload is always its default shape. Its script sits in `<head>` on
+purpose: the quote search reads the page's body, and a script there, carrying every step's words, would answer for a
+comment whose element is gone and hide the rule that counts a rejected match as on another screen.
 
 **The three part-1 test files are a tripwire.** Shared comments were built under the rule that
 `tests/roundtrip.spec.js`, `tests/cli-roundtrip.spec.js` and `tests/cli.test.js` pass with zero edits, since a page

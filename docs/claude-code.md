@@ -34,7 +34,7 @@ Use the `https://` address as written: the short `owner/repo` form clones over S
 
 Ask Claude for a prototype the way you always do: "build a three-step signup flow as one HTML file". The plugin's **build rules** tell Claude how to build it so the comments land well. In short: one self-contained file; each step in its own wrapper with a name; steps hidden with `hidden` and switched by a script; no step inside a pop-up dialog; browser storage used carefully; every step reachable from a clickable step list, without typing made-up data first. Claude runs `gitmargin check` at the end to catch anything that would break. The first time in a project, Claude Code asks your permission to run `gitmargin check`: see [Permission prompts](#permission-prompts) below.
 
-Why rules at all? Measured on seventeen kinds of prototype: most pages work as they are, but a few common habits break commenting without any warning. React redrawing one area for every step makes a comment's pin jump onto the next step's lookalike button. Steps with no heading of their own all get the same name. Separate CSS or image files go missing once the page is shared. The rules avoid all of that, and cost nothing when a page is never reviewed.
+Why rules at all? Measured on seventeen kinds of prototype: most pages work as they are, but a few common habits break commenting without any warning. A step that React draws into the same area as every other step, with no heading or name of its own, lets a comment's pin jump onto the next step's lookalike button. Steps with no heading of their own all get the same name. Separate CSS or image files go missing once the page is shared. The rules avoid all of that, and cost nothing when a page is never reviewed.
 
 ## 2. Share it: `/gitmargin:share`
 
