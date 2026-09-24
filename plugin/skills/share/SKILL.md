@@ -1,6 +1,6 @@
 ---
 name: share
-description: Share an HTML prototype for review with gitmargin comments. Wraps the page with the comment overlay, checks it will survive the host, publishes it (a file, the author's comment-service link, or GitHub Pages) and hands back the link. Run only when the author types /gitmargin:share.
+description: Share an HTML prototype for review with gitmargin comments. Wraps the page with the comment overlay, checks it will survive the host, publishes it (a file, the author's comment-service link, GitHub Pages, or GitLab Pages) and hands back the link. Run only when the author types /gitmargin:share.
 argument-hint: "[prototype.html] [where, for example: on GitHub Pages]"
 disable-model-invocation: true
 allowed-tools: Bash(gitmargin *) Bash(gitmargin-publish *) Bash(git remote get-url *) Bash(git rev-parse *) Bash(vercel --version) Bash(vercel whoami) Read(/${CLAUDE_SKILL_DIR}/**) Edit(/${CLAUDE_PROJECT_DIR}/.gitmargin.json) Edit(/${CLAUDE_PROJECT_DIR}/.gitignore)
@@ -39,7 +39,7 @@ Read `.gitmargin.json` at the project root with the Read tool (it may not exist)
 }
 ```
 
-`channel` is `file`, `service-link` or `github-pages`. `service` is the author's comment service (absent for a file without shared comments). `pages` is present only for `github-pages`.
+`channel` is `file`, `service-link`, `github-pages` or `gitlab-pages`. `service` is the author's comment service (absent for a file without shared comments). `pages` is present only for `github-pages` and `gitlab-pages`, with the same two fields.
 
 **If the file exists, use it and ask nothing,** unless one of the "ask when" cases below applies.
 
@@ -53,10 +53,13 @@ Read `.gitmargin.json` at the project root with the Read tool (it may not exist)
    - `ready` or `needs-enable` (a public repo whose Pages is off or already serves `gitmargin-pages`): propose **GitHub Pages**. Read [hosts/github-pages.md](hosts/github-pages.md) for what to say.
    - `refused` because the repo is private or internal: propose the **service link**, and give the reason in one sentence (a GitHub Pages site is public to the whole internet even from a private repo).
    - `refused` for any other reason (Pages already serves something else, `gh` missing or not logged in): propose the service link and pass the reason on in one sentence.
-4. A `gitlab.com` remote, or a `.vercel` folder or `vercel.json`: say that GitLab Pages and Vercel are coming in the next version of this plugin, and propose the service link.
-5. Nothing else: propose the **service link** when `trusted` lists a service and `secretSet` is true. Otherwise propose **setting up a comment service now** (recommended: everyone sees the comments live, and the setup is once per author), with a **file** sent by hand as the alternative.
+4. A `gitlab.com` remote: run the same `gitmargin-publish --status --folder <name> --json`. Its `publish` field means the same.
+   - `ready` or `needs-enable` (a private project whose Pages is set to "Only project members", or can be): propose **GitLab Pages**. Read [hosts/gitlab-pages.md](hosts/gitlab-pages.md) for what to say.
+   - `refused`, or the command stops with a message instead of the JSON (`glab` missing or not logged in, git unable to read the project): propose the service link and pass the reason on in one sentence. When `glab` is missing or not logged in, also hand over the two lines in [hosts/gitlab-pages.md](hosts/gitlab-pages.md), "When glab is missing".
+5. A `.vercel` folder or `vercel.json`: say that Vercel is coming in the next version of this plugin, and propose the service link.
+6. Nothing else: propose the **service link** when `trusted` lists a service and `secretSet` is true. Otherwise propose **setting up a comment service now** (recommended: everyone sees the comments live, and the setup is once per author), with a **file** sent by hand as the alternative.
 
-The service link and GitHub Pages need a comment service. When step 1 found one, use its address (with more than one, ask which). When it found none, the author picks between setting one up ([setup-service.md](setup-service.md)) and a file.
+The service link, GitHub Pages and GitLab Pages need a comment service. When step 1 found one, use its address (with more than one, ask which). When it found none, the author picks between setting one up ([setup-service.md](setup-service.md)) and a file.
 
 **Ask once**, with the AskUserQuestion tool: the proposal first and marked recommended, one line on who will be able to open the page, the alternatives (service link, file), and one more line: "If you already shared this prototype from another computer, paste its review link instead, and I'll keep its comments." (Without the AskUserQuestion tool, see "How to ask the author" above.)
 
@@ -76,11 +79,11 @@ Then write `.gitmargin.json` with the Write tool, and add these lines to the pro
 - the `service` it names is not trusted on this machine (step 3 refuses it): show the address and ask whether it is theirs;
 - the saved host has stopped working (a command fails in a way the host file says means that);
 - this share would let more people open the page than before, for example moving from the service link to GitHub Pages;
-- a step would create a repository or change a repository's settings (turning GitHub Pages on).
+- a step would create a repository or change a repository's settings (turning GitHub Pages on, or setting GitLab Pages to "Only project members").
 
 **Never ask** when re-sharing the same prototype, or sharing another prototype to a host already chosen here.
 
-## Step 3: The comment service (the service link, GitHub Pages, and a file with shared comments)
+## Step 3: The comment service (the service link, GitHub Pages, GitLab Pages, and a file with shared comments)
 
 Shared comments need the author's own comment service: a small Vercel project with a Neon database, in the author's own account. gitmargin runs nothing.
 
@@ -99,6 +102,7 @@ Follow the host's file. Each one gives the exact commands, the link, and what to
 - [hosts/file.md](hosts/file.md): a file sent by hand, with or without shared comments.
 - [hosts/service-link.md](hosts/service-link.md): the review link served by the author's comment service.
 - [hosts/github-pages.md](hosts/github-pages.md): a page on the repo's GitHub Pages site.
+- [hosts/gitlab-pages.md](hosts/gitlab-pages.md): a page on a private GitLab project's Pages site, for its members only.
 
 On the first share in a project, write `.gitmargin.json` and the `.gitignore` lines (step 2) before the first `gitmargin attach`: the wrapped copy carries the page's key.
 

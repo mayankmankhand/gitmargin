@@ -563,12 +563,26 @@ test('a failed build says GitLab\'s reason, and names account verification when 
   ];
   for (const { failedJob, verify } of cases) {
     const w = world(t, { failedJob, pipelines: [{ id: 900, sha: 'TIP', ref: BRANCH, statuses: ['running', 'failed'] }] });
-    const r = run(w, [attached(w, 'one', 'first'), '--folder', 'one']);
+    // A short wait, so a publisher that kept waiting on a failed build fails here in seconds.
+    const r = run(w, [attached(w, 'one', 'first'), '--folder', 'one', '--wait', '5']);
     assert.equal(r.code, 2, failedJob.reason);
     assert.equal(r.out, '', 'no link for a page that did not build');
     assert.match(r.err, new RegExp(`GitLab's build of the page failed \\(pages: ${failedJob.reason}\\)\\. https://gitlab\\.com/${PROJECT}/-/pipelines/900`));
     assert[verify ? 'match' : 'doesNotMatch'](r.err, /may have to verify itself/);
   }
+});
+
+test('a retried build counts: the newest pipeline for the commit is the one reported', (t) => {
+  // An older run of the same commit failed; the retry passed.
+  const w = world(t, {
+    pipelines: [
+      { id: 900, sha: 'TIP', ref: BRANCH, statuses: ['failed'] },
+      { id: 905, sha: 'TIP', ref: BRANCH, statuses: ['running', 'success'] },
+    ],
+  });
+  const r = run(w, [attached(w, 'one', 'first'), '--folder', 'one', '--json', '--wait', '5']);
+  assert.equal(r.code, 0, r.err);
+  assert.equal(JSON.parse(r.out).pipeline.id, 905);
 });
 
 test('a build GitLab did not run is an error with its status', (t) => {
