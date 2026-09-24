@@ -305,7 +305,9 @@ Each cycle ends in a live test on accounts one person owns, before the next star
   On gitlab.com's free plan a newly created private group can have at most five people, the owner and Guests
   included, and more makes it read-only; a private project in a personal namespace has no such limit. The page is
   behind GitLab's login, but the service's copy of each version, which the Version line opens, is behind the page key
-  only; strict reading (section 4) puts it behind sign-in too.
+  only; strict reading (section 4) puts it behind sign-in too. A Pages job the author's own default branch pulls in
+  through `include:` is not seen by the check that looks for one: before the `gitmargin-pages` branch exists, a site
+  it has already deployed is found and left alone; after that, the two sites replace each other on every push.
 - **Vercel's password protection is Enterprise, or a paid add-on on Pro.** Cycle 4 proves same-project mode with a
   free stand-in: Vercel Authentication with "All Deployments", free on every plan since 2026-09-09. On the free plan
   that lets in the owner, one outside Vercel user the owner approves, and anyone holding the account's one share link.

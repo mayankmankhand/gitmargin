@@ -15,8 +15,9 @@ Reviewers install nothing. They open a link or a file, click **Comment**, click 
 - **Claude Code.**
 - **Node.js 18 or newer** (`node --version`). The plugin's commands run on Node, and so does Vercel's command-line tool.
 - **Git, and access to this repository while it is private.** Claude Code installs the plugin with your own git login for github.com. The simplest way: install GitHub's command-line tool `gh`, then run `gh auth login` and `gh auth setup-git` once.
-- **For comments everyone sees live** (the service link and GitHub Pages below): a free [Vercel](https://vercel.com) account. Claude sets up your comment service in it the first time; see [Your comment service](#your-comment-service-once).
+- **For comments everyone sees live** (the service link, GitHub Pages and GitLab Pages below): a free [Vercel](https://vercel.com) account. Claude sets up your comment service in it the first time; see [Your comment service](#your-comment-service-once).
 - **For GitHub Pages:** a public GitHub repository, and `gh` logged in.
+- **For GitLab Pages:** a private project on gitlab.com where you are a Maintainer or Owner, and GitLab's command-line tool `glab` ([install it](https://gitlab.com/gitlab-org/cli#installation)) logged in once with `glab auth login --hostname gitlab.com`. Each reviewer needs a gitlab.com account that is a member of the project or its group.
 
 ## Install it (once per machine)
 
@@ -110,7 +111,7 @@ For sign-in, so reviewers comment under their real GitLab or GitHub name, see th
 | "this machine has not used that comment service before" | The address in `.gitmargin.json` is new to this machine. Claude asks whether it is yours; say yes only if it is. |
 | The GitHub Pages link shows 404 | The first build takes a minute or two. Try again shortly. |
 | GitHub Pages is refused | The repository is private, or Pages already serves something else. Claude offers the service link instead. |
-| GitLab Pages is refused | The project is public or internal, its Pages already serves another site, CI/CD is off, or you are not a Maintainer or Owner. Claude says which, and offers the service link. |
+| GitLab Pages is refused | The project is public or internal, its Pages already serves another site, its default branch's build file already publishes Pages, it reads its build file from somewhere other than `.gitlab-ci.yml`, CI/CD is off, or you are not a Maintainer or Owner. Claude says which, and offers the service link. |
 | "glab is not installed" or "not logged in to gitlab.com" | Install the GitLab CLI (https://gitlab.com/gitlab-org/cli#installation) and run `glab auth login --hostname gitlab.com` in your own terminal, then share again. |
 | GitLab's build failed, and a new account "may have to verify itself" | Open the pipeline link Claude gives you. gitlab.com may ask a new account for a phone number or a card before it runs builds. |
 | The GitLab Pages link is not ready yet | The first build can take a minute or two. Claude checks again and gives you the link. |
