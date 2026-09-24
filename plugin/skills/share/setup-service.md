@@ -96,7 +96,15 @@ It answers `{"ok":true,...}`.
 
 ## 7. Restart, then use it
 
-Claude Code reads the environment when it starts, and the profile line from step 4 reaches only terminals opened after it. Ask the author to type `/exit`, close that terminal, open a new one, go to the project folder, check that `echo ${GITMARGIN_SECRET:+set}` prints `set`, then run `claude --continue` and type `/gitmargin:share` again.
+Claude Code reads the environment when it starts, and the profile line from step 4 reaches only terminals opened after it. Hand the author these steps, with the project folder and the prototype's file name written out. Type `/exit` and close that terminal. In a new terminal:
+
+```bash
+cd <project folder>
+echo ${GITMARGIN_SECRET:+set}
+claude --continue
+```
+
+The `echo` line must print `set`. Then type `/gitmargin:share <prototype.html>` with nothing after it: the address was confirmed in this conversation, so no answer goes on that line.
 
 **Use it:** the first attach names the address the author just set up (or typed), without `--require-trusted`, which makes this machine trust it:
 

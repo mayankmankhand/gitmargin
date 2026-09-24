@@ -16,7 +16,7 @@ Words to use with the author: "the comment tools", "the review link", "your comm
 
 **How to run commands.** Run each `gitmargin`, `gitmargin-publish` and `git remote` command as a Bash call of its own, exactly as written: nothing before or after it (no `cd`, `;`, `&&`, pipe, or `echo $?`). The Bash tool already reports a failing exit code, and a chained command no longer matches the author's permission rules, so it would stop and ask. Read this skill's other files with the Read tool.
 
-**How to ask the author.** Use the AskUserQuestion tool. If it is not available, ask in one short message and stop, and end that message with the exact line to type back for each answer, for example `/gitmargin:share signup.html on the service link` or `/gitmargin:share signup.html  yes, <address> is my service`. An answer typed that way runs this skill again with its permissions. A plain "yes" in a new message does not: Claude Code then asks the author's permission for each command and for writing `.gitmargin.json` and `.gitignore`.
+**How to ask the author.** Use the AskUserQuestion tool. If it is not available, ask in one short message and stop, and end that message with the exact line to type back for each answer, for example `/gitmargin:share signup.html on the service link` or `/gitmargin:share signup.html with my service at <address>`. An answer typed that way runs this skill again with its permissions. A plain "yes" in a new message does not: Claude Code then asks the author's permission for each command and for writing `.gitmargin.json` and `.gitignore`.
 
 ## Step 1: Check the page
 
@@ -54,7 +54,7 @@ Read `.gitmargin.json` at the project root with the Read tool (it may not exist)
    - `refused` because the repo is private or internal: propose the **service link**, and give the reason in one sentence (a GitHub Pages site is public to the whole internet even from a private repo).
    - `refused` for any other reason (Pages already serves something else, `gh` missing or not logged in): propose the service link and pass the reason on in one sentence.
 4. A `gitlab.com` remote, or a `.vercel` folder or `vercel.json`: say that GitLab Pages and Vercel are coming in the next version of this plugin, and propose the service link.
-5. Nothing else: propose the **service link** when `trusted` lists a service and `secretSet` is true; otherwise offer the choice between setting up a comment service now and a **file** sent by hand.
+5. Nothing else: propose the **service link** when `trusted` lists a service and `secretSet` is true. Otherwise propose **setting up a comment service now** (recommended: everyone sees the comments live, and the setup is once per author), with a **file** sent by hand as the alternative.
 
 The service link and GitHub Pages need a comment service. When step 1 found one, use its address (with more than one, ask which). When it found none, the author picks between setting one up ([setup-service.md](setup-service.md)) and a file.
 

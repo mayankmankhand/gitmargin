@@ -15,6 +15,7 @@ Tell the author:
 - Send `<name>.gitmargin.html` to each reviewer. Whoever has the file can open it and comment.
 - Reviewers open it in a current Chrome, Edge, Firefox or Safari, click **Comment**, click what they want to comment on, and type what they expected. When done, they use **Send to author** (downloads a reviewed file) or **Copy for author** (copies a text block) and send that back.
 - When it comes back, ask "what did reviewers say?" and give the returned file or paste the text.
+- To share with live comments instead, so nothing has to be sent back: type `/gitmargin:share <prototype.html> on the service link` (write the prototype's file name out). The first time, that sets up their comment service.
 
 Each reviewer's comments are separate, and they come back only when the reviewer sends them.
 

@@ -45,6 +45,8 @@ gitmargin puts comments on an HTML prototype. Each comment records the element a
 
 9. **No Content-Security-Policy `<meta>` tag.** It stops the comment tools from starting, silently.
 
+10. **Let a reviewer reach every step directly.** Reviewers can comment only on the steps they can get to, and they should not have to type made-up data first. Make the step list or progress bar clickable (or add a small link to each step), and let `#<step>` in the address open that step, without locking later steps behind form checks. Keep any form checks on the step's own Next button if the prototype needs them.
+
 ## Check before you finish
 
 When the file is written, run:
