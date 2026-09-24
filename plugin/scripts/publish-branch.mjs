@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // gitmargin-publish: put ONE attached prototype on GitHub Pages (issue #16,
-// decisions D8 and D9 in plans/PLAN-issue-16.md).
+// decisions D8 and D9 in plans/PLAN-issue-16.md), or on the GitLab Pages site
+// of a private gitlab.com project (issue #37, publish-gitlab.mjs).
 //
 //   gitmargin-publish <attached.html> --folder <name> [--repo <dir>] [--remote origin]
 //                     [--branch gitmargin-pages] [--enable] [--wait <seconds>] [--json]
@@ -36,8 +37,10 @@
 //    switched on with --enable.
 //
 // The host-free half (git, the temporary-worktree commit, arguments, errors)
-// lives in publish-core.mjs since issue #37; this file keeps the entry point
-// and everything GitHub-specific.
+// lives in publish-core.mjs since issue #37, and the GitLab half in
+// publish-gitlab.mjs; this file keeps the entry point, which picks the host
+// from the remote, and everything GitHub-specific. The three promises hold
+// for GitLab too, with GitLab's own setting in place of switching Pages on.
 //
 // It imports node: built-ins only. It runs from the plugin's folder on a
 // machine where nothing was installed, and it must not lean on the generated
@@ -58,6 +61,7 @@ import {
   PublishError,
   firstLines,
   isSafeFolder,
+  pageLink,
   parseArgs,
   pollInterval,
   publishCommit,
@@ -69,41 +73,52 @@ import {
   sleep,
   unsafeFolder,
 } from './publish-core.mjs';
+import { parseGitLabRemote, publish as publishGitLab, status as statusGitLab } from './publish-gitlab.mjs';
 
 // What the tests and earlier callers import from this file.
 export { EXIT_OK, EXIT_REFUSED, EXIT_USAGE, PublishError, isSafeFolder, parseArgs } from './publish-core.mjs';
-export { readStamp } from './publish-core.mjs';
+export { pageLink, readStamp } from './publish-core.mjs';
 
 const DEFAULT_WAIT_SECONDS = 120;
 
-const USAGE = `gitmargin-publish - put one attached prototype on GitHub Pages
+const USAGE = `gitmargin-publish - put one attached prototype on GitHub Pages or GitLab Pages
 
 Usage
   gitmargin-publish <attached.html> --folder <name> [options]
-      Commits the attached copy as <name>/index.html on the gitmargin-pages
-      branch and pushes it, without touching your checkout. Prints the link.
+      Commits the attached copy on the gitmargin-pages branch and pushes it,
+      without touching your checkout. Prints the link. On GitHub the page is
+      <name>/index.html; on GitLab it is public/<name>/index.html, next to the
+      build file GitLab Pages needs.
   gitmargin-publish --status [--folder <name>] [options]
       Prints the repository's visibility, what Pages serves, and whether a
       publish would go ahead. Changes nothing.
 
+The host comes from the remote: github.com or gitlab.com.
+
 Options
   --repo <dir>        the repository (default: the current directory)
-  --remote <name>     the GitHub remote (default: origin)
-  --branch <name>     the branch Pages serves (default: gitmargin-pages)
-  --enable            switch GitHub Pages on for that branch when it is off.
+  --remote <name>     the GitHub or gitlab.com remote (default: origin)
+  --branch <name>     the branch Pages is published from (default: gitmargin-pages)
+  --enable            GitHub: switch Pages on for that branch when it is off.
+                      GitLab: set Pages to "Only project members".
                       This changes the repository's settings: only with the
                       author's agreement.
-  --wait <seconds>    how long to follow GitHub's build (default: 120, 0 skips)
+  --wait <seconds>    how long to follow the build (default: 120 on GitHub,
+                      300 on GitLab; 0 skips)
   --json              print a JSON object instead of the link
 
-Needs git, and the GitHub CLI (gh) logged in with gh auth login. Only public
-repositories: a Pages site is public to the whole internet even from a private
-repository, and private repositories need a paid plan for it.
+Needs git, and the host's command line tool logged in: gh (gh auth login) for
+GitHub, glab (glab auth login --hostname gitlab.com) for GitLab.
+
+GitHub: only public repositories. A Pages site is public to the whole internet
+even from a private repository, and private repositories need a paid plan for it.
+GitLab: only private projects on gitlab.com. Only the project's members can open
+the page, after GitLab's login.
 
 Exit codes
   0  success
   1  usage error
-  2  refused, or GitHub refused`;
+  2  refused, or the host refused`;
 
 // ---------------------------------------------------------------------------
 // Pure rules, exported so the tests can check them without a repository.
@@ -126,21 +141,6 @@ export function parseGitHubRemote(url) {
   if (!/^[A-Za-z0-9-]+$/.test(owner)) return null;
   if (!/^[A-Za-z0-9._-]+$/.test(repo) || repo === '.' || repo === '..') return null;
   return { owner, repo };
-}
-
-/** The page's address: the site's address, then the folder, then a slash. */
-export function pageLink(siteUrl, folder) {
-  let url;
-  try {
-    url = new URL(String(siteUrl));
-  } catch {
-    return null;
-  }
-  // The address comes from GitHub's answer, and it is printed for the author
-  // to open, so anything but a web address is not passed on.
-  if (!/^https?:$/.test(url.protocol)) return null;
-  const base = url.href.endsWith('/') ? url.href : `${url.href}/`;
-  return `${base}${folder}/`;
 }
 
 /** public, private or internal, from GitHub's answer about the repository. */
@@ -280,7 +280,7 @@ function githubTarget(root, remote) {
   const target = parseGitHubRemote(urls.raw) || parseGitHubRemote(urls.expanded);
   if (!target) {
     throw new PublishError(
-      `The ${remote} remote is not a GitHub repository, so there is no GitHub Pages site to publish to.`,
+      `The ${remote} remote is not a GitHub repository or a gitlab.com project, so there is no Pages site to publish to.`,
       EXIT_REFUSED,
       'Share it with the service link or as a file instead.'
     );
@@ -338,12 +338,29 @@ async function waitForBuild(target, commit, seconds) {
   }
 }
 
+/**
+ * Which half publishes: 'gitlab' for a gitlab.com project, 'github' for a
+ * github.com repository, null for neither (the GitHub half then refuses with
+ * its own words). The address as configured is asked first, then git's
+ * rewritten one, the same order both halves read a remote in.
+ */
+function hostOf(root, remote) {
+  const urls = remoteUrls(root, remote);
+  if (!urls) return null;
+  for (const url of [urls.raw, urls.expanded]) {
+    if (parseGitHubRemote(url)) return 'github';
+    if (parseGitLabRemote(url)) return 'gitlab';
+  }
+  return null;
+}
+
 // ---------------------------------------------------------------------------
 // The two modes
 
 async function status(opts) {
   if (opts.folder !== null && !isSafeFolder(opts.folder)) throw unsafeFolder(opts.folder);
   const root = repoRoot(opts.repo);
+  if (hostOf(root, opts.remote) === 'gitlab') return statusGitLab(opts, root);
   const target = githubTarget(root, opts.remote);
   requireLogin();
   const repo = readRepo(target);
@@ -369,6 +386,7 @@ async function status(opts) {
   const verdict = assess({ full: target.full, repo, pages }, { branch: opts.branch, enable: true });
   const ours = Boolean(pages) && servesBranch(pages, opts.branch);
   const report = {
+    host: 'github',
     repo: target.full,
     visibility: visibilityOf(repo),
     remote: opts.remote,
@@ -406,6 +424,7 @@ async function publish(opts) {
   if (!isSafeFolder(opts.folder)) throw unsafeFolder(opts.folder);
   const page = readAttached(opts.file);
   const root = repoRoot(opts.repo);
+  if (hostOf(root, opts.remote) === 'gitlab') return publishGitLab(opts, root, page);
   const target = githubTarget(root, opts.remote);
   requireCommits(root);
 
@@ -477,6 +496,7 @@ async function publish(opts) {
   }
 
   const result = {
+    host: 'github',
     repo: target.full,
     branch: opts.branch,
     folder: opts.folder,

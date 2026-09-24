@@ -82,6 +82,21 @@ export function readStamp(html) {
   return { versionId: tag('version'), service: tag('service') };
 }
 
+/** The page's address: the site's address, then the folder, then a slash. */
+export function pageLink(siteUrl, folder) {
+  let url;
+  try {
+    url = new URL(String(siteUrl));
+  } catch {
+    return null;
+  }
+  // The address comes from the host's answer, and it is printed for the
+  // author to open, so anything but a web address is not passed on.
+  if (!/^https?:$/.test(url.protocol)) return null;
+  const base = url.href.endsWith('/') ? url.href : `${url.href}/`;
+  return `${base}${folder}/`;
+}
+
 export const unsafeFolder = (name) =>
   new PublishError(
     `Not a safe folder name: ${JSON.stringify(name)}.`,

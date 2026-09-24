@@ -540,10 +540,12 @@ test('odd remote and branch names are usage errors, and a missing remote is refu
   assertNothingPublished(w);
 });
 
-test('a remote that is not on github.com is refused before gh is asked anything', (t) => {
+test('a remote on neither github.com nor gitlab.com is refused before gh is asked anything', (t) => {
+  // A gitlab.com remote goes to the GitLab half since issue #37
+  // (tests/publish-gitlab.test.js); these are hosts neither half publishes to.
   const w = world(t);
   const file = attached(w, 'one', 'first');
-  for (const url of ['https://gitlab.com/acme/site.git', 'https://github.com.evil.example/acme/site.git']) {
+  for (const url of ['https://bitbucket.org/acme/site.git', 'https://github.com.evil.example/acme/site.git', 'https://gitlab.com.evil.example/acme/site.git']) {
     w.git(w.author, 'remote', 'set-url', 'origin', url);
     const r = run(w, [file, '--folder', 'one']);
     assert.equal(r.code, 2, url);
