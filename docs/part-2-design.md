@@ -14,8 +14,8 @@ a stand-in GitHub in Chromium and Firefox and walked on the real github.com (a f
 GitHub Pages page). Same-project mode, the second half of cycle 4 (issue #19), is built ahead of cycle 3 and tested
 behind a stand-in for Vercel's login wall; it was walked on a real Vercel project, including a reviewer on the share
 link. Cycle 3, the plugin (issue #16), is built with the file, service-link and GitHub Pages channels and was
-walked on a second computer on 2026-09-23 (section 7). The GitLab Pages channel (issue #37) is built and tested against a
-stand-in GitLab, and waits for its walk on gitlab.com. Everything else here is decided and not yet built, and says so.
+walked on a second computer on 2026-09-23 (section 7). The GitLab Pages channel (issue #37) is built, tested against a
+stand-in GitLab, and was walked on gitlab.com on 2026-09-24 (section 7). Everything else here is decided and not yet built, and says so.
 The contract is `service/API.md`; setup and warnings are in `service/README.md`.
 
 ## 1. Why one design
@@ -296,6 +296,12 @@ Each cycle ends in a live test on accounts one person owns, before the next star
    2026-09-24 (issue #37)**, through the same `gitmargin-publish` command, which now reads the remote to pick the host:
    a private gitlab.com project only, the `gitmargin-pages` branch with a build file of its own, Pages set to members
    only before the push, the build of that commit followed and timed through `glab`, the GitLab command line tool.
+   It was walked on gitlab.com the same day, on one computer with two accounts: a Guest of the private group opened
+   the page and commented, a private window got GitLab's sign-in page, and a changed prototype shared again asked
+   nothing and kept the link. Both publishes were live 37 and 31 seconds after the push (the build ran for 28 and 23
+   seconds on a shared runner, with under a second's wait), which is the first answer to the publish-timing spike in
+   [#2](https://github.com/mayankmankhand/gitmargin/issues/2); its other half, one link per version, is not what this
+   channel does (it keeps one link, and older versions open from the Version line).
 
 ## 8. Honest limits
 

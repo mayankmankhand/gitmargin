@@ -171,6 +171,8 @@
 - **Before calling a browser-test failure real, check whether another session is running its suite on the same machine.**
 - **A skeptic's refutation is a claim too: check its reason against the sourced research before repeating it.**
 - **A standing page can be republished by a parallel session in the same repo; merge from the live version, not the local copy.**
+- **A stand-in that always fills a field the host can leave empty hides the empty case; the walk's first build had no queue time.**
+- **A walk file hands the owner only what needs the owner: a browser, a login, a secret, the session under test; Claude runs the rest.**
 
 ## Mistakes to Avoid
 
