@@ -41,8 +41,9 @@ Use `--enable` only on the publish the author just agreed to, when `publish` was
 
 stdout is the page's link. stderr ends with how long GitLab took, for example `GitLab built the page 48 seconds after the push`: pass the seconds on.
 
-- **Still building:** a first publish whose build has not finished exits 2 without a link and says `Run gitmargin-publish --status --folder <name> in a minute for the link`. Tell the author the page is on its way, then run `gitmargin-publish --status --folder <name> --json` and hand over its `link`. If `link` is still empty, say so and suggest trying again in a minute.
-- **Build refused:** exits 2 with GitLab's reason and the pipeline's address. Relay both. If the message says a new account may have to verify itself, tell the author to open that address, verify the account there if GitLab asks (a phone number or a card), then share again.
+- **Still building:** a first publish whose build has not finished exits 2 without a link and says `Run gitmargin-publish --status --folder <name> in a minute for the link`. Tell the author the page is on its way, then run `gitmargin-publish --status --folder <name> --json` and hand over its `link`. If `link` is still empty, say so and suggest trying again in a minute. If the message says the build is waiting for a runner and shared runners are off, waiting will not help: tell the author the project needs a runner (shared runners switched on in the project's CI/CD settings, or a runner of its own), then share again.
+- **Link, but not built yet:** a republish can exit 0 with the link and a line saying GitLab is still building (or that it is not waiting). Hand over the link and that line: reviewers see the previous version, or a 404 for a first folder, until the build finishes. There are no seconds to pass on.
+- **Build refused:** exits 2 with GitLab's reason and the pipeline's address. Relay both. If the message says a new account may have to verify itself, tell the author to open that address, verify the account there if GitLab asks (a phone number or a card), then share again: sharing the same page again starts GitLab's build again.
 
 ## Tell the author
 
@@ -65,3 +66,4 @@ The same two commands, without `--enable`. The link stays the same; the new vers
 - `glab` missing or not logged in: the two lines under "When glab is missing".
 - git could not read the project: check that `git fetch` works in this project; git uses its own login for gitlab.com, not glab's.
 - The push was refused: usually the author cannot push to the project.
+- The build waits for a runner that never comes: shared runners are off and the project has none of its own; the author switches shared runners on in the project's CI/CD settings, or adds a runner.
