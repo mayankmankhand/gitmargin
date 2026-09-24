@@ -32,6 +32,7 @@ reviewer receives a prototype in part 1. For a plain file, nothing here starts a
 | `tests/plugin.test.js` | node:test | the Claude Code plugin (issue #16): `scripts/sync-plugin.js` copies only what git would commit, `--check` catches drift, and a copy of `plugin/` outside the repository runs `gitmargin` through its launcher. Its last test fails whenever `plugin/` is out of date with the sources: run `npm run build:plugin` |
 | `tests/plugin-evals/README.md` | by hand, `claude -p` | the plugin's three skills (issue #16): the headless scenarios that proved them, what each must show, and how to rerun them without touching real accounts |
 | `tests/publish-branch.test.js` | node:test | `gitmargin-publish` (issue #16) against a local bare repository and a stand-in `gh`: the `gitmargin-pages` branch, the author's checkout left untouched, and every refusal before a push |
+| `tests/publish-gitlab.test.js` | node:test | `gitmargin-publish` on GitLab Pages (issue #37) against a local bare repository and a stand-in `glab` (`tests/helpers/fake-glab.cjs`, copied from what glab 1.119.0 printed): a private project only, `public/<name>/` and a build file on the `gitmargin-pages` branch, Pages set to members only before the push and only with `--enable`, the build of this commit followed, and every refusal before any change |
 
 **The comment service in tests is the real one.** `tests/helpers/service-server.js` runs the same `route` function Vercel
 runs, over an in-process Postgres (PGlite, a root dev dependency) on a random loopback port. So the service tests need

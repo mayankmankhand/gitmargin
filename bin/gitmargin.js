@@ -57,7 +57,7 @@ check
   page too large to store (the service link), with a one-line fix for each.
   Exits 0 whenever it ran, findings or not.
 
-    --channel file|service-link|github-pages   only what affects that host
+    --channel file|service-link|github-pages|gitlab-pages   only what affects that host
     --json       print {file, channel, findings} instead of lines
 
 Shared comments (optional; needs a comment service you deployed, see service/README.md)

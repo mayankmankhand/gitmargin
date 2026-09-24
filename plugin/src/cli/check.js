@@ -1,4 +1,4 @@
-// `gitmargin check <prototype.html> [--channel file|service-link|github-pages] [--json]`
+// `gitmargin check <prototype.html> [--channel file|service-link|github-pages|gitlab-pages] [--json]`
 //
 // Says, before anything is sent or published, what in a prototype will not
 // survive the place it is going. Every rule comes from a measurement made while
@@ -26,8 +26,8 @@ import { CliError, EXIT_OK, EXIT_USAGE } from './errors.js';
 // storage and names data-gm-screen, and would report itself).
 import { stripPrevious } from './attach.js';
 
-/** The places a page can go this cycle (plan D8). */
-export const CHANNELS = ['file', 'service-link', 'github-pages'];
+/** The places a page can go (plan D8 in PLAN-issue-16; GitLab Pages since issue #37). */
+export const CHANNELS = ['file', 'service-link', 'github-pages', 'gitlab-pages'];
 
 /**
  * The service stores a page only up to 4,194,304 bytes (service/API.md), and
@@ -79,7 +79,7 @@ export const RULES = {
   storage: {
     level: 'breaks',
     // Only the stored copy on the service is sandboxed. From disk and on GitHub
-    // Pages storage works, so saying it there would be noise.
+    // or GitLab Pages storage works, so saying it there would be noise.
     channels: ['service-link'],
     why: "The copy stored on the service is sandboxed, so a storage call outside try/catch throws and stops the prototype's script.",
     fix: 'Wrap every storage call in try/catch.',

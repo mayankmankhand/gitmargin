@@ -8,13 +8,14 @@ Decided 2026-09-19. It came out of thinking through issues
 four features. It replaces the parked list in section 7 of [the split](v0-split.md) as the description of part 2.
 Technical terms are explained in the research report's [glossary](../research/prior-art-landscape.md#8-glossary).
 
-**Status on 2026-09-23:** cycle 1 (section 7), the sign-in core and the GitLab plug, is built under issue #18 and was
+**Status on 2026-09-24:** cycle 1 (section 7), the sign-in core and the GitLab plug, is built under issue #18 and was
 walked on two computers with two gitlab.com accounts. Cycle 2, the GitHub plug (issue #17), is built and tested against
 a stand-in GitHub in Chromium and Firefox and walked on the real github.com (a file on disk, the service link and a
 GitHub Pages page). Same-project mode, the second half of cycle 4 (issue #19), is built ahead of cycle 3 and tested
 behind a stand-in for Vercel's login wall; it was walked on a real Vercel project, including a reviewer on the share
 link. Cycle 3, the plugin (issue #16), is built with the file, service-link and GitHub Pages channels and was
-walked on a second computer on 2026-09-23 (section 7). Everything else here is decided and not yet built, and says so.
+walked on a second computer on 2026-09-23 (section 7). The GitLab Pages channel (issue #37) is built, tested against a
+stand-in GitLab, and was walked on gitlab.com on 2026-09-24 (section 7). Everything else here is decided and not yet built, and says so.
 The contract is `service/API.md`; setup and warnings are in `service/README.md`.
 
 ## 1. Why one design
@@ -165,7 +166,7 @@ Enterprise Cloud), so "it went to GitHub automatically" would turn a private pro
 
 | The plugin finds | It proposes | Who will see the page |
 |---|---|---|
-| A GitLab remote | GitLab Pages, access set to project members only (cycle 4; until then the service link) | the project's members |
+| A gitlab.com remote, private project | GitLab Pages, access set to project members only (issue #37); a public or internal project, or one whose Pages already serves a site, gets the service link | the project's members |
 | A GitHub remote, public repo | GitHub Pages | the whole internet, said plainly |
 | A GitHub remote, private repo | the service link or a file, never GitHub Pages (as built in cycle 3, `gitmargin-publish` refuses a private repo) | whoever holds the link or the file |
 | A `.vercel` folder or `vercel.json` | Vercel, and it asks which protection is on (cycle 4; until then the service link) | depends on that protection |
@@ -191,14 +192,14 @@ cycle 3 (issue #16), the attached copy and the small settings file (`.gitmargin.
 address, the Pages branch; never a secret) stay on the author's machine and out of git, because the copy carries
 the page key and a committed link would carry it too: committing either to a public repo would widen who can
 comment. A second machine therefore asks once. On GitHub Pages the copy is pushed only to its own
-`gitmargin-pages` branch, never to the author's branches; on the GitLab channel, when it comes, a short Pages build
-file too, because GitLab Pages publishes only through a build. The plugin carries the command-line tool and the
+`gitmargin-pages` branch, never to the author's branches; on the GitLab channel (issue #37) that branch also carries
+a short Pages build file, because GitLab Pages publishes only through a build. The plugin carries the command-line tool and the
 overlay inside itself, so an author who uses the plugin needs nothing from npm.
 
 The tension this rule was written for: this repository never commits a copy attached with `--service`, because it
 carries a service address and a page key, and a Pages channel publishes by pushing exactly that copy. The plugin
-publishes GitHub Pages only from a public repo, so the page and the repo have the same audience, and the first
-publish says plainly that the key stays in the `gitmargin-pages` branch's history (no route revokes a key yet).
+publishes GitHub Pages only from a public repo, and GitLab Pages only from a private project with Pages set to its
+members, so in both the page and the repo have the same audience, and the first publish says plainly that the key stays in the `gitmargin-pages` branch's history (no route revokes a key yet).
 A private repo feeds the service link or a file, never a public site.
 
 **Settings from a file never carry the secret somewhere new.** The plugin reads the service address from
@@ -207,8 +208,13 @@ used before, so a settings file from a cloned repo cannot send the author secret
 
 ### The GitLab Pages channel, done by hand once
 
-Cycle 1's two-computer walk published its test page by hand. These are the steps cycle 3 automates, written down
-as they were really done, so the plugin copies something that worked and not something imagined.
+Cycle 1's two-computer walk published its test page by hand. These are the steps the plugin automates, written down
+as they were really done, so the plugin copies something that worked and not something imagined. Since issue #37,
+`gitmargin-publish` on a gitlab.com remote does them, with four differences: the page and the build file go on a
+`gitmargin-pages` branch of their own, the page as `public/<name>/index.html`, so the job copies nothing and runs on
+that branch only; Pages is set to "Only project members" through GitLab's API, with the author's agreement and
+before anything is pushed; a project whose Pages already serves a site is left alone; and the link is read from GitLab
+after the build, because new projects get an address of their own (`name-a1b2c3.gitlab.io`).
 
 1. In a private GitLab group, make a private project. Reviewers are members of the group (a Guest is enough, both
    to open the page and to pass the members rule at sign-in).
@@ -286,13 +292,28 @@ Each cycle ends in a live test on accounts one person owns, before the next star
    deployment of the author's service with `GITMARGIN_SAME_PROJECT=1` serves one prototype as its own site (not
    sandboxed, so its calls carry Vercel's login), opens it at `/`, and holds one prototype, with a database of its
    own; a page opened at its own `/p/<key>/...` talks to the address it was opened from; the command line passes
-   Vercel's wall with Vercel's bypass for automation. The plain Vercel channel joins it here: the plugin (cycle 3) was built with the file, service-link and GitHub Pages channels, and the GitLab Pages and plain Vercel channels moved to this cycle.
+   Vercel's wall with Vercel's bypass for automation. The plain Vercel channel joins it here: the plugin (cycle 3) was built with the file, service-link and GitHub Pages channels, and the GitLab Pages and plain Vercel channels moved to this cycle. **The GitLab Pages channel was built on
+   2026-09-24 (issue #37)**, through the same `gitmargin-publish` command, which now reads the remote to pick the host:
+   a private gitlab.com project only, the `gitmargin-pages` branch with a build file of its own, Pages set to members
+   only before the push, the build of that commit followed and timed through `glab`, the GitLab command line tool.
+   It was walked on gitlab.com the same day, on one computer with two accounts: a Guest of the private group opened
+   the page and commented, a private window got GitLab's sign-in page, and a changed prototype shared again asked
+   nothing and kept the link. Both publishes were live 37 and 31 seconds after the push (the build ran for 28 and 23
+   seconds on a shared runner, with under a second's wait), which is the first answer to the publish-timing spike in
+   [#2](https://github.com/mayankmankhand/gitmargin/issues/2); its other half, one link per version, is not what this
+   channel does (it keeps one link, and older versions open from the Version line).
 
 ## 8. Honest limits
 
 - **GitHub Pages is public** unless the organisation is on GitHub Enterprise Cloud. Sign-in there gives identity on
   comments, not privacy for the page.
 - **GitLab Pages access control is on the Free tier**, and every reviewer needs a GitLab account that is a member.
+  On gitlab.com's free plan a newly created private group can have at most five people, the owner and Guests
+  included, and more makes it read-only; a private project in a personal namespace has no such limit. The page is
+  behind GitLab's login, but the service's copy of each version, which the Version line opens, is behind the page key
+  only; strict reading (section 4) puts it behind sign-in too. A Pages job the author's own default branch pulls in
+  through `include:` is not seen by the check that looks for one: before the `gitmargin-pages` branch exists, a site
+  it has already deployed is found and left alone; after that, the two sites replace each other on every push.
 - **Vercel's password protection is Enterprise, or a paid add-on on Pro.** Cycle 4 proves same-project mode with a
   free stand-in: Vercel Authentication with "All Deployments", free on every plan since 2026-09-09. On the free plan
   that lets in the owner, one outside Vercel user the owner approves, and anyone holding the account's one share link.

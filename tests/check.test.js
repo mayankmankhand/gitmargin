@@ -256,6 +256,8 @@ test('findings come out breaks first, and --channel keeps only what affects that
   assert.deepEqual(rules(html, { channel: 'service-link' }), ['relative-asset', 'storage', 'size', 'modal-dialog', 'no-screen-names']);
   assert.deepEqual(rules(html, { channel: 'file' }), ['relative-asset', 'modal-dialog', 'no-screen-names']);
   assert.deepEqual(rules(html, { channel: 'github-pages' }), ['relative-asset', 'modal-dialog', 'no-screen-names']);
+  // GitLab Pages serves the page as its own site, like GitHub Pages: not sandboxed, no size cap of its own.
+  assert.deepEqual(rules(html, { channel: 'gitlab-pages' }), rules(html, { channel: 'github-pages' }));
   assert.throws(() => checkHtml(html, { channel: 'ftp' }), /Not a channel/);
 });
 
@@ -306,7 +308,7 @@ test('the CLI prints one line per finding and a count, and exits 0 even when som
   assert.equal(all.err, '');
   const lines = all.out.trimEnd().split('\n');
   assert.deepEqual(lines.length, 3);
-  assert.match(lines[0], /^breaks relative-asset \(file, service-link, github-pages\): <link href="a\.css"> - .+ Fix: Inline it/);
+  assert.match(lines[0], /^breaks relative-asset \(file, service-link, github-pages, gitlab-pages\): <link href="a\.css"> - .+ Fix: Inline it/);
   assert.match(lines[1], /^breaks storage \(service-link\): localStorage\.x = 1; - .+ Fix: Wrap every storage call in try\/catch\.$/);
   assert.equal(lines[2], '2 findings (2 break the page on at least one host)');
 
@@ -335,7 +337,7 @@ test('the CLI --json prints the file, the channel and the findings, and nothing 
       {
         rule: 'relative-link',
         level: 'breaks',
-        channels: ['file', 'service-link', 'github-pages'],
+        channels: ['file', 'service-link', 'github-pages', 'gitlab-pages'],
         detail: '<a href="next.html">',
         why: RULES['relative-link'].why,
         fix: RULES['relative-link'].fix,

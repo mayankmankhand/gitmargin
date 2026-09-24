@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // gitmargin-publish: put ONE attached prototype on GitHub Pages (issue #16,
-// decisions D8 and D9 in plans/PLAN-issue-16.md).
+// decisions D8 and D9 in plans/PLAN-issue-16.md), or on the GitLab Pages site
+// of a private gitlab.com project (issue #37, publish-gitlab.mjs).
 //
 //   gitmargin-publish <attached.html> --folder <name> [--repo <dir>] [--remote origin]
 //                     [--branch gitmargin-pages] [--enable] [--wait <seconds>] [--json]
@@ -35,6 +36,12 @@
 //    site that already serves something else is left alone, and Pages is only
 //    switched on with --enable.
 //
+// The host-free half (git, the temporary-worktree commit, arguments, errors)
+// lives in publish-core.mjs since issue #37, and the GitLab half in
+// publish-gitlab.mjs; this file keeps the entry point, which picks the host
+// from the remote, and everything GitHub-specific. The three promises hold
+// for GitLab too, with GitLab's own setting in place of switching Pages on.
+//
 // It imports node: built-ins only. It runs from the plugin's folder on a
 // machine where nothing was installed, and it must not lean on the generated
 // copy of the CLI in plugin/src (plans/PLAN-issue-16.md, D1 and D3). Node 18 or
@@ -45,88 +52,76 @@
 // the same codes as src/cli/errors.js.
 
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
+import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import {
+  EXIT_OK,
+  EXIT_REFUSED,
+  EXIT_USAGE,
+  PublishError,
+  firstLines,
+  isSafeFolder,
+  pageLink,
+  parseArgs,
+  pollInterval,
+  publishCommit,
+  readAttached,
+  remoteTip,
+  remoteUrls,
+  repoRoot,
+  requireCommits,
+  sleep,
+  unsafeFolder,
+} from './publish-core.mjs';
+import { parseGitLabRemote, publish as publishGitLab, status as statusGitLab } from './publish-gitlab.mjs';
 
-export const EXIT_OK = 0;
-export const EXIT_USAGE = 1;
-export const EXIT_REFUSED = 2;
+// What the tests and earlier callers import from this file.
+export { EXIT_OK, EXIT_REFUSED, EXIT_USAGE, PublishError, isSafeFolder, parseArgs } from './publish-core.mjs';
+export { pageLink, readStamp } from './publish-core.mjs';
 
-const DEFAULT_REMOTE = 'origin';
-const DEFAULT_BRANCH = 'gitmargin-pages';
 const DEFAULT_WAIT_SECONDS = 120;
-const DEFAULT_POLL_MS = 5000;
-// Used only when the repository has no git identity at all, so a first-time
-// author is not stopped by "please tell me who you are". Not a GitHub noreply
-// address on purpose: one of those could credit a stranger's account.
-const FALLBACK_NAME = 'gitmargin';
-const FALLBACK_EMAIL = 'gitmargin@localhost';
 
-const USAGE = `gitmargin-publish - put one attached prototype on GitHub Pages
+const USAGE = `gitmargin-publish - put one attached prototype on GitHub Pages or GitLab Pages
 
 Usage
   gitmargin-publish <attached.html> --folder <name> [options]
-      Commits the attached copy as <name>/index.html on the gitmargin-pages
-      branch and pushes it, without touching your checkout. Prints the link.
+      Commits the attached copy on the gitmargin-pages branch and pushes it,
+      without touching your checkout. Prints the link. On GitHub the page is
+      <name>/index.html; on GitLab it is public/<name>/index.html, next to the
+      build file GitLab Pages needs.
   gitmargin-publish --status [--folder <name>] [options]
       Prints the repository's visibility, what Pages serves, and whether a
       publish would go ahead. Changes nothing.
 
+The host comes from the remote: github.com or gitlab.com.
+
 Options
   --repo <dir>        the repository (default: the current directory)
-  --remote <name>     the GitHub remote (default: origin)
-  --branch <name>     the branch Pages serves (default: gitmargin-pages)
-  --enable            switch GitHub Pages on for that branch when it is off.
+  --remote <name>     the GitHub or gitlab.com remote (default: origin)
+  --branch <name>     the branch Pages is published from (default: gitmargin-pages)
+  --enable            GitHub: switch Pages on for that branch when it is off.
+                      GitLab: set Pages to "Only project members".
                       This changes the repository's settings: only with the
                       author's agreement.
-  --wait <seconds>    how long to follow GitHub's build (default: 120, 0 skips)
+  --wait <seconds>    how long to follow the build (default: 120 on GitHub,
+                      300 on GitLab; 0 skips)
   --json              print a JSON object instead of the link
 
-Needs git, and the GitHub CLI (gh) logged in with gh auth login. Only public
-repositories: a Pages site is public to the whole internet even from a private
-repository, and private repositories need a paid plan for it.
+Needs git, and the host's command line tool logged in: gh (gh auth login) for
+GitHub, glab (glab auth login --hostname gitlab.com) for GitLab.
+
+GitHub: only public repositories. A Pages site is public to the whole internet
+even from a private repository, and private repositories need a paid plan for it.
+GitLab: only private projects on gitlab.com. Only the project's members can open
+the page, after GitLab's login.
 
 Exit codes
   0  success
   1  usage error
-  2  refused, or GitHub refused`;
-
-/** A message for a human, not a crash: printed without a stack trace. */
-export class PublishError extends Error {
-  constructor(message, code = EXIT_REFUSED, hint = '') {
-    super(message);
-    this.name = 'PublishError';
-    this.code = code;
-    this.hint = hint;
-  }
-}
+  2  refused, or the host refused`;
 
 // ---------------------------------------------------------------------------
 // Pure rules, exported so the tests can check them without a repository.
-
-/**
- * A folder name that is exactly one safe path segment.
- *
- * It becomes part of a path inside the branch and part of a public address,
- * so only letters, digits, dot, dash and underscore. It must start with a
- * letter or digit: a leading dot would make ".." or ".nojekyll" (the file this
- * script writes at the branch root) possible, and a leading dash could be read
- * as an option. No ".." anywhere, so no reading of it can climb out.
- */
-export function isSafeFolder(name) {
-  return typeof name === 'string' && name.length <= 100 && /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(name) && !name.includes('..');
-}
-
-/**
- * Branch and remote names reach git as arguments. One starting with a dash
- * would be read as an option (`--receive-pack=...` runs a program), so the
- * names are held to a plain shape before git ever sees them.
- */
-const isPlainRemote = (name) => typeof name === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(name);
-const isPlainBranch = (name) =>
-  typeof name === 'string' && /^[A-Za-z0-9][A-Za-z0-9._/-]*$/.test(name) && !name.includes('..') && !name.endsWith('/') && !name.endsWith('.lock');
 
 /**
  * Owner and repository from a github.com remote, or null.
@@ -146,30 +141,6 @@ export function parseGitHubRemote(url) {
   if (!/^[A-Za-z0-9-]+$/.test(owner)) return null;
   if (!/^[A-Za-z0-9._-]+$/.test(repo) || repo === '.' || repo === '..') return null;
   return { owner, repo };
-}
-
-/** The page's address: the site's address, then the folder, then a slash. */
-export function pageLink(siteUrl, folder) {
-  let url;
-  try {
-    url = new URL(String(siteUrl));
-  } catch {
-    return null;
-  }
-  // The address comes from GitHub's answer, and it is printed for the author
-  // to open, so anything but a web address is not passed on.
-  if (!/^https?:$/.test(url.protocol)) return null;
-  const base = url.href.endsWith('/') ? url.href : `${url.href}/`;
-  return `${base}${folder}/`;
-}
-
-/** The version stamp `gitmargin attach` writes into <head> (src/cli/attach.js). */
-export function readStamp(html) {
-  const tag = (name) =>
-    (new RegExp(`<meta\\s+name=["']gitmargin-${name}["']\\s+content=(?:"([^"]*)"|'([^']*)')`, 'i').exec(html) || [])
-      .slice(1)
-      .find((v) => v) || null;
-  return { versionId: tag('version'), service: tag('service') };
 }
 
 /** public, private or internal, from GitHub's answer about the repository. */
@@ -240,108 +211,7 @@ function describeSource(pages) {
 }
 
 // ---------------------------------------------------------------------------
-// Arguments
-
-export function parseArgs(argv) {
-  const opts = {
-    file: null,
-    folder: null,
-    repo: process.cwd(),
-    remote: DEFAULT_REMOTE,
-    branch: DEFAULT_BRANCH,
-    enable: false,
-    status: false,
-    wait: DEFAULT_WAIT_SECONDS,
-    json: false,
-    help: false,
-  };
-  const valued = { '--folder': 'folder', '--repo': 'repo', '--remote': 'remote', '--branch': 'branch', '--wait': 'wait' };
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i];
-    const eq = arg.startsWith('--') ? arg.indexOf('=') : -1;
-    const flag = eq > 0 ? arg.slice(0, eq) : arg;
-    if (valued[flag]) {
-      const value = eq > 0 ? arg.slice(eq + 1) : argv[++i];
-      if (value === undefined) throw new PublishError(`${flag} needs a value.`, EXIT_USAGE, 'Try: gitmargin-publish --help');
-      opts[valued[flag]] = value;
-    } else if (flag === '--enable' || flag === '--status' || flag === '--json') {
-      opts[flag.slice(2)] = true;
-    } else if (flag === '--help' || flag === '-h') {
-      opts.help = true;
-    } else if (arg.startsWith('-') && arg !== '-') {
-      throw new PublishError(`Unknown option: ${arg}`, EXIT_USAGE, 'Try: gitmargin-publish --help');
-    } else if (opts.file === null) {
-      opts.file = arg;
-    } else {
-      throw new PublishError('Give one attached file at a time.', EXIT_USAGE, 'Try: gitmargin-publish --help');
-    }
-  }
-  if (!/^\d+$/.test(String(opts.wait))) {
-    throw new PublishError(`--wait takes a whole number of seconds, not ${opts.wait}.`, EXIT_USAGE);
-  }
-  opts.wait = Number(opts.wait);
-  if (!isPlainRemote(opts.remote)) throw new PublishError(`Not a remote name: ${opts.remote}`, EXIT_USAGE);
-  if (!isPlainBranch(opts.branch)) throw new PublishError(`Not a branch name this command will use: ${opts.branch}`, EXIT_USAGE);
-  return opts;
-}
-
-// ---------------------------------------------------------------------------
-// Running git and gh
-
-// Variables that tell git which repository, index or object store to use. A
-// caller running inside a git hook has them set to the AUTHOR's repository,
-// and `git -C <temporary worktree>` would then read and write the author's
-// index after all. Everything this script runs names its folder with -C.
-const GIT_LOCATION_VARS = [
-  'GIT_DIR',
-  'GIT_WORK_TREE',
-  'GIT_INDEX_FILE',
-  'GIT_COMMON_DIR',
-  'GIT_PREFIX',
-  'GIT_NAMESPACE',
-  'GIT_OBJECT_DIRECTORY',
-  'GIT_ALTERNATE_OBJECT_DIRECTORIES',
-  'GIT_QUARANTINE_PATH',
-];
-
-function gitEnv() {
-  const env = { ...process.env };
-  for (const name of GIT_LOCATION_VARS) delete env[name];
-  // Claude Code runs this without a terminal, where a username prompt would
-  // wait forever. Credential helpers (gh auth setup-git, a keychain) still work.
-  env.GIT_TERMINAL_PROMPT = '0';
-  return env;
-}
-
-function git(cwd, args, { input, allowFail = false } = {}) {
-  const result = spawnSync('git', ['-C', cwd, ...args], {
-    encoding: 'utf8',
-    input,
-    env: gitEnv(),
-    maxBuffer: 64 * 1024 * 1024,
-  });
-  if (result.error) {
-    if (result.error.code === 'ENOENT') {
-      throw new PublishError('git is not installed, or not on PATH.', EXIT_REFUSED, 'Install git and try again.');
-    }
-    throw new PublishError(`Could not run git: ${result.error.message}`, EXIT_REFUSED);
-  }
-  const answer = { code: result.status, out: result.stdout || '', err: result.stderr || '' };
-  if (answer.code !== 0 && !allowFail) {
-    // Named by its subcommand, not by a leading `-c user.name=...`.
-    const command = args.find((arg, i) => !arg.startsWith('-') && args[i - 1] !== '-c') || 'command';
-    throw new PublishError(`git ${command} failed: ${firstLines(answer.err) || `exit ${answer.code}`}`, EXIT_REFUSED);
-  }
-  return answer;
-}
-
-const firstLines = (text, n = 4) =>
-  String(text || '')
-    .split('\n')
-    .map((line) => line.trimEnd())
-    .filter(Boolean)
-    .slice(0, n)
-    .join('\n');
+// Running gh
 
 function gh(args) {
   const result = spawnSync('gh', args, {
@@ -400,49 +270,17 @@ function isNotFound(result) {
 // ---------------------------------------------------------------------------
 // Reading the state, before anything changes
 
-function readAttached(file) {
-  let bytes;
-  try {
-    bytes = readFileSync(file);
-  } catch {
-    throw new PublishError(`Cannot read ${file}.`, EXIT_USAGE);
-  }
-  const stamp = readStamp(bytes.toString('utf8'));
-  if (!stamp.versionId) {
-    throw new PublishError(
-      `${file} is not an attached copy: it has no gitmargin version stamp.`,
-      EXIT_REFUSED,
-      'Run gitmargin attach on the prototype first, and publish the .gitmargin.html copy it writes.'
-    );
-  }
-  return { bytes, ...stamp };
-}
-
-function repoRoot(dir) {
-  const result = git(dir, ['rev-parse', '--show-toplevel'], { allowFail: true });
-  if (result.code !== 0) {
-    throw new PublishError(`${dir} is not inside a git repository.`, EXIT_REFUSED, 'Use --repo <dir> to name the repository.');
-  }
-  return result.out.trim();
-}
-
 function githubTarget(root, remote) {
-  // The URL as the author configured it, before git's own rewriting
-  // (url.<base>.insteadOf), which `git remote get-url` would apply. If that is
-  // not a github.com address, the rewritten one gets a second look, for authors
-  // who use a short alias that expands to github.com.
-  const raw = git(root, ['config', '--get', `remote.${remote}.url`], { allowFail: true });
-  if (raw.code !== 0 || !raw.out.trim()) {
+  // The URL as the author configured it first, then after git's own rewriting
+  // (remoteUrls in publish-core.mjs says why both).
+  const urls = remoteUrls(root, remote);
+  if (!urls) {
     throw new PublishError(`This repository has no remote named ${remote}.`, EXIT_REFUSED, 'Use --remote <name> to name the GitHub one.');
   }
-  let target = parseGitHubRemote(raw.out.trim());
-  if (!target) {
-    const expanded = git(root, ['remote', 'get-url', remote], { allowFail: true });
-    target = expanded.code === 0 ? parseGitHubRemote(expanded.out.trim()) : null;
-  }
+  const target = parseGitHubRemote(urls.raw) || parseGitHubRemote(urls.expanded);
   if (!target) {
     throw new PublishError(
-      `The ${remote} remote is not a GitHub repository, so there is no GitHub Pages site to publish to.`,
+      `The ${remote} remote is not a GitHub repository or a gitlab.com project, so there is no Pages site to publish to.`,
       EXIT_REFUSED,
       'Share it with the service link or as a file instead.'
     );
@@ -468,127 +306,8 @@ function readRepo(target) {
   }
 }
 
-/** The commit the branch points at on the remote, or null when it is not there yet. */
-function remoteTip(root, remote, branch) {
-  const ref = `refs/heads/${branch}`;
-  const result = git(root, ['ls-remote', '--exit-code', remote, ref], { allowFail: true });
-  // --exit-code makes "no such ref" exit 2 and keeps a real failure (no
-  // network, no access) apart from it: a failure must not read as "first
-  // publish" and start a new branch over the old one.
-  if (result.code === 2) return null;
-  if (result.code !== 0) {
-    throw new PublishError(`Could not read the ${remote} remote: ${firstLines(result.err, 2) || `exit ${result.code}`}`, EXIT_REFUSED);
-  }
-  // A pattern matches the END of a ref name, so a branch called
-  // x/refs/heads/gitmargin-pages would match too. Only the exact name counts.
-  const line = result.out.split('\n').find((l) => l.split('\t')[1] === ref);
-  return line ? line.split('\t')[0] : null;
-}
-
-// ---------------------------------------------------------------------------
-// The commit and the push, in a temporary worktree
-
-function gitIdentity(root) {
-  const has = (key) => {
-    const r = git(root, ['config', '--get', key], { allowFail: true });
-    return r.code === 0 && r.out.trim() !== '';
-  };
-  const args = [];
-  if (!has('user.name')) args.push('-c', `user.name=${FALLBACK_NAME}`);
-  if (!has('user.email')) args.push('-c', `user.email=${FALLBACK_EMAIL}`);
-  if (args.length) {
-    process.stderr.write(
-      `No git user.name or user.email is set for this repository, so the publish commit is signed ${FALLBACK_NAME} <${FALLBACK_EMAIL}>.\n`
-    );
-  }
-  return args;
-}
-
-/**
- * Build the commit in a temporary worktree and push it. Returns the commit the
- * branch now points at and whether anything was pushed.
- *
- * Synchronous from start to finish, so the cleanup in `finally` runs before
- * anything else can: the worktree and its folder are gone again whether the
- * push worked, GitHub refused it, or a git step failed.
- */
-function publishCommit(root, opts, page, target, tip) {
-  const temp = mkdtempSync(path.join(os.tmpdir(), 'gitmargin-publish-'));
-  const tree = path.join(temp, 'pages');
-  let added = false;
-  try {
-    // --no-checkout: the author's files are not copied out; this worktree only
-    // lends its private index. HEAD is just a place to stand, never a parent.
-    git(root, ['worktree', 'add', '--detach', '--no-checkout', tree, 'HEAD']);
-    added = true;
-
-    let base = null;
-    if (tip) {
-      // Fetched from inside the worktree, so FETCH_HEAD is the worktree's own.
-      git(tree, ['fetch', '--quiet', '--no-tags', opts.remote, `refs/heads/${opts.branch}`]);
-      base = git(tree, ['rev-parse', '--verify', 'FETCH_HEAD^{commit}']).out.trim();
-      git(tree, ['read-tree', base]);
-    } else {
-      // A first publish starts from nothing: the branch holds pages only,
-      // never a copy of the author's project.
-      git(tree, ['read-tree', '--empty']);
-    }
-
-    // --no-filters: the attached copy's exact bytes, whatever autocrlf or
-    // attribute filters the author's git applies to their own files.
-    const blob = git(tree, ['hash-object', '-w', '--no-filters', '--stdin'], { input: page.bytes }).out.trim();
-    git(tree, ['update-index', '--add', '--cacheinfo', `100644,${blob},${opts.folder}/index.html`]);
-    // .nojekyll tells GitHub to serve the files as they are, without a Jekyll
-    // build. Always the same empty file, so a republish never shows it changed.
-    const empty = git(tree, ['hash-object', '-w', '--no-filters', '--stdin'], { input: '' }).out.trim();
-    git(tree, ['update-index', '--add', '--cacheinfo', `100644,${empty},.nojekyll`]);
-
-    const treeId = git(tree, ['write-tree']).out.trim();
-    if (base && treeId === git(tree, ['rev-parse', `${base}^{tree}`]).out.trim()) {
-      return { commit: base, pushed: false };
-    }
-
-    const message = `Publish ${opts.folder} for review (${page.versionId})`;
-    const commit = git(tree, [...gitIdentity(root), 'commit-tree', treeId, ...(base ? ['-p', base] : []), '-m', message]).out.trim();
-
-    // Never forced: if someone else moved the branch since the fetch, GitHub
-    // refuses and nothing of theirs is lost. --no-verify because the author's
-    // pre-push hooks are written for their project, and would run here against
-    // a branch that holds none of its files.
-    const push = git(tree, ['push', '--quiet', '--no-verify', opts.remote, `${commit}:refs/heads/${opts.branch}`], { allowFail: true });
-    if (push.code !== 0) {
-      throw new PublishError(
-        `The push to the ${opts.branch} branch of ${target.full} was refused, so nothing was published.\n${firstLines(push.err, 6)}`,
-        EXIT_REFUSED,
-        'Your own checkout is untouched. If someone else published at the same moment, run this again.'
-      );
-    }
-    return { commit, pushed: true };
-  } finally {
-    if (added) {
-      const removed = git(root, ['worktree', 'remove', '--force', tree], { allowFail: true });
-      if (removed.code !== 0) {
-        process.stderr.write(`Could not remove the temporary worktree ${tree}; git worktree prune clears it.\n`);
-      }
-    }
-    try {
-      rmSync(temp, { recursive: true, force: true });
-    } catch {
-      // A leftover empty folder in the system's temp area is not worth
-      // replacing the real outcome with an error.
-    }
-  }
-}
-
 // ---------------------------------------------------------------------------
 // After the push
-
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-function pollInterval() {
-  const value = Number(process.env.GITMARGIN_PUBLISH_POLL_MS);
-  return Number.isInteger(value) && value > 0 ? value : DEFAULT_POLL_MS;
-}
 
 /**
  * Follow GitHub's build of THIS commit until it is built or errored, or the
@@ -619,12 +338,29 @@ async function waitForBuild(target, commit, seconds) {
   }
 }
 
+/**
+ * Which half publishes: 'gitlab' for a gitlab.com project, 'github' for a
+ * github.com repository, null for neither (the GitHub half then refuses with
+ * its own words). The address as configured is asked first, then git's
+ * rewritten one, the same order both halves read a remote in.
+ */
+function hostOf(root, remote) {
+  const urls = remoteUrls(root, remote);
+  if (!urls) return null;
+  for (const url of [urls.raw, urls.expanded]) {
+    if (parseGitHubRemote(url)) return 'github';
+    if (parseGitLabRemote(url)) return 'gitlab';
+  }
+  return null;
+}
+
 // ---------------------------------------------------------------------------
 // The two modes
 
 async function status(opts) {
   if (opts.folder !== null && !isSafeFolder(opts.folder)) throw unsafeFolder(opts.folder);
   const root = repoRoot(opts.repo);
+  if (hostOf(root, opts.remote) === 'gitlab') return statusGitLab(opts, root);
   const target = githubTarget(root, opts.remote);
   requireLogin();
   const repo = readRepo(target);
@@ -650,6 +386,7 @@ async function status(opts) {
   const verdict = assess({ full: target.full, repo, pages }, { branch: opts.branch, enable: true });
   const ours = Boolean(pages) && servesBranch(pages, opts.branch);
   const report = {
+    host: 'github',
     repo: target.full,
     visibility: visibilityOf(repo),
     remote: opts.remote,
@@ -679,13 +416,6 @@ async function status(opts) {
   return EXIT_OK;
 }
 
-const unsafeFolder = (name) =>
-  new PublishError(
-    `Not a safe folder name: ${JSON.stringify(name)}.`,
-    EXIT_REFUSED,
-    'Use one name made of letters, digits, dot, dash and underscore, starting with a letter or digit, with no slash and no "..".'
-  );
-
 async function publish(opts) {
   if (opts.file === null) throw new PublishError('Name the attached copy to publish.', EXIT_USAGE, 'Try: gitmargin-publish <attached.html> --folder <name>');
   if (opts.folder === null) throw new PublishError('Name the folder it goes in with --folder <name>.', EXIT_USAGE);
@@ -694,12 +424,9 @@ async function publish(opts) {
   if (!isSafeFolder(opts.folder)) throw unsafeFolder(opts.folder);
   const page = readAttached(opts.file);
   const root = repoRoot(opts.repo);
+  if (hostOf(root, opts.remote) === 'gitlab') return publishGitLab(opts, root, page);
   const target = githubTarget(root, opts.remote);
-  if (git(root, ['rev-parse', '--verify', '--quiet', 'HEAD^{commit}'], { allowFail: true }).code !== 0) {
-    // The temporary worktree needs a commit to stand on (it never becomes a
-    // parent of the published commit).
-    throw new PublishError('This repository has no commits yet.', EXIT_REFUSED, 'Commit once, then publish again.');
-  }
+  requireCommits(root);
 
   // Then GitHub's side: every refusal still comes before the push.
   requireLogin();
@@ -715,7 +442,14 @@ async function publish(opts) {
   }
 
   const tip = remoteTip(root, opts.remote, opts.branch);
-  const { commit, pushed } = publishCommit(root, opts, page, target, tip);
+  const files = [
+    { path: `${opts.folder}/index.html`, bytes: page.bytes },
+    // .nojekyll tells GitHub to serve the files as they are, without a Jekyll
+    // build. Always the same empty file, so a republish never shows it changed.
+    { path: '.nojekyll', bytes: '' },
+  ];
+  const message = `Publish ${opts.folder} for review (${page.versionId})`;
+  const { commit, pushed } = publishCommit(root, opts, { files, message, label: target.full }, tip);
   process.stderr.write(
     pushed
       ? `Published ${opts.folder} to the ${opts.branch} branch of ${target.full} (commit ${commit.slice(0, 7)}).\n`
@@ -746,21 +480,23 @@ async function publish(opts) {
   }
   process.stderr.write(`Anyone on the internet can open this page: ${target.full} is a public repository.\n`);
 
+  const wait = opts.wait ?? DEFAULT_WAIT_SECONDS;
   let build = { status: 'unchanged', error: null };
   if (pushed || enabled) {
-    if (opts.wait > 0) {
-      process.stderr.write(`Waiting up to ${opts.wait} seconds for GitHub to build the page. Until the first build finishes, the link can show a 404.\n`);
+    if (wait > 0) {
+      process.stderr.write(`Waiting up to ${wait} seconds for GitHub to build the page. Until the first build finishes, the link can show a 404.\n`);
     } else {
       process.stderr.write('Not waiting for GitHub to build the page. Until the first build finishes, the link can show a 404.\n');
     }
-    build = await waitForBuild(target, commit, opts.wait);
+    build = await waitForBuild(target, commit, wait);
     if (build.status === 'built') process.stderr.write('GitHub has built the page.\n');
-    if (build.status === 'pending' && opts.wait > 0) {
+    if (build.status === 'pending' && wait > 0) {
       process.stderr.write('GitHub has not finished building yet. The link can show a 404 for a few more minutes.\n');
     }
   }
 
   const result = {
+    host: 'github',
     repo: target.full,
     branch: opts.branch,
     folder: opts.folder,
