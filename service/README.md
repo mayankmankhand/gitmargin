@@ -54,7 +54,7 @@ ignored by git and by the deploy, and are safe to delete.
 > **Not tested end to end yet.** The button needs this repository to be public, and it is not. Its parameters follow
 > Vercel's deploy-button reference. Until then, use the command line above.
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fmayankmankhand%2Fgitmargin%2Ftree%2Fmain%2Fservice&project-name=gitmargin-comments&repository-name=gitmargin-comments&env=GITMARGIN_SECRET&envDescription=A%20long%20random%20string%20only%20you%20know.%20The%20gitmargin%20commands%20send%20it%20to%20prove%20they%20are%20you.&stores=%5B%7B%22type%22%3A%22integration%22%2C%22integrationSlug%22%3A%22neon%22%2C%22productSlug%22%3A%22neon%22%2C%22protocol%22%3A%22storage%22%7D%5D)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fmayankmankhand%2Fgitmargin%2Ftree%2Fmain%2Fservice&project-name=gitmargin-comments&repository-name=gitmargin-comments&env=GITMARGIN_SECRET&envDescription=A%20long%20random%20string%20only%20you%20know%2C%20at%20least%2032%20characters.%20The%20gitmargin%20commands%20send%20it%20to%20prove%20they%20are%20you.&stores=%5B%7B%22type%22%3A%22integration%22%2C%22integrationSlug%22%3A%22neon%22%2C%22productSlug%22%3A%22neon%22%2C%22protocol%22%3A%22storage%22%7D%5D)
 
 The button copies this folder into a repository of your own, creates a Vercel project from it, adds a Neon database
 from the Vercel Marketplace (so there is no separate database account to open), and asks for one value:
