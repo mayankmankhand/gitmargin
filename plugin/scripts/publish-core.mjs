@@ -82,6 +82,20 @@ export function readStamp(html) {
   return { versionId: tag('version'), service: tag('service') };
 }
 
+/**
+ * An address from a host's answer, passed on only when it is a web address.
+ * It is printed for the author to open (a pipeline to look at, a site), so
+ * anything else, such as a javascript: or file: address, becomes null.
+ */
+export function webAddress(value) {
+  try {
+    // Checked, then passed on exactly as the host wrote it.
+    return /^https?:$/.test(new URL(String(value)).protocol) ? String(value) : null;
+  } catch {
+    return null;
+  }
+}
+
 /** The page's address: the site's address, then the folder, then a slash. */
 export function pageLink(siteUrl, folder) {
   let url;

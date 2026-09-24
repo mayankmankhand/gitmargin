@@ -19,7 +19,8 @@
 // deployment for the first N looks at Pages), defaultCi (null
 // for no build file), pipelines ([{ id, sha: 'TIP' | <sha>, ref, statuses }],
 // one status per look, 'none' for not there yet), failedJob ({ reason, log }),
-// projectMissing, putRefused, putIgnored.
+// rerunStatuses (the statuses of a pipeline started with POST .../pipeline),
+// webUrl on a pipeline (its web_url), projectMissing, putRefused, putIgnored.
 
 'use strict';
 
@@ -93,6 +94,13 @@ const [where, query = ''] = endpoint.split('?');
 const params = new URLSearchParams(query);
 const id = state.project.id;
 const resolve = (sha) => (sha === 'TIP' ? tip('gitmargin-pages') : sha);
+// Like GitLab: an empty project takes the first branch pushed to it as its
+// default branch.
+if (state.project.empty_repo && tip('gitmargin-pages')) {
+  state.project.empty_repo = false;
+  state.project.default_branch = 'gitmargin-pages';
+  save();
+}
 
 if (method === 'GET' && where === `projects/acme%2Fteam%2Fsite`) return state.projectMissing ? refuse(404, 'Project Not Found') : answer(state.project);
 if (method === 'GET' && where === 'user') return answer({ id: 7, username: 'acme-owner' });
@@ -135,10 +143,21 @@ if (method === 'GET' && where === `projects/${id}/pipelines`) {
       // GitLab creates the site with its first deployment.
       state.pages = { url: state.siteUrl, is_unique_domain_enabled: true, deployments: [{ created_at: '2026-09-24T10:00:00Z', url: state.siteUrl, path_prefix: null, root_directory: 'public' }] };
     }
-    visible.push({ id: p.id, iid: p.id - 800, project_id: id, sha: resolve(p.sha), ref: p.ref, status, source: 'push', web_url: `https://gitlab.com/${state.project.path_with_namespace}/-/pipelines/${p.id}`, name: null });
+    visible.push({ id: p.id, iid: p.id - 800, project_id: id, sha: resolve(p.sha), ref: p.ref, status, source: 'push', web_url: p.webUrl || `https://gitlab.com/${state.project.path_with_namespace}/-/pipelines/${p.id}`, name: null });
   }
   save();
   return answer(visible);
+}
+if (method === 'POST' && where === `projects/${id}/pipeline`) {
+  // Like GitLab: a new pipeline for the branch's tip, newest id; the
+  // Developer role or higher may start one.
+  if (state.role < 30) return refuse(403, 'Forbidden');
+  const sha = fields.ref && tip(fields.ref);
+  if (!sha) return refuse(400, 'Reference not found');
+  const next = Math.max(900, ...state.pipelines.map((p) => p.id)) + 1;
+  state.pipelines.push({ id: next, sha, ref: fields.ref, statuses: (state.rerunStatuses || ['running', 'success']).slice() });
+  save();
+  return answer({ id: next, sha, ref: fields.ref, status: 'created' });
 }
 const one = /^projects\/\d+\/pipelines\/(\d+)$/.exec(where);
 if (method === 'GET' && one) {

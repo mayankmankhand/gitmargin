@@ -620,6 +620,62 @@ test('a republish still building prints the known link and says the old version 
   assert.match(r.err, /GitLab is still building the page\. Until it finishes, the link shows the previous version, or a 404 if this is the first\./);
 });
 
+test('a failed build shared again with the same bytes is built again, and gives the link', (t) => {
+  const w = world(t, {
+    failedJob: { reason: 'script_failure', log: 'Identity verification is required in order to run CI jobs\n' },
+    pipelines: [{ id: 900, sha: 'TIP', ref: BRANCH, statuses: ['failed'] }],
+  });
+  const file = attached(w, 'one', 'first');
+  const first = run(w, [file, '--folder', 'one', '--wait', '5']);
+  assert.equal(first.code, 2);
+  assert.match(first.err, /may have to verify itself/);
+  // The author verifies the account, then shares the same page again, as the hint says.
+  const again = run(w, [file, '--folder', 'one', '--wait', '5', '--json']);
+  assert.equal(again.code, 0, again.err);
+  assert.match(again.err, /Nothing changed/);
+  assert.match(again.err, /The last build of this page did not finish, so GitLab is building it again\./);
+  assert.match(again.err, /GitLab built the page \d+ seconds after the new build started/);
+  const result = JSON.parse(again.out);
+  assert.equal(result.link, `${SITE}/one/`);
+  assert.equal(result.pipeline.id, 901);
+  const starts = calls(w).filter((c) => c.args.includes('POST'));
+  assert.equal(starts.length, 1, 'one new build, for the branch');
+  assert.ok(starts[0].args.includes('ref=gitmargin-pages'), JSON.stringify(starts[0].args));
+});
+
+test('an empty project takes the pages branch as its default, and the next share is not refused', (t) => {
+  const w = world(t, { project: { default_branch: null, empty_repo: true } });
+  assert.equal(run(w, [attached(w, 'one', 'first'), '--folder', 'one']).code, 0);
+  assert.equal(glabState(w).project.default_branch, BRANCH, 'GitLab made the first pushed branch the default');
+  const r = run(w, [attached(w, 'one', 'changed', { version: 'v2-def456' }), '--folder', 'one']);
+  assert.equal(r.code, 0, r.err);
+  assert.match(r.err, /The gitmargin-pages branch is acme\/team\/site's default branch, because the project was empty when it was first published\./);
+  assert.ok(!calls(w).some((c) => /repository\/files/.test(c.args[1] || '')), "gitmargin's own build file is not read as the author's");
+});
+
+test('addresses from GitLab are passed on only when they are web addresses', (t) => {
+  const w = world(t, {
+    failedJob: { reason: 'script_failure', log: 'ERROR\n' },
+    pipelines: [{ id: 900, sha: 'TIP', ref: BRANCH, statuses: ['failed'], webUrl: 'javascript:alert(1)' }],
+  });
+  const r = run(w, [attached(w, 'one', 'first'), '--folder', 'one', '--json', '--wait', '5']);
+  assert.equal(r.code, 2);
+  assert.doesNotMatch(r.err, /javascript:/);
+  assert.equal(JSON.parse(r.out).pipeline.url, null);
+  setGlab(w, { pages: { url: 'file:///etc/passwd', deployments: [] } });
+  const state = JSON.parse(run(w, ['--status', '--json']).out);
+  assert.equal(state.pages.url, null);
+});
+
+test('a republish with --wait 0 prints the link and says it is not waiting', (t) => {
+  const w = world(t);
+  assert.equal(run(w, [attached(w, 'one', 'first'), '--folder', 'one']).code, 0);
+  const r = run(w, [attached(w, 'one', 'changed', { version: 'v2-def456' }), '--folder', 'one', '--wait', '0']);
+  assert.equal(r.code, 0, r.err);
+  assert.equal(r.out, `${SITE}/one/\n`);
+  assert.match(r.err, /Not waiting for GitLab to build the page\./);
+});
+
 // ---------------------------------------------------------------------------
 // --status
 

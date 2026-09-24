@@ -46,6 +46,7 @@ import {
   remoteUrls,
   requireCommits,
   sleep,
+  webAddress,
 } from './publish-core.mjs';
 
 const HOST = 'gitlab.com';
@@ -149,8 +150,10 @@ export function ciFile(branch) {
  * both a job named `pages` and the `pages:` keyword inside a job of another
  * name. Read as text, not parsed (there is no YAML library here), so it can
  * match a `pages:` that is neither; that only costs a refusal with the reason.
- * A Pages job pulled in through `include:` is not seen here; once it has
- * deployed, the deployment check catches it.
+ * A Pages job pulled in through `include:` is not seen here. Before this
+ * branch exists, the deployment check catches it once it has deployed; after
+ * that, the two sites replace each other on every push (a stated limit,
+ * docs/part-2-design.md section 8).
  */
 export function publishesPages(buildFile) {
   return /^[ \t]*pages[ \t]*:/m.test(String(buildFile || ''));
@@ -373,8 +376,12 @@ function readState(root, opts, target) {
   // Below Maintainer GitLab will not answer about Pages, and the verdict
   // refuses on the role anyway, so nothing more is asked.
   const pages = role >= MAINTAINER ? readPages(project) : null;
-  const defaultBuildFile = role >= MAINTAINER ? readDefaultBuildFile(project) : '';
-  return { project, role, tip, pages, defaultBuildFile, branchOnRemote: tip ? 'exists' : 'absent' };
+  // A project that was empty at its first publish takes the first branch
+  // pushed to it as its default, which is this one: its build file is
+  // gitmargin's own, not a site of the author's to protect.
+  const ownDefault = Boolean(project.default_branch) && project.default_branch === opts.branch;
+  const defaultBuildFile = role >= MAINTAINER && !ownDefault ? readDefaultBuildFile(project) : '';
+  return { project, role, tip, pages, defaultBuildFile, ownDefault, branchOnRemote: tip ? 'exists' : 'absent' };
 }
 
 // ---------------------------------------------------------------------------
@@ -467,7 +474,7 @@ export async function status(opts, root) {
     remote: opts.remote,
     branch: opts.branch,
     branchOnRemote: state.branchOnRemote,
-    pages: { access: project.pages_access_level || null, deployed, url: (pages && pages.url) || null },
+    pages: { access: project.pages_access_level || null, deployed, url: (pages && webAddress(pages.url)) || null },
     sharedRunners: project.shared_runners_enabled !== false,
     link: deployed && state.branchOnRemote === 'exists' && opts.folder !== null ? pageLink(pages.url, opts.folder) : null,
     publish: verdict.blocked ? 'refused' : verdict.enableNow ? 'needs-enable' : 'ready',
@@ -500,6 +507,12 @@ export async function publish(opts, root, page) {
   const { project } = state;
   const verdict = assess({ full: target.full, ...state }, opts);
   if (verdict.blocked) throw new PublishError(verdict.blocked, EXIT_REFUSED, verdict.hint);
+  if (state.ownDefault) {
+    process.stderr.write(
+      `The ${opts.branch} branch is ${target.full}'s default branch, because the project was empty when it was first published. ` +
+        'When you add your own work, set another default branch in the project\'s settings.\n'
+    );
+  }
   if (project.shared_runners_enabled === false) {
     process.stderr.write(`Shared runners are off for ${target.full}, so the build needs a runner of the project's own.\n`);
   }
@@ -548,8 +561,25 @@ export async function publish(opts, root, page) {
   if (pushed && wait > 0) process.stderr.write(`Waiting up to ${wait} seconds for GitLab to build the page.\n`);
   // Unchanged bytes get one look at the commit's pipeline, not a wait: it may
   // be the last publish's build, still running, or one that failed.
-  const build = await waitForPipeline(project, commit, opts.branch, wait, { once: !pushed });
-  const seconds = pushed && build.status === 'built' ? Math.round((Date.now() - pushedAt) / 1000) : null;
+  let build = await waitForPipeline(project, commit, opts.branch, wait, { once: !pushed });
+  let startedAt = pushedAt;
+  let rebuilt = false;
+  if (!pushed && (build.status === 'failed' || build.status === 'not-run')) {
+    // The page is already on the branch, so sharing it again means building
+    // it again: the failure hint asks for exactly this once the cause is
+    // fixed (a new account that has now verified itself, a runner switched
+    // on). Without it, the same bytes would re-read the same failure forever.
+    try {
+      api(`projects/${project.id}/pipeline`, { method: 'POST', fields: [['ref', opts.branch]] });
+    } catch (error) {
+      throw new PublishError(`The last build of this page did not finish, and GitLab did not start a new one: ${error.message}`, EXIT_REFUSED);
+    }
+    rebuilt = true;
+    startedAt = Date.now();
+    process.stderr.write(`The last build of this page did not finish, so GitLab is building it again. Waiting up to ${wait} seconds.\n`);
+    build = await waitForPipeline(project, commit, opts.branch, wait);
+  }
+  const seconds = (pushed || rebuilt) && build.status === 'built' ? Math.round((Date.now() - startedAt) / 1000) : null;
 
   let detail = null;
   if (build.status === 'built') {
@@ -562,7 +592,7 @@ export async function publish(opts, root, page) {
       const parts = detail && Number.isFinite(detail.queued_duration) && Number.isFinite(detail.duration)
         ? ` (the build waited ${Math.round(detail.queued_duration)} seconds for a runner and ran for ${Math.round(detail.duration)})`
         : '';
-      process.stderr.write(`GitLab built the page ${seconds} seconds after the push${parts}.\n`);
+      process.stderr.write(`GitLab built the page ${seconds} seconds after ${rebuilt ? 'the new build started' : 'the push'}${parts}.\n`);
     }
   }
 
@@ -588,7 +618,7 @@ export async function publish(opts, root, page) {
     pipeline: build.pipeline
       ? {
           id: build.pipeline.id,
-          url: build.pipeline.web_url || null,
+          url: webAddress(build.pipeline.web_url),
           duration: detail && Number.isFinite(detail.duration) ? detail.duration : null,
           queuedDuration: detail && Number.isFinite(detail.queued_duration) ? detail.queued_duration : null,
         }
@@ -610,7 +640,8 @@ export async function publish(opts, root, page) {
       result.buildError = `the pipeline is ${build.pipeline.status}`;
     }
     printJson();
-    const where = build.pipeline && build.pipeline.web_url ? ` ${build.pipeline.web_url}` : '';
+    const pipelineUrl = build.pipeline && webAddress(build.pipeline.web_url);
+    const where = pipelineUrl ? ` ${pipelineUrl}` : '';
     throw new PublishError(
       build.status === 'failed'
         ? `GitLab's build of the page failed (${result.buildError}).${where}`
@@ -632,6 +663,9 @@ export async function publish(opts, root, page) {
   if (!link) {
     printJson();
     throw new PublishError(`GitLab built the page but gave no address for the Pages site of ${target.full}.`, EXIT_REFUSED, 'Check again with --status in a minute.');
+  }
+  if (pushed && build.status === 'not-waited') {
+    process.stderr.write('Not waiting for GitLab to build the page. Until it finishes, the link shows the previous version, or a 404 if this is the first.\n');
   }
   const unfinished = build.status === 'running' || build.status === 'waiting' || (pushed && build.status === 'not-started');
   if (unfinished) {
