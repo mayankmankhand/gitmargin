@@ -283,10 +283,21 @@ test('a first publish writes the page and the build file, waits for the build, a
   assert.deepEqual(bytesOn(w, 'public/one/index.html'), readFileSync(file), 'the exact bytes of the attached copy');
   assert.equal(bytesOn(w, '.gitlab-ci.yml').toString(), ciFile(BRANCH));
   assert.match(r.err, /Only members of acme\/team\/site can open this page, after GitLab's login\./);
-  assert.match(r.err, /GitLab built the page \d+ seconds after the push \(the build waited 4 seconds for a runner and ran for 20\)\./);
+  assert.match(r.err, /GitLab built the page \d+ seconds? after the push \(the build waited 4 seconds for a runner and ran for 20\)\./);
   assert.equal(pushAttempts(w), 1);
   assert.equal(worktreeCount(w), 1);
   assert.deepEqual(readdirSync(w.tmp), []);
+});
+
+test('the time line reads right when GitLab leaves the queue time empty or it is one second', (t) => {
+  const empty = world(t, { pipelineTiming: { queued_duration: null, duration: 27.7 } });
+  const r = run(empty, [attached(empty, 'one', 'first'), '--folder', 'one']);
+  assert.equal(r.code, 0, r.err);
+  assert.match(r.err, /GitLab built the page \d+ seconds? after the push \(the build ran for 28 seconds\)\./, 'the walk\'s first build');
+  const one = world(t, { pipelineTiming: { queued_duration: 0.9, duration: 22.4 } });
+  const again = run(one, [attached(one, 'one', 'first'), '--folder', 'one']);
+  assert.equal(again.code, 0, again.err);
+  assert.match(again.err, /\(the build waited 1 second for a runner and ran for 22\)\./);
 });
 
 test('--json reports the commit, the build, the seconds and GitLab\'s own timings', (t) => {
@@ -634,7 +645,7 @@ test('a failed build shared again with the same bytes is built again, and gives 
   assert.equal(again.code, 0, again.err);
   assert.match(again.err, /Nothing changed/);
   assert.match(again.err, /The last build of this page did not finish, so GitLab is building it again\./);
-  assert.match(again.err, /GitLab built the page \d+ seconds after the new build started/);
+  assert.match(again.err, /GitLab built the page \d+ seconds? after the new build started/);
   const result = JSON.parse(again.out);
   assert.equal(result.link, `${SITE}/one/`);
   assert.equal(result.pipeline.id, 901);

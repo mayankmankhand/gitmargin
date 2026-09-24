@@ -20,7 +20,9 @@
 // for no build file), pipelines ([{ id, sha: 'TIP' | <sha>, ref, statuses }],
 // one status per look, 'none' for not there yet), failedJob ({ reason, log }),
 // rerunStatuses (the statuses of a pipeline started with POST .../pipeline),
-// webUrl on a pipeline (its web_url), projectMissing, putRefused, putIgnored.
+// webUrl on a pipeline (its web_url), pipelineTiming (the duration and
+// queued_duration GitLab reports; queued_duration can be null, as on the walk's
+// first build), projectMissing, putRefused, putIgnored.
 
 'use strict';
 
@@ -162,7 +164,8 @@ if (method === 'POST' && where === `projects/${id}/pipeline`) {
 const one = /^projects\/\d+\/pipelines\/(\d+)$/.exec(where);
 if (method === 'GET' && one) {
   const p = state.pipelines.find((x) => String(x.id) === one[1]);
-  return p ? answer({ id: p.id, status: p.current, duration: 20.4, queued_duration: 3.6, web_url: `https://gitlab.com/x/-/pipelines/${p.id}` }) : refuse(404, 'Not found');
+  const timing = { duration: 20.4, queued_duration: 3.6, ...state.pipelineTiming };
+  return p ? answer({ id: p.id, status: p.current, ...timing, web_url: `https://gitlab.com/x/-/pipelines/${p.id}` }) : refuse(404, 'Not found');
 }
 const jobs = /^projects\/\d+\/pipelines\/(\d+)\/jobs$/.exec(where);
 if (method === 'GET' && jobs) {

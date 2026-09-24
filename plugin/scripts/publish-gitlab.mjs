@@ -160,6 +160,7 @@ export function publishesPages(buildFile) {
 }
 
 const roleName = (level) => ROLE_NAMES[level] || `role ${level}`;
+const secondsText = (count) => `${count} ${count === 1 ? 'second' : 'seconds'}`;
 
 function describeAccess(level) {
   if (level === 'private') return 'open to project members only';
@@ -589,10 +590,14 @@ export async function publish(opts, root, page) {
       // The timing breakdown is extra; the total above stands without it.
     }
     if (seconds !== null) {
-      const parts = detail && Number.isFinite(detail.queued_duration) && Number.isFinite(detail.duration)
-        ? ` (the build waited ${Math.round(detail.queued_duration)} seconds for a runner and ran for ${Math.round(detail.duration)})`
-        : '';
-      process.stderr.write(`GitLab built the page ${seconds} seconds after ${rebuilt ? 'the new build started' : 'the push'}${parts}.\n`);
+      // GitLab can leave queued_duration empty (the walk's first build did),
+      // so the run time is reported on its own when the wait is missing.
+      const ran = detail && Number.isFinite(detail.duration) ? Math.round(detail.duration) : null;
+      const queued = detail && Number.isFinite(detail.queued_duration) ? Math.round(detail.queued_duration) : null;
+      const parts = ran === null ? ''
+        : queued === null ? ` (the build ran for ${secondsText(ran)})`
+        : ` (the build waited ${secondsText(queued)} for a runner and ran for ${ran})`;
+      process.stderr.write(`GitLab built the page ${secondsText(seconds)} after ${rebuilt ? 'the new build started' : 'the push'}${parts}.\n`);
     }
   }
 
