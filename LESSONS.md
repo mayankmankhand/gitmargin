@@ -160,6 +160,15 @@
 - **Pin every choice a skill leaves open when a walk or a guide depends on the answer.**
 - **Have a cold reader and a code checker read a live-walk runbook before anyone follows it.**
 
+### gitmargin: pins in redraw-per-step prototypes (issue #34, 2026-09-24)
+- **An issue's proposed signal is a hypothesis: measure it on the cases it has to separate before building on it.**
+- **A test fixture whose script sits in the body answers every page-wide text search.**
+- **Time the page shape a change is worst for, not only the fixtures already at hand.**
+- **A shortcut's comment states its premise; check the premise on a page that shows several screens at once.**
+- **Drop a guard no test can trip; when a review shows its case, bring it back with the test that trips it.**
+- **When the page's structure cannot tell two cases apart, keep the measured case fixed and document the other.**
+- **Run long suites in the foreground, in halves: a background run dies with the session, and a second suite on the machine fails browsers at start-up.**
+
 ## Mistakes to Avoid
 
 - **Fill a plan's Outcomes by replacing the template placeholder, not inserting above it.**
