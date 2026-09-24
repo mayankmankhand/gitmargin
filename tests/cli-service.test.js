@@ -131,7 +131,7 @@ test('attach --service writes nothing when the service is unreachable, the secre
   assert.match(noSecret.err, /GITMARGIN_SECRET/);
   assert.ok(!existsSync(s.copy));
 
-  const wrong = await run(['attach', s.source, '--service', s.service.url], { GITMARGIN_SECRET: 'not-the-secret' });
+  const wrong = await run(['attach', s.source, '--service', s.service.url], { GITMARGIN_SECRET: 'not-the-secret-but-long-enough-to-send' });
   assert.equal(wrong.code, 2);
   assert.match(wrong.err, /refused the author secret/);
   assert.ok(!existsSync(s.copy));
@@ -230,7 +230,7 @@ test('status and remove: the author\'s, refused without the secret, and clear ab
   assert.equal((await run(['status', s.copy, 'c_00000e', 'finished'], s.env)).code, 1);
   assert.equal((await run(['status', s.copy, 'nonsense', 'applied'], s.env)).code, 1);
   assert.equal((await run(['status', s.source, 'c_00000e', 'applied'], s.env)).code, 1, 'the original is not a shared copy');
-  assert.equal((await run(['remove', s.copy, 'c_00000e'], { GITMARGIN_SECRET: 'wrong' })).code, 2);
+  assert.equal((await run(['remove', s.copy, 'c_00000e'], { GITMARGIN_SECRET: 'wrong-secret-but-long-enough-to-send' })).code, 2);
 
   const removed = await run(['remove', s.copy, 'c_00000e'], s.env);
   assert.equal(removed.code, 0, removed.err);

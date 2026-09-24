@@ -7,7 +7,7 @@ import { route } from '../src/router.js';
 import { LIMITS } from '../src/validate.js';
 import { memoryDatabase, testClock } from '../../tests/helpers/service-server.js';
 
-const SECRET = 'an-author-secret-for-tests';
+const SECRET = 'an-author-secret-for-the-router-tests';
 const ALICE = 'alice-token-0123456789';
 const BOB = 'bob-token-0123456789abc';
 

@@ -33,7 +33,7 @@ export function testClock(start = '2026-09-18T12:00:00.000Z') {
  *   `down` lets a test take the service away mid-session and bring it back.
  */
 export async function startService(options = {}) {
-  const secret = options.secret === undefined ? 'test-secret-test-secret' : options.secret;
+  const secret = options.secret === undefined ? 'test-secret-for-the-in-process-service' : options.secret;
   const clock = options.clock || { now: () => new Date() };
   const database = memoryDatabase();
 
