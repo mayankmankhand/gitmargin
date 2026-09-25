@@ -522,7 +522,7 @@ function walled(address, response, answer, bypass) {
   const refusedPage = (response.status === 401 || response.status === 403) && !(answer && typeof answer.error === 'string');
   if (redirect && !toLogin) {
     return new CliError(
-      `${address} answered with a redirect to ${location || 'another address'}, not with the comment service.`,
+      `${address} answered with a redirect to ${location ? printable(location) : 'another address'}, not with the comment service.`,
       EXIT_REFUSED,
       'Check the address: use the one the service itself answers on.\nNothing was written.'
     );
