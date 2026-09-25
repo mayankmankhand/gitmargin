@@ -57,15 +57,17 @@ To move a project to another place, say so: `/gitmargin:share signup.html on Git
 
 ### Permission prompts
 
-Claude Code asks your permission the first time Claude runs each gitmargin command in a project: `gitmargin check` when it builds a prototype, `gitmargin pull` and `gitmargin status` the first time you ask what reviewers said. The commands `/gitmargin:share` runs for itself do not ask. Choose **"Yes, and don't ask again"** each time. Claude Code saves that answer for that one command and for the current project only, so the next gitmargin command, or a new project, asks once more. To be asked in no project at all, add these two rules to your own `~/.claude/settings.json`; they cover every gitmargin command:
+Claude Code asks your permission the first time Claude runs each gitmargin command in a project: `gitmargin check` when it builds a prototype, `gitmargin pull` and `gitmargin status` the first time you ask what reviewers said. The commands `/gitmargin:share` runs for itself do not ask. Choose **"Yes, and don't ask again"** each time. Claude Code saves that answer for that one command and for the current project only, so the next gitmargin command, or a new project, asks once more. To be asked in no project at all, add this rule to your own `~/.claude/settings.json`; it covers every `gitmargin` command:
 
 ```json
 {
   "permissions": {
-    "allow": ["Bash(gitmargin *)", "Bash(gitmargin-publish *)"]
+    "allow": ["Bash(gitmargin *)"]
   }
 }
 ```
+
+Publishing stays out of that rule on purpose. `gitmargin-publish` can switch a repository's Pages on, so it runs without a prompt only inside `/gitmargin:share`, which carries its own permission for it; anywhere else it asks.
 
 When you paste a reviewer's copied text instead of a file, Claude saves it to a temporary file next to the prototype, reads it, and deletes it: that can bring two more prompts, one to save the file and one to delete it.
 
@@ -75,7 +77,7 @@ On some Claude Code plans, sessions start in auto mode, which shows no permissio
 
 Sharing a changed prototype makes a new version at the same link. Its comments start empty (the old ones were about a page that no longer exists), and anyone can still open the older versions, with their comments, from the **Version** line in the comments list.
 
-**About GitHub Pages:** the page is public, and anyone who opens it can comment. It is published from a branch of its own, `gitmargin-pages`, so your own branches and files are never touched. The page carries the key that lets people comment, and that key stays in the branch's history even if you later remove the page: there is no way yet to switch a key off. The first build takes a minute or two, and the link shows GitHub's 404 page until it finishes.
+**About GitHub Pages:** the page is public, and anyone who opens it can comment. It is published from a branch of its own, `gitmargin-pages`, so your own branches and files are never touched. The page carries the key that lets people comment, and that key stays in the branch's history even if you later remove the page: there is no way yet to switch a key off. The first build takes a minute or two, and the link shows GitHub's 404 page until it finishes. With sign-in on, a reviewer's sign-in there lasts for the tab, not seven days: every site of one owner shares one browser storage on GitHub Pages, so the overlay keeps the pass in memory only.
 
 **About GitLab Pages:** only the project's members can open the page, after GitLab's own login; a logged-out visitor is sent to GitLab's sign-in page, and anyone who can open the page can comment. A Guest is a member, so a reviewer needs only a gitlab.com account and a Guest place in the project or its group. On gitlab.com's free plan a private group can have at most five people, you and Guests included (more makes it read-only); a private project in your own namespace has no such limit. It needs the GitLab command line tool, `glab`, installed and logged in (`glab auth login --hostname gitlab.com`, once, in your own terminal), and the Maintainer or Owner role on the project. The first share sets the project's Pages to "Only project members" if it is not already, and says so before it does. The page is published from a branch of its own, `gitmargin-pages`, with a small build file of its own, because GitLab publishes Pages only through a build; your own branches and your own build file are never touched. As on GitHub, the page's key stays in that branch's history. Your comment service also keeps a copy of each version, which is how the Version line opens older ones, and that copy opens for anyone holding the key without GitLab's login; only people who can open the page or read the branch see the key. Each share tells you how many seconds GitLab took to build the page: about half a minute on gitlab.com's shared runners when this was tested. A project whose Pages already serves another site is left alone: on the free plan a project has one site, and publishing would replace it.
 
