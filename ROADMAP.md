@@ -1,38 +1,31 @@
 # Roadmap
 
 What is built, what comes next, and what is parked, as of 2026-09-25. The diagram is Mermaid, which GitHub draws in
-place; each node names its issue, and the list below carries the links and the detail. The README keeps a five-line
-summary and points here, so this is the one place the list lives. "Walked" below means tried by hand, end to end, with
+place; each box is one capability, and the list below carries the issue links and the detail. The README keeps a
+three-line summary and points here, so this is the one place the list lives. "Walked" below means tried by hand, end to end, with
 real accounts on a real host, not only by the test suite; the "spikes" are four one-day tests of what sign-in inside a
 company has to survive.
 
 ```mermaid
 flowchart LR
-  subgraph built ["Built"]
+  subgraph built ["Built and tested"]
     direction TB
-    p1["Part 1: the overlay, attach and pull"]
-    s15["Shared live comments (#15)"]
-    s18["Sign in with GitLab (#18)"]
-    s17["Sign in with GitHub (#17)"]
-    s19["Vercel same-project mode (#19)"]
-    s16["Claude Code plugin (#16): a file, the service link, GitHub Pages"]
-    s37["GitLab Pages channel (#37)"]
-    s36["One-line setup (#36) and trust by proof (#33)"]
-    p1 --> s15 --> s18 --> s17 --> s19 --> s16 --> s37 --> s36
+    b1["Comments on a single HTML file:<br/>the overlay, attach, pull"]
+    b2["Shared live comments:<br/>a comment service in your own account"]
+    b3["Sign in with GitLab or GitHub,<br/>page and comments behind Vercel's login,<br/>the Claude Code plugin: a file, the service link,<br/>GitHub Pages, GitLab Pages"]
+    b1 --> b2 --> b3
   end
   subgraph next ["Next"]
     direction TB
-    n6["First real review round, two reviewers (#6)"]
-    nv["The plain Vercel channel in the plugin"]
-    nn["Publish to npm"]
-    n6 --> nv --> nn
+    n1["First real review round, two reviewers (#6)"]
+    n2["Vercel in the plugin"]
+    n3["Publish to npm"]
+    n1 --> n2 --> n3
   end
   subgraph parked ["Parked until it can be tested"]
     direction TB
-    k2["Slack mirror, MCP server, phone mode, the four sign-in spikes (#2)"]
-    k7["Safari (#7)"]
-    k8["Overlay polish (#8)"]
-    kl["Later ports: Slack sign-in on Vercel, S3 and Firebase with SSO, Cloudflare Access, GitHub Pages on Enterprise Cloud, self-hosting"]
+    k1["Slack mirror, MCP server, phone mode,<br/>the four sign-in tests (#2), Safari (#7), overlay polish (#8)"]
+    k2["Later ports: Okta, Entra and Google sign-in,<br/>S3 and Firebase with SSO, Cloudflare Access, self-hosting"]
   end
   built --> next --> parked
 ```
