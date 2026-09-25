@@ -2,7 +2,9 @@
 
 What is built, what comes next, and what is parked, as of 2026-09-25. The diagram is Mermaid, which GitHub draws in
 place; each node names its issue, and the list below carries the links and the detail. The README keeps a five-line
-summary and points here, so this is the one place the list lives.
+summary and points here, so this is the one place the list lives. "Walked" below means tried by hand, end to end, with
+real accounts on a real host, not only by the test suite; the "spikes" are four one-day tests of what sign-in inside a
+company has to survive.
 
 ```mermaid
 flowchart LR
