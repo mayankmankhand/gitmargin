@@ -32,6 +32,16 @@ reviewer receives a prototype in part 1. For a plain file, nothing here starts a
 | `tests/plugin.test.js` | node:test | the Claude Code plugin (issue #16): `scripts/sync-plugin.js` copies only what git would commit, `--check` catches drift, and a copy of `plugin/` outside the repository runs `gitmargin` through its launcher. Its last test fails whenever `plugin/` is out of date with the sources: run `npm run build:plugin` |
 | `tests/plugin-evals/README.md` | by hand, `claude -p` | the plugin's three skills (issue #16): the headless scenarios that proved them, what each must show, and how to rerun them without touching real accounts |
 | `tests/publish-branch.test.js` | node:test | `gitmargin-publish` (issue #16) against a local bare repository and a stand-in `gh`: the `gitmargin-pages` branch, the author's checkout left untouched, and every refusal before a push |
+| `tests/cli-proof.test.js` | node:test | the proof of trust from the CLI's side (issue #33): hostile, relaying and redirecting servers never receive the author secret, the proof is bound to the dialed host, and oversized or silent answers are refused |
+| `tests/cli-secret.test.js` | node:test | where the author secret comes from (issue #36): `GITMARGIN_SECRET`, else the secret file, with its mode, size and shape checks, in a scratch config folder |
+| `tests/setup.test.js` | node:test | the author's one-command setup (issue #36) against the stand-in `vercel` in `tests/helpers/fake-vercel.cjs`: login, project, database, secret, deploy and the proof check, every refusal, and nothing of gitmargin's reaching the child |
+| `tests/sha256.test.js` | node:test | the overlay's synchronous SHA-256 against Node's `crypto` |
+| `tests/gitlab-claims-check.test.js` | node:test | the owner's manual GitLab probe (`scripts/gitlab-claims-check.mjs`): it prints claim names and never a secret, a code, a token or a person's name |
+| `tests/sync-identity.test.js` | node:test | `src/overlay/sync.js` with sign-in on (issue #18): passes, the fail-safe for an overlay from before sign-in, and tab-only storage on a disk page |
+| `tests/pull-fields.test.js` | node:test | every field of a comment folds onto its line in the markdown `pull` prints, whatever line endings it carries (review of #30) |
+| `tests/export-fields.spec.js` | Playwright | the same fold in the overlay's Copy for author, on a comment carried by the embedded block |
+| `tests/attach-link.test.js` | node:test | `attach` refuses a symbolic link at its output name and leaves the link's target alone |
+| `tests/sync-shared-origin.test.js` | node:test | which hosts count as shared browser storage for the sign-in pass (GitHub Pages, GitLab Pages) |
 | `tests/publish-gitlab.test.js` | node:test | `gitmargin-publish` on GitLab Pages (issue #37) against a local bare repository and a stand-in `glab` (`tests/helpers/fake-glab.cjs`, copied from what glab 1.119.0 printed): a private project only, `public/<name>/` and a build file on the `gitmargin-pages` branch, Pages set to members only before the push and only with `--enable`, the build of this commit followed, and every refusal before any change |
 
 **The comment service in tests is the real one.** `tests/helpers/service-server.js` runs the same `route` function Vercel
