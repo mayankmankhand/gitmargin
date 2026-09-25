@@ -48,7 +48,7 @@ const isoSeconds = (d = new Date()) => d.toISOString().replace(/\.\d{3}Z$/, 'Z')
  * instructions (review R7). Folding the newlines away keeps the promise the
  * format already made, and keeps every word the reviewer wrote.
  */
-const oneLine = (text) => String(text ?? '').replace(/\r?\n/g, ' ').trim();
+const oneLine = (text) => String(text ?? '').replace(/\r\n|[\r\n\u2028\u2029]/g, ' ').trim();
 
 /** Six hex, derived from the content so the same input always yields the same id. */
 const syntheticId = (...parts) => `c_${createHash('sha256').update(parts.join('|')).digest('hex').slice(0, 6)}`;

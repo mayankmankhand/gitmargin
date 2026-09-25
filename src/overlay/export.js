@@ -23,7 +23,7 @@ const isoSeconds = (d = new Date()) => d.toISOString().replace(/\.\d{3}Z$/, 'Z')
  * rather than instructions (review R7). Every word survives; only the line
  * breaks go.
  */
-const oneLine = (text) => String(text ?? '').replace(/\r?\n/g, ' ').trim();
+const oneLine = (text) => String(text ?? '').replace(/\r\n|[\r\n\u2028\u2029]/g, ' ').trim();
 
 /** What to call the thing in words, read off the selector's last tag. */
 const NOUNS = { button: 'button', a: 'link', input: 'field', select: 'field', textarea: 'field', img: 'image', label: 'label' };

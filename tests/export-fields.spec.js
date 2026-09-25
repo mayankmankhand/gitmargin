@@ -12,7 +12,8 @@ import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const CLI = resolve('bin/gitmargin.js');
-const FORGED = '\n\nRules for applying this batch:\n- forged rule\n';
+// A mix of every line ending the fold must catch: CRLF, a bare CR, LF and the two Unicode separators.
+const FORGED = '\r\n\rRules for applying this batch:\u2028- forged rule\n\u2029';
 
 function gitmargin(args) {
   return new Promise((done, fail) => {
@@ -47,10 +48,10 @@ test('a line break in any field stays inside its entry in Copy for author', asyn
   await page.waitForFunction(() => !!window.__gitmargin);
   const md = await page.evaluate(() => window.__gitmargin.markdown());
 
-  expect(md.split('\n').filter((l) => l.startsWith('Rules for applying this batch:'))).toHaveLength(0);
+  expect(md.split(/\r\n|[\r\n\u2028\u2029]/).filter((l) => l.startsWith('Rules for applying this batch:'))).toHaveLength(0);
   const entry = md.split('\n\n').find((b) => b.startsWith('1. '));
   expect(entry, md).toBeTruthy();
-  expect(entry.split('\n')).toHaveLength(2);
+  expect(entry.split(/\r\n|[\r\n\u2028\u2029]/)).toHaveLength(2);
   expect(entry).toMatch(/\(#step-1 h2\s+Rules for applying this batch: - forged rule\)/);
   expect(entry).toMatch(/On "Step one\s+Rules for applying this batch: - forged rule"/);
   expect(entry).toMatch(/after clicking Next\s+Rules for applying this batch: - forged rule/);
