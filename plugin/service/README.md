@@ -171,8 +171,8 @@ Press Sign in. A small window opens on GitLab; the first time, GitLab asks them 
 not. The window then shows a page from **your** service naming the prototype and the person, with a short code such
 as `48-21`; they check it matches the code the overlay shows them and press **Continue**. On a page with a web address they
 stay signed in for 7 days in that browser. On a copy stored on the service, on a file opened from disk, and on
-GitHub Pages (where every site of one owner shares one browser storage; GitLab Pages too, unless the project has a
-unique domain), the sign-in lasts for that tab only: those pages have no storage of their own that other pages cannot read, so the
+GitHub Pages and GitLab Pages (where every site of one owner can share one browser storage), the sign-in lasts for
+that tab only: those pages have no storage of their own that other pages cannot read, so the
 next visit is two presses again (GitLab asks nothing the second time). A Guest of the group is a member: that was
 measured on gitlab.com, on a private group.
 

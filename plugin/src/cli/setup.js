@@ -244,7 +244,7 @@ export async function runSetup(io) {
   if (installed.missing) say(`Vercel's command-line tool is not installed, so this uses it through npx (${VERCEL_PINNED}).`);
   const vercel = async (args, options = {}) => {
     const answer = await run(command, [...prefix, ...args], { env: base, ...options });
-    if (answer.missing) throw new CliError('Neither vercel nor npx is installed.', EXIT_REFUSED, 'Install Node.js 18 or newer (it brings npx), then run this again.');
+    if (answer.missing) throw new CliError('Neither vercel nor npx is installed.', EXIT_REFUSED, 'Install Node.js 20 or newer (it brings npx), then run this again.');
     return answer;
   };
 
