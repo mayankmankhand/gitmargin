@@ -196,7 +196,12 @@ test('open state lives through a rebuild: the thread and the sheet stay open, an
 test('Escape closes one layer at a time: the thread, then the sheet, then comment mode', async ({ page }, testInfo) => {
   await open(page, await attached(testInfo, 'onboarding.html'));
   await comment(page, '#step-1 h2', 'Layers.');
+  // The badge's tooltip says what it does and follows the sheet's state, since
+  // a click toggles it (issue #30, F2). Its accessible name stays the count.
+  const badge = page.locator('.gm-badge');
+  await expect(badge).toHaveAttribute('title', '1 comment. Opens the comments list; Escape closes it.');
   await page.click('.gm-badge');
+  await expect(badge).toHaveAttribute('title', '1 comment. Closes the comments list.');
   await page.click('.gm-card');
   await page.click('.gm-switch');
   await expect(page.locator('.gm-thread')).toBeVisible();
@@ -205,6 +210,7 @@ test('Escape closes one layer at a time: the thread, then the sheet, then commen
   await expect(page.locator('.gm-sheet')).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.locator('.gm-sheet')).toBeHidden();
+  await expect(badge).toHaveAttribute('title', '1 comment. Opens the comments list; Escape closes it.');
   expect(await page.evaluate(() => window.__gitmargin.ui.isCommentMode())).toBe(true);
   await page.keyboard.press('Escape');
   expect(await page.evaluate(() => window.__gitmargin.ui.isCommentMode())).toBe(false);
