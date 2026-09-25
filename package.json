@@ -14,7 +14,7 @@
   },
   "homepage": "https://github.com/mayankmankhand/gitmargin#readme",
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
   "scripts": {
     "build": "esbuild src/overlay/index.js --bundle --minify --format=iife --target=es2020 --loader:.css=text --outfile=dist/gitmargin.js",

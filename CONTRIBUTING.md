@@ -4,7 +4,7 @@ gitmargin puts Google-Docs-style comments on HTML prototypes and turns them into
 
 ## Build it
 
-You need Node.js 18 or newer and git. Nothing is on npm yet, so everything runs from a clone:
+You need Node.js 20 or newer and git (Playwright, which the tests use, needs 20). Nothing is on npm yet, so everything runs from a clone:
 
 ```bash
 git clone https://github.com/mayankmankhand/gitmargin.git
@@ -33,7 +33,7 @@ The pieces:
 npm run build:plugin
 ```
 
-If you forget, the last test in `tests/plugin.test.js` fails and names the file that drifted. Everything else in `plugin/` is written by hand: the manifest in `plugin/.claude-plugin/`, the two shell launchers in `plugin/bin/`, the scripts in `plugin/scripts/`, and the skills.
+If you forget, the last test in `tests/plugin.test.js` fails and names the file that drifted. The same rule is why Dependabot watches only the root and the workflow: the service's one dependency is updated by hand (`npm update` in `service/`), then `npm run build:plugin` and a version bump, which is what ships it. Everything else in `plugin/` is written by hand: the manifest in `plugin/.claude-plugin/`, the two shell launchers in `plugin/bin/`, the scripts in `plugin/scripts/`, and the skills.
 
 ## Test it
 
