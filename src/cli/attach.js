@@ -10,7 +10,7 @@
 // <script src> pointing at anything would arrive broken.
 
 import { createHash } from 'node:crypto';
-import { readFileSync, statSync, writeFileSync } from 'node:fs';
+import { lstatSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CliError, EXIT_OK, EXIT_REFUSED, EXIT_USAGE, replaceOnce } from './errors.js';
@@ -108,6 +108,31 @@ export function isSameFile(a, b) {
     return left.dev === right.dev && left.ino === right.ino;
   } catch {
     return false;
+  }
+}
+
+/**
+ * Refuse a symbolic link at the output name. A cloned project can carry a link
+ * under the copy's name, and writing "the copy" would then overwrite whatever
+ * the link points at, while the command says the source is untouched
+ * (security audit of #30, R4). Checked before any service call, so a refusal
+ * registers nothing. A hard link is the same inode as its target and is caught
+ * by isSameFile only when that target is the source; a hard link elsewhere is
+ * the author's own file to overwrite, as any existing copy is.
+ */
+export function refuseLink(outPath) {
+  let info;
+  try {
+    info = lstatSync(outPath);
+  } catch {
+    return; // No output file yet, which is the normal first attach.
+  }
+  if (info.isSymbolicLink()) {
+    throw new CliError(
+      `${path.basename(outPath)} is a link, not a file, so nothing is written through it.`,
+      EXIT_REFUSED,
+      'Remove the link, or attach from another folder. Nothing was written.'
+    );
   }
 }
 
@@ -291,6 +316,7 @@ export function prepareAttach(source) {
 
   const html = bytes.toString('utf8');
   const outPath = path.join(path.dirname(source), outputNameFor(path.basename(source)));
+  refuseLink(outPath);
 
   // `outputNameFor` is idempotent, so an already-attached copy names itself as
   // its own output. Writing there would modify the file we were handed, and
