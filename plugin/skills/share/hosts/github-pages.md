@@ -21,7 +21,7 @@ If Pages already serves a different branch or folder, do not touch it: offer the
 Wrap, then publish the wrapped copy. `<name>` is the prototype's file name without `.html`.
 
 ```bash
-gitmargin attach <prototype.html> --service <address> --require-trusted
+gitmargin attach <prototype.html> --service <address>
 gitmargin-publish <name>.gitmargin.html --folder <name> --enable
 ```
 

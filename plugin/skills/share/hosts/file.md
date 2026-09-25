@@ -22,10 +22,8 @@ Each reviewer's comments are separate, and they come back only when the reviewer
 ## With a comment service
 
 ```bash
-gitmargin attach <prototype.html> --service <address> --require-trusted
+gitmargin attach <prototype.html> --service <address>
 ```
-
-(Without `--require-trusted` only for an address the author typed or confirmed in this conversation; see step 3 of the skill.)
 
 Everyone who opens the same file now sees the same comments, live, and can reply. Tell the author the same as above, except that nothing needs to be sent back: "ask me what reviewers said" reads the comments from the service.
 

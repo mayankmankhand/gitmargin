@@ -11,7 +11,7 @@ import { memoryDatabase } from './helpers/service-server.js';
 // store.js reads `location.pathname` for its storage key; Node has no location.
 globalThis.location = { pathname: '/proto.gitmargin.html' };
 
-const SECRET = 'sync-test-secret-0123456789';
+const SECRET = 'sync-test-secret-0123456789-abcdefghij';
 const SERVICE = 'https://comments.example';
 let instance = 0;
 

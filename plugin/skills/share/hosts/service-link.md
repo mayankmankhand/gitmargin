@@ -5,10 +5,8 @@ The author's comment service keeps a copy of each version of the page and serves
 ## Publish
 
 ```bash
-gitmargin attach <prototype.html> --service <address> --require-trusted
+gitmargin attach <prototype.html> --service <address>
 ```
-
-(Without `--require-trusted` only for an address the author typed or confirmed in this conversation.)
 
 The command's messages (stderr) end with the line to hand over:
 
@@ -30,5 +28,5 @@ Run the same command after the prototype changed. It makes a new version at the 
 
 ## When it stops working
 
-- `Refusing to use ... has not used that service before`: the address is not trusted on this machine. Ask the author (step 3 of the skill).
-- A network error or `503`: the service is down or its database is not connected. `curl -s <address>/api/ping` shows which; see [../setup-service.md](../setup-service.md), "If the check fails".
+- `Refusing to send your author secret`: the service could not prove it holds this computer's secret, or it is from before the proof of trust. See step 3 of the skill.
+- A network error or `503`: the service is down or its database is not connected. Hand over the setup line ([../setup-service.md](../setup-service.md)): running it again checks the service and connects a missing database.

@@ -183,6 +183,18 @@
 - **When the page's structure cannot tell two cases apart, keep the measured case fixed and document the other.**
 - **Run long suites in the foreground, in halves: a background run dies with the session, and a second suite on the machine fails browsers at start-up.**
 
+### gitmargin: one-line setup and trust by proof (issues #33 and #36, 2026-09-24)
+- **A check that insists on a terminal is a speed bump, not a lock: guard the secret with something no terminal trick can answer.**
+- **When an agent types the commands, "typed by the author" proves nothing: make the address prove it holds the secret.**
+- **A vendor CLI can behave differently when it detects an agent: Vercel sends Neon's terms to the browser only when an agent runs it.**
+- **A proxy that forwards with `fetch` rewrites the Host header; use `http.request` when the service signs over Host.**
+- **A plugin whose version never moves never updates for anyone who installed it.**
+- **When a change removes a step, look for the old way that still overrides the new one.**
+- **When a rewrite drops a step, check everything that step did.**
+- **A hang guard sized on a quiet machine flakes on a loaded full-suite run.**
+- **A subagent's scratch script can write into the repository: tell it where temp files go, and check git status after a workflow.**
+- **A saved Vercel login can expire quietly; one read-only `vercel whoami` renews it.**
+
 ## Mistakes to Avoid
 
 - **Fill a plan's Outcomes by replacing the template placeholder, not inserting above it.**

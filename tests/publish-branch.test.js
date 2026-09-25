@@ -28,6 +28,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isSafeFolder, pageLink, parseGitHubRemote, readStamp } from '../plugin/scripts/publish-branch.mjs';
+import { secretSpies } from './helpers/secret-spy.js';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const SCRIPT = path.join(ROOT, 'plugin', 'scripts', 'publish-branch.mjs');
@@ -752,4 +753,22 @@ test('an errored build is an error, a timeout is not, and --wait 0 does not wait
   assert.equal(JSON.parse(quick.out).build, 'pending');
   assert.equal(buildCalls(w).length, callsBefore, 'no build call at all');
   assert.match(quick.err, /can show a 404/);
+});
+
+
+test('git and gh never receive the author secret or the Vercel bypass, and the spies did run (#33)', (t) => {
+  const w = world(t);
+  const spies = path.join(w.base, 'spies');
+  const seen = secretSpies(spies, ["git","gh"], path.join(w.base, 'spies.log'), w.env.PATH);
+  const r = run(w, [attached(w, 'one', 'first'), '--folder', 'one'], {
+    env: {
+      PATH: [spies, w.env.PATH].join(path.delimiter),
+      GITMARGIN_SECRET: 'an-author-secret-that-must-stay-home-0123',
+      GITMARGIN_VERCEL_BYPASS: 'a-bypass-value-that-must-stay-home',
+    },
+  });
+  assert.equal(r.code, 0, r.err);
+  const lines = seen();
+  for (const name of ["git","gh"]) assert.ok(lines.includes(`${name} clean`), `${name} ran through its spy: ${lines.join(', ')}`);
+  assert.deepEqual(lines.filter((line) => line.endsWith(' leaked')), []);
 });

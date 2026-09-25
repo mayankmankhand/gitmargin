@@ -15,7 +15,7 @@ Reviewers install nothing. They open a link or a file, click **Comment**, click 
 - **Claude Code.**
 - **Node.js 18 or newer** (`node --version`). The plugin's commands run on Node, and so does Vercel's command-line tool.
 - **Git, and access to this repository while it is private.** Claude Code installs the plugin with your own git login for github.com. The simplest way: install GitHub's command-line tool `gh`, then run `gh auth login` and `gh auth setup-git` once.
-- **For comments everyone sees live** (the service link, GitHub Pages and GitLab Pages below): a free [Vercel](https://vercel.com) account. Claude sets up your comment service in it the first time; see [Your comment service](#your-comment-service-once).
+- **For comments everyone sees live** (the service link, GitHub Pages and GitLab Pages below): a free [Vercel](https://vercel.com) account. You set up your comment service in it with one command, the first time; see [Your comment service](#your-comment-service-once).
 - **For GitHub Pages:** a public GitHub repository, and `gh` logged in.
 - **For GitLab Pages:** a private project on gitlab.com where you are a Maintainer or Owner, and GitLab's command-line tool `glab` ([install it](https://gitlab.com/gitlab-org/cli#installation)) logged in once with `glab auth login --hostname gitlab.com`. Each reviewer needs a gitlab.com account that is a member of the project or its group.
 
@@ -28,7 +28,7 @@ In Claude Code, type:
 /plugin install gitmargin@gitmargin
 ```
 
-Use the `https://` address as written: the short `owner/repo` form clones over SSH, which needs an SSH key. When the plugin is installed, Claude Code's shell has two new commands, `gitmargin` and `gitmargin-publish`, and Claude knows the three skills below. Updates arrive with `/plugin update gitmargin@gitmargin`. After an update, the next `/gitmargin:share` checks whether your comment service needs deploying again, and tells you if it does.
+Use the `https://` address as written: the short `owner/repo` form clones over SSH, which needs an SSH key. When the plugin is installed, Claude Code's shell has two new commands, `gitmargin` and `gitmargin-publish`, and Claude knows the three skills below. Updates arrive with `/plugin update gitmargin@gitmargin`. After an update, the next `/gitmargin:share` checks whether your comment service needs deploying again, and if it does, gives you the one line to run.
 
 ## 1. Build a prototype
 
@@ -69,7 +69,7 @@ Claude Code asks your permission the first time Claude runs each gitmargin comma
 
 When you paste a reviewer's copied text instead of a file, Claude saves it to a temporary file next to the prototype, reads it, and deletes it: that can bring two more prompts, one to save the file and one to delete it.
 
-When Claude asks you something during a share, answer by typing the line it offers, which starts with `/gitmargin:share`. A plain "yes" works too, but Claude Code then asks your permission again for each command and for saving `.gitmargin.json` and `.gitignore`. Setting up your comment service asks a few more permissions, once: the `vercel` commands, and copying the service into `~/.config/gitmargin`, which is outside your project folder.
+When Claude asks you something during a share, answer by typing the line it offers, which starts with `/gitmargin:share`. A plain "yes" works too, but Claude Code then asks your permission again for each command and for saving `.gitmargin.json` and `.gitignore`.
 
 On some Claude Code plans, sessions start in auto mode, which shows no permission prompts at all and decides for itself.
 
@@ -91,14 +91,22 @@ Claude applies changes and fixes to the prototype itself, answers questions in i
 
 Comments that everyone sees live need a comment service: a small project in **your own** Vercel account with a free Neon database. gitmargin runs nothing and holds nothing; the comments sit in a database you own. Vercel's free plan is for non-commercial use; for company work, use a paid or team Vercel account.
 
-The first `/gitmargin:share` that needs it sets it up. Claude does the work, and stops for **four moments that are yours**:
+The first `/gitmargin:share` that needs it gives you **one line to run in a terminal window of your own**, of the kind Claude Code runs in (on Windows with WSL, the WSL Ubuntu terminal). It looks like `node "/home/you/.claude/plugins/cache/gitmargin/gitmargin/0.2.0/scripts/setup.mjs"`; Claude writes out the exact one for your machine. That line does the whole setup:
 
-1. **Log in to Vercel** (`vercel login`, in your own terminal), if you are not logged in already.
-2. **Accept Neon's terms** in your browser, from a link Claude gives you. Vercel does not let a tool accept them.
-3. **Make your secret.** Claude gives you four lines to run in your own terminal. They make a random secret in `~/.config/gitmargin/secret` (readable only by you), give it to Vercel, and add one line to your shell profile. Never paste the secret into the chat. Claude never sees it.
-4. **The first deploy** (`vercel deploy --prod`, in your own terminal). Claude Code does not deploy to a live address on its own. Paste back the address on the `Aliased` line it prints: that is your service, usually `https://<your-project>.vercel.app`.
+- It logs you in to Vercel if you are not logged in (your browser opens), shows which Vercel account it will use, and asks you once to go ahead.
+- It makes the project and adds the free Neon database. The first time on your Vercel account, Neon's terms appear as a yes or no question right there.
+- It makes your secret, a random one in `~/.config/gitmargin/secret` that only you can read, and gives it to Vercel. You never see it, copy it or paste it anywhere.
+- It deploys the service, finds its address, and checks that the service there proves it holds your secret.
 
-Then **restart Claude Code in a new terminal** (`/exit`, close the terminal, open a new one in the project folder, then `claude --continue`): the secret reaches only terminals opened after it was added. Type `/gitmargin:share` again. The service's files live in `~/.config/gitmargin/service` on your machine.
+When it says `Done`, go back to Claude Code and type `/gitmargin:share` again. Nothing needs restarting: gitmargin reads the secret from its file. Running the line again is always safe: it skips what is done and never replaces your secret without asking.
+
+One exception: an older version of this guide had you add a line to your shell profile that exports `GITMARGIN_SECRET`, and that value comes before the file. If the setup line says your terminal still sets a different one, remove that line from your profile, then open a new terminal and start Claude Code again, once.
+
+**Why a line of your own, and not Claude?** It deploys to a live address and makes your secret, and Claude Code does not do either on its own. So the line refuses to run inside Claude Code.
+
+**Why the secret only goes to a service that proves itself.** Claude types the commands, and a comment on a page, or a settings file in a project you cloned, could suggest an address. So before any gitmargin command sends your secret, it asks the service to answer a fresh challenge that only a service holding the same secret can answer, and sends nothing when the answer is wrong. An address someone else chose can never receive your secret, whoever typed it.
+
+The service's files live in `~/.config/gitmargin/service` on your machine.
 
 For sign-in, so reviewers comment under their real GitLab or GitHub name, see the service's guide for [GitLab](../service/README.md#sign-in-with-gitlab-optional-per-prototype) or [GitHub](../service/README.md#sign-in-with-github-optional-per-prototype). It is optional, set per prototype, and the plugin never asks about it.
 
@@ -107,8 +115,10 @@ For sign-in, so reviewers comment under their real GitLab or GitHub name, see th
 | What you see | What it means |
 |---|---|
 | `gitmargin: command not found` | The plugin is not installed or not enabled on this machine: run `/plugin`. |
-| "GITMARGIN_SECRET is not set" | Setup is not finished, or Claude Code started before you added the secret. Restart it from a new terminal. |
-| "this machine has not used that comment service before" | The address in `.gitmargin.json` is new to this machine. Claude asks whether it is yours; say yes only if it is. |
+| "needs the author secret" | Setup is not finished, or it ran in another kind of terminal (PowerShell instead of WSL keeps its settings elsewhere). Run the setup line Claude gives you, in the same kind of terminal Claude Code runs in. |
+| "could not prove it holds your author secret" | That address is not your service, or its secret is not the one on this computer. Nothing was sent. For your own service, run the setup line again: it offers to fix the secret. |
+| "from before the proof of trust" | Your service is older than this plugin. Run the setup line again to deploy the newer one. |
+| The setup line says "Run this in your own terminal window" | It was run inside Claude Code, or in Git Bash on Windows. Open a terminal window of your own, of the same kind Claude Code runs in (with WSL, the WSL Ubuntu terminal; on Windows without WSL, PowerShell or Windows Terminal), and run it there. |
 | The GitHub Pages link shows 404 | The first build takes a minute or two. Try again shortly. |
 | GitHub Pages is refused | The repository is private, or Pages already serves something else. Claude offers the service link instead. |
 | GitLab Pages is refused | The project is public or internal, its Pages already serves another site, its default branch's build file already publishes Pages, it reads its build file from somewhere other than `.gitlab-ci.yml`, CI/CD is off, or you are not a Maintainer or Owner. Claude says which, and offers the service link. |

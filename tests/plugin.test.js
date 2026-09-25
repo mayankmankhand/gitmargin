@@ -423,3 +423,84 @@ test('the committed plugin/ matches a build of the current tree (run npm run bui
   const result = build(['--check']);
   assert.equal(result.code, 0, `plugin/ is out of step with its sources:\n${result.out}${result.err}`);
 });
+
+// ------------------------------------- A CHANGED plugin/ SHIPS UNDER A NEW VERSION
+//
+// Claude Code pins an installed plugin to the version in its manifest: "users
+// only receive updates when you bump it" (plugins reference). 0.1.0 shipped
+// with #16 and never moved, so nothing after it, #37's GitLab channel
+// included, reached an author who had already installed the plugin (#36). The
+// last test here fails when plugin/ differs from where this branch left main
+// while the version is still main's. On main itself nothing differs, so it
+// passes; the fake-repo tests above it show it can fail.
+
+/**
+ * Where plugin/ stands against the commit this branch left origin/main from.
+ * Answers { skip } when there is nothing to compare with, otherwise
+ * { changed, before, now }: the plugin files that differ (committed,
+ * uncommitted or new, because each reaches an author only through a new
+ * version) and the manifest's version then and now.
+ */
+function pluginSinceMain(root) {
+  const git = (...args) => spawnSync('git', ['-C', root, ...args], { encoding: 'utf8' });
+  const base = git('merge-base', 'HEAD', 'origin/main');
+  if (base.status !== 0) return { skip: 'no origin/main to compare with' };
+  const sha = base.stdout.trim();
+  const then = git('show', `${sha}:plugin/.claude-plugin/plugin.json`);
+  if (then.status !== 0) return { skip: `plugin/ did not exist at ${sha.slice(0, 7)}` };
+  const lines = (result) => result.stdout.split('\n').filter(Boolean);
+  const changed = [
+    ...lines(git('diff', '--name-only', sha, '--', 'plugin/')),
+    ...lines(git('ls-files', '--others', '--exclude-standard', '--', 'plugin/')),
+  ].sort();
+  const now = JSON.parse(readFileSync(path.join(root, 'plugin', '.claude-plugin', 'plugin.json'), 'utf8')).version;
+  return { changed, before: JSON.parse(then.stdout).version, now };
+}
+
+/** A fake repo whose plugin/ is committed at `version`, with origin/main on that commit. */
+function fakeMain(t, version) {
+  const root = scratch(t, 'gitmargin-version-');
+  const git = (...args) => execFileSync('git', ['-C', root, ...args], { encoding: 'utf8' });
+  git('init', '-q', '-b', 'main');
+  put(root, 'plugin/.claude-plugin/plugin.json', `${JSON.stringify({ name: 'gitmargin', version })}\n`);
+  put(root, 'plugin/skills/share/SKILL.md', 'share\n');
+  git('add', '.');
+  git('-c', 'user.name=test', '-c', 'user.email=test@example.com', 'commit', '-q', '-m', 'main');
+  git('update-ref', 'refs/remotes/origin/main', 'HEAD');
+  return root;
+}
+
+test("fake repo: an edited or new plugin file under main's version is caught, and a bump clears it", (t) => {
+  const root = fakeMain(t, '0.1.0');
+  assert.deepEqual(pluginSinceMain(root), { changed: [], before: '0.1.0', now: '0.1.0' });
+
+  put(root, 'plugin/skills/share/SKILL.md', 'share, reworded\n'); // edited, not committed
+  put(root, 'plugin/scripts/setup.mjs', '// new\n'); // not tracked yet
+  const unbumped = pluginSinceMain(root);
+  assert.deepEqual(unbumped.changed, ['plugin/scripts/setup.mjs', 'plugin/skills/share/SKILL.md']);
+  assert.equal(unbumped.now, unbumped.before, 'the state the last test fails on');
+
+  put(root, 'plugin/.claude-plugin/plugin.json', `${JSON.stringify({ name: 'gitmargin', version: '0.2.0' })}\n`);
+  const bumped = pluginSinceMain(root);
+  assert.equal(bumped.before, '0.1.0');
+  assert.equal(bumped.now, '0.2.0');
+});
+
+test('fake repo: with no origin/main there is nothing to compare with, and the check says so', (t) => {
+  const root = fakeMain(t, '0.1.0');
+  execFileSync('git', ['-C', root, 'update-ref', '-d', 'refs/remotes/origin/main']);
+  assert.match(pluginSinceMain(root).skip, /no origin\/main/);
+});
+
+test('a change under plugin/ comes with a new version in plugin/.claude-plugin/plugin.json', (t) => {
+  const state = pluginSinceMain(ROOT);
+  if (state.skip) return t.skip(state.skip);
+  if (!state.changed.length) return;
+  const named = state.changed.slice(0, 5).join(', ') + (state.changed.length > 5 ? `, and ${state.changed.length - 5} more` : '');
+  assert.notEqual(
+    state.now,
+    state.before,
+    `plugin/ changed since main (${named}) but its version is still ${state.before}. Bump "version" in ` +
+      'plugin/.claude-plugin/plugin.json: an installed plugin updates only when its version changes.',
+  );
+});

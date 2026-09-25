@@ -12,9 +12,10 @@
 //
 // Node and nothing else: `fetch` is built in from Node 18.
 
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { closeSync, constants as fsConstants, existsSync, fstatSync, mkdirSync, openSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { CliError, EXIT_OK, EXIT_REFUSED, EXIT_USAGE } from './errors.js';
 import { attachToHtml, hashOf, prepareAttach, readStamp } from './attach.js';
@@ -24,20 +25,108 @@ const STATUSES = ['open', 'accepted', 'rejected', 'applied'];
 /** Under Vercel's 4.5 MB request limit, with room for headers. */
 const MAX_UPLOAD_BYTES = 4_400_000;
 
-/** The author secret comes from the environment and from nowhere else. */
-function secret() {
-  const value = process.env.GITMARGIN_SECRET;
-  if (!value) {
-    throw new CliError(
-      'This command needs the author secret of your comment service.',
-      EXIT_USAGE,
-      'Set GITMARGIN_SECRET to the value you gave the service when you deployed it.'
-    );
-  }
-  return value;
+/** gitmargin's settings folder: GITMARGIN_CONFIG_DIR, or ~/.config/gitmargin. */
+export const configDir = () => process.env.GITMARGIN_CONFIG_DIR || path.join(os.homedir(), '.config', 'gitmargin');
+
+/** Where the author secret is kept when GITMARGIN_SECRET is not set (issue #36). */
+export const secretFile = () => path.join(configDir(), 'secret');
+
+/**
+ * The author secret's bounds (issue #33). The service signs a proof with it
+ * for anyone who asks, so a short one could be guessed offline from a proof;
+ * the setup command makes 43 characters.
+ */
+export const MIN_SECRET_LENGTH = 32;
+const MAX_SECRET_LENGTH = 256;
+const MAX_SECRET_FILE_BYTES = 4096;
+
+/** Why a secret cannot be used, or null. Names where it came from, never the value. */
+export function secretShapeProblem(value, where) {
+  if (/\s/.test(value)) return `${where} has a space or a line break inside the secret.`;
+  if (value.length < MIN_SECRET_LENGTH) return `${where} holds a secret shorter than ${MIN_SECRET_LENGTH} characters.`;
+  if (value.length > MAX_SECRET_LENGTH) return `${where} holds more than ${MAX_SECRET_LENGTH} characters, more than a secret.`;
+  return null;
 }
 
-function cleanAddress(value) {
+/**
+ * Read the secret file, or say why not. It is opened without blocking and
+ * checked through the open handle, so a pipe or a device put in its place is
+ * refused instead of waited on, and nothing can be swapped in between the
+ * check and the read.
+ */
+export function readSecretFile(file) {
+  let fd;
+  try {
+    fd = openSync(file, fsConstants.O_RDONLY | (fsConstants.O_NONBLOCK || 0));
+  } catch (error) {
+    if (error.code === 'ENOENT') return { value: null, problem: null };
+    return { value: null, problem: `${file} cannot be read (${error.code || error.message}).` };
+  }
+  try {
+    const info = fstatSync(fd);
+    if (!info.isFile()) return { value: null, problem: `${file} is not a plain file.` };
+    if (info.size > MAX_SECRET_FILE_BYTES) return { value: null, problem: `${file} is larger than a secret can be.` };
+    // Mode bits mean nothing on Windows. Elsewhere, a secret the other users
+    // of the computer can read is not a secret.
+    if (process.platform !== 'win32' && info.mode & 0o077) {
+      return { value: null, problem: `${file} can be read by other users of this computer. Fix it with: chmod 600 ${file}` };
+    }
+    // A BOM and one final line break are what an editor or `echo` adds, and
+    // Vercel strips the same line break when it stores a value. Nothing else
+    // is trimmed: the value must stay the exact characters the service holds.
+    const value = readFileSync(fd, 'utf8').replace(/^\uFEFF/, '').replace(/\r?\n$/, '');
+    if (!value) return { value: null, problem: `${file} is empty.` };
+    const problem = secretShapeProblem(value, file);
+    // `short` lets the setup command offer a new secret instead of stopping.
+    return problem ? { value: null, problem, short: !/\s/.test(value) && value.length < MIN_SECRET_LENGTH } : { value, problem: null };
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/**
+ * The author secret and where it came from: GITMARGIN_SECRET when it is set
+ * and not empty, otherwise the secret file. A file needs no profile line, so
+ * nothing has to restart after setup (issue #36). Answers
+ * { value, from: 'environment' | 'file', problem: null }, or
+ * { value: null, from: null, problem } where problem is null when there is
+ * simply no secret yet. The value is never printed anywhere.
+ */
+export function resolveSecret() {
+  const env = process.env.GITMARGIN_SECRET;
+  if (env) {
+    const problem = secretShapeProblem(env, 'GITMARGIN_SECRET');
+    return problem ? { value: null, from: null, problem } : { value: env, from: 'environment', problem: null };
+  }
+  const file = readSecretFile(secretFile());
+  return file.value ? { value: file.value, from: 'file', problem: null } : { value: null, from: null, problem: file.problem };
+}
+
+let warnedTwoSecrets = false;
+
+/** The author secret for a command that needs it, or a refusal before anything is sent. */
+function secret() {
+  const found = resolveSecret();
+  if (!found.value) {
+    throw new CliError(
+      found.problem ? `The author secret cannot be used: ${found.problem}` : 'This command needs the author secret of your comment service.',
+      EXIT_USAGE,
+      `It is read from GITMARGIN_SECRET, or when that is not set, from ${secretFile()}. Nothing was sent.`
+    );
+  }
+  if (found.from === 'environment' && !warnedTwoSecrets) {
+    // An old profile line can keep exporting a secret the file has moved on
+    // from. The environment still wins; say so, without either value.
+    const file = readSecretFile(secretFile());
+    if (file.value && file.value !== found.value) {
+      warnedTwoSecrets = true;
+      process.stderr.write(`Note: GITMARGIN_SECRET and ${secretFile()} hold different secrets; using GITMARGIN_SECRET.\n`);
+    }
+  }
+  return found.value;
+}
+
+export function cleanAddress(value) {
   let url;
   try {
     url = new URL(String(value));
@@ -45,30 +134,36 @@ function cleanAddress(value) {
     throw new CliError(`Not a web address: ${value}`, EXIT_USAGE, 'Try: --service https://your-service.vercel.app');
   }
   if (!/^https?:$/.test(url.protocol)) throw new CliError(`Not a web address: ${value}`, EXIT_USAGE);
+  // A final dot names the same host to DNS but a different one to the proof of
+  // trust, which compares spellings: ask for the ordinary one.
+  if (url.hostname.endsWith('.')) {
+    throw new CliError(`Write the address without the final dot: ${value}`, EXIT_USAGE, `Try: ${url.protocol}//${url.hostname.replace(/\.+$/, '')}`);
+  }
   return url.origin;
 }
 
 /**
- * Where the author secret may go.
- *
- * `status`, `remove` and a bare `attach --service` learn the service's address
- * from a FILE: the attached copy. A copy that came back from a reviewer can name
- * any address, and the secret used to follow it there (review of the #15 cycle,
- * R1). So the secret goes only to an address the author has typed on a command
- * line themselves, which `attach --service <address>` remembers here, or named
- * in GITMARGIN_SERVICE. The list lives outside the repo and holds no secret.
+ * The comment services this machine has seen prove themselves, plus the one
+ * named in GITMARGIN_SERVICE. Since the proof of trust (issue #33) this list
+ * decides nothing about the secret: an agent can write this file or set that
+ * variable, so every request that carries the secret is proven first,
+ * whatever the list says. It is what `services` reports and what
+ * `--require-trusted` checks. It lives outside the repo and holds no secret.
  */
-const trustFile = () =>
-  path.join(process.env.GITMARGIN_CONFIG_DIR || path.join(os.homedir(), '.config', 'gitmargin'), 'trusted-services.json');
+const trustFile = () => path.join(configDir(), 'trusted-services.json');
+
+function savedAddresses() {
+  try {
+    const saved = JSON.parse(readFileSync(trustFile(), 'utf8'));
+    return Array.isArray(saved) ? saved.filter((a) => typeof a === 'string') : [];
+  } catch {
+    return [];
+  }
+}
 
 function trustedAddresses() {
   const named = process.env.GITMARGIN_SERVICE ? [cleanAddress(process.env.GITMARGIN_SERVICE)] : [];
-  try {
-    const saved = JSON.parse(readFileSync(trustFile(), 'utf8'));
-    return named.concat(Array.isArray(saved) ? saved.filter((a) => typeof a === 'string') : []);
-  } catch {
-    return named;
-  }
+  return named.concat(savedAddresses());
 }
 
 /**
@@ -79,7 +174,7 @@ const SERVICE_SOURCE = fileURLToPath(new URL('../../service', import.meta.url));
 /** Never compared and never read: Vercel's link, installs, tests, the Neon installer's guide files, and (by prefix) every .env file. */
 const SERVICE_SKIP = new Set(['.vercel', 'node_modules', 'tests', '.agents', '.claude', 'skills-lock.json']);
 
-function serviceFiles(root, rel = '') {
+export function serviceFiles(root, rel = '') {
   const found = [];
   for (const entry of readdirSync(path.join(root, rel), { withFileTypes: true })) {
     if (SERVICE_SKIP.has(entry.name) || entry.name.startsWith('.env')) continue;
@@ -114,6 +209,23 @@ function serviceCopyState(configDir) {
 }
 
 /**
+ * The line that runs the setup command, for the author to paste into their own
+ * terminal (issue #36): next to this command line in the plugin, under
+ * plugin/ in a clone. Written with an absolute path because a plugin's
+ * commands are on PATH only inside Claude Code. null when neither exists.
+ */
+function setupCommand() {
+  for (const rel of ['../../scripts/setup.mjs', '../../plugin/scripts/setup.mjs']) {
+    const file = fileURLToPath(new URL(rel, import.meta.url));
+    if (!existsSync(file)) continue;
+    // Double quotes read the same in bash, zsh and PowerShell; a path they would
+    // expand goes in single quotes instead.
+    return /["$`\\]/.test(file) ? `node '${file.replace(/'/g, "'\\''")}'` : `node "${file}"`;
+  }
+  return null;
+}
+
+/**
  * `gitmargin services [--json]`: what this machine knows about comment
  * services, read-only (issue #16). The Claude Code plugin asks this before a
  * first share: to propose the service link when the author already has a
@@ -124,11 +236,16 @@ function serviceCopyState(configDir) {
 export function listServices(args) {
   const unknown = args.filter((a) => a !== '--json');
   if (unknown.length) throw new CliError(`Unknown option: ${unknown[0]}`, EXIT_USAGE, 'Try: gitmargin services --json');
+  const found = resolveSecret();
   const answer = {
-    configDir: path.dirname(trustFile()),
+    configDir: configDir(),
     trusted: [...new Set(trustedAddresses())],
     fromEnvironment: process.env.GITMARGIN_SERVICE ? cleanAddress(process.env.GITMARGIN_SERVICE) : null,
-    secretSet: Boolean(process.env.GITMARGIN_SECRET),
+    secretSet: Boolean(found.value),
+    // Where the secret came from, and why it cannot be used when it cannot.
+    secretFrom: found.from,
+    secretProblem: found.problem,
+    setupCommand: setupCommand(),
   };
   answer.serviceCopy = serviceCopyState(answer.configDir);
   if (args.includes('--json')) {
@@ -140,7 +257,13 @@ export function listServices(args) {
       'Comment services this machine trusts:\n' +
       (answer.trusted.length ? answer.trusted.map((a) => `  ${a}\n`).join('') : '  (none)\n') +
       `GITMARGIN_SERVICE: ${answer.fromEnvironment || 'not set'}\n` +
-      `Author secret (GITMARGIN_SECRET): ${answer.secretSet ? 'set' : 'not set'}\n` +
+      (answer.secretFrom === 'environment'
+        ? 'Author secret (GITMARGIN_SECRET): set\n'
+        : answer.secretFrom === 'file'
+          ? `Author secret (${secretFile()}): set\n`
+          : answer.secretProblem
+            ? `Author secret: cannot be used. ${answer.secretProblem}\n`
+            : `Author secret (GITMARGIN_SECRET or ${secretFile()}): not set\n`) +
       `Service copy in ${path.join(answer.configDir, 'service')}: ${
         {
           none: 'none yet',
@@ -153,18 +276,30 @@ export function listServices(args) {
   return EXIT_OK;
 }
 
+/** Called only after a passing proof. An address already listed, or named in GITMARGIN_SERVICE, is left as it is. */
 function rememberAddress(address) {
   if (trustedAddresses().includes(address)) return;
   try {
     mkdirSync(path.dirname(trustFile()), { recursive: true, mode: 0o700 });
-    writeFileSync(trustFile(), `${JSON.stringify(trustedAddresses().concat(address), null, 2)}\n`, { mode: 0o600 });
+    writeFileSync(trustFile(), `${JSON.stringify(savedAddresses().concat(address), null, 2)}\n`, { mode: 0o600 });
   } catch {
-    // Not being able to remember costs a retyped address later, nothing more.
+    // Not being able to remember costs a line in `services`, nothing more.
   }
 }
 
-/** Refuse to send the secret anywhere the author did not choose, or in the clear. */
-function assertSecretMayGo(address, { typed }) {
+/** After a failed proof: the address is not this author's service, so it leaves the list. */
+function forgetAddress(address) {
+  const saved = savedAddresses();
+  if (!saved.includes(address)) return;
+  try {
+    writeFileSync(trustFile(), `${JSON.stringify(saved.filter((a) => a !== address), null, 2)}\n`, { mode: 0o600 });
+  } catch {
+    // The next proof refuses it again, so a stale entry costs nothing.
+  }
+}
+
+/** The secret may only travel over https, or to this computer itself. */
+function assertSecretMayGo(address) {
   const { protocol, hostname } = new URL(address);
   const loopback = ['localhost', '127.0.0.1', '[::1]'].includes(hostname);
   if (protocol !== 'https:' && !loopback) {
@@ -174,38 +309,182 @@ function assertSecretMayGo(address, { typed }) {
       'Nothing was sent.'
     );
   }
-  if (typed || trustedAddresses().includes(address)) return;
-  throw new CliError(
-    `Refusing to send your author secret to ${address}: that address came from the file, and you have never attached to it yourself.`,
-    EXIT_REFUSED,
-    'Nothing was sent. If a reviewer sent this file back, use your own attached copy instead.\n' +
-      `If the address is right: gitmargin attach <prototype.html> --service ${address}, or set GITMARGIN_SERVICE=${address}`
-  );
 }
 
-/** Addresses the author typed on this command line, this run. */
-const typedNow = new Set();
+/**
+ * The proof of trust (issue #33; service/API.md, "The proof of trust").
+ *
+ * The secret used to go to any address typed on the command line, because the
+ * author was the one typing. Under the Claude Code plugin, Claude types the
+ * commands, and a hostile comment or a cloned project's settings can suggest
+ * an address. So before any request that carries the secret, the service must
+ * answer a fresh challenge with an HMAC keyed by that secret, which this
+ * command computes over the host it dialed. Only a service that already holds
+ * the secret can answer; one that forwards the challenge to the real service
+ * gets back a proof over the real host, which does not match. Nothing else
+ * unlocks the secret: not a typed address, not the saved list, not
+ * GITMARGIN_SERVICE, because an agent can write or set every one of them.
+ */
+const PROOF_LABEL = 'gitmargin-prove-v1';
+const PROOF_TIMEOUT_MS = 10_000;
+const PROOF_MAX_BYTES = 4096;
+/** Addresses proven during this run, by the exact string every request uses. */
+const proven = new Set();
+
+/** The host the way the service spells it (proofHost in service/src/router.js). */
+const dialedHost = (address) => new URL(address).host.toLowerCase().replace(/:(443|80)$/, '');
+
+/** At most `cap` bytes of a response's body, or null past that. */
+async function readCapped(response, cap) {
+  if (!response.body) return '';
+  const reader = response.body.getReader();
+  const chunks = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > cap) {
+      await reader.cancel().catch(() => {});
+      return null;
+    }
+    chunks.push(Buffer.from(value));
+  }
+  return Buffer.concat(chunks).toString('utf8');
+}
+
+/** A server's own words, safe to print: anything but plain printable characters becomes "?". */
+const printable = (text) => String(text).slice(0, 200).replace(/[^\x20-\x7e]/g, '?');
+
+function notProven(address, kind, why, hint = '') {
+  const refusal = new CliError(`Refusing to send your author secret to ${address}: ${why}`, EXIT_REFUSED, `${hint ? `${hint}\n` : ''}Nothing was sent.`);
+  refusal.proof = kind; // what the setup command branches on: 'mismatch', 'weak_secret', 'no_secret', ...
+  return refusal;
+}
+
+/** Ask the service at `address` to prove it holds `secretValue`. Refuses, having sent nothing, unless it does. */
+export async function proveService(address, secretValue, { again = false } = {}) {
+  if (proven.has(address) && !again) return;
+  const host = dialedHost(address);
+  const challenge = randomBytes(32).toString('hex');
+  const bypass = bypassFor(address);
+  let status;
+  let location;
+  let text;
+  try {
+    const response = await fetch(`${address}/api/prove`, {
+      method: 'POST',
+      // No authorization header: the secret is what this is deciding about.
+      headers: { 'content-type': 'application/json', ...bypass },
+      body: JSON.stringify({ challenge }),
+      // A redirect changes who is answering, so it is never followed.
+      redirect: 'manual',
+      signal: AbortSignal.timeout(PROOF_TIMEOUT_MS),
+    });
+    status = response.status;
+    location = String(response.headers.get('location') || '');
+    text = await readCapped(response, PROOF_MAX_BYTES);
+  } catch (error) {
+    if (error && (error.name === 'TimeoutError' || error.name === 'AbortError')) {
+      throw notProven(address, 'timeout', `it did not answer within ${PROOF_TIMEOUT_MS / 1000} seconds.`);
+    }
+    const unreachable = new CliError(`Could not reach the comment service at ${address}.`, EXIT_REFUSED, 'Nothing was sent.');
+    unreachable.proof = 'unreachable';
+    throw unreachable;
+  }
+  if (status >= 300 && status < 400) {
+    if (/\/sso-api(?:[/?#]|$)/.test(location)) {
+      throw notProven(
+        address,
+        'wall',
+        bypass['x-vercel-protection-bypass'] ? "Vercel's protection refused the bypass secret." : "it is behind Vercel's protection.",
+        bypass['x-vercel-protection-bypass']
+          ? "Check GITMARGIN_VERCEL_BYPASS against the project's Protection Bypass for Automation (Vercel: the project, Settings, Deployment Protection)."
+          : "For a same-project deployment, set GITMARGIN_SERVICE to this address and GITMARGIN_VERCEL_BYPASS to the project's\n" +
+              'Protection Bypass for Automation in your own terminal, and run this again.'
+      );
+    }
+    throw notProven(
+      address,
+      'redirect',
+      `it answered with a redirect to ${location ? printable(location) : 'another address'}, and a redirect changes who is answering.`,
+      'Use the address the service itself answers on.'
+    );
+  }
+  if (text === null) throw notProven(address, 'not_service', 'it answered with far more than a proof, so it is not a gitmargin comment service.');
+  let answer = null;
+  try {
+    answer = JSON.parse(text);
+  } catch {
+    // Not JSON: not a comment service. Said below.
+  }
+  const error = answer && typeof answer.error === 'string' ? answer.error : null;
+  const own = "If it is yours, run gitmargin's setup command in your own terminal (gitmargin services prints it).";
+  if (status === 404 && error === 'not_found') {
+    throw notProven(address, 'old', 'it answers like a gitmargin comment service from before the proof of trust.', `${own} It deploys the newer one.`);
+  }
+  if (status === 409 && error === 'no_secret') throw notProven(address, 'no_secret', 'the service there has no author secret set.', own);
+  if (status === 409 && error === 'weak_secret') {
+    throw notProven(address, 'weak_secret', 'its author secret is shorter than 32 characters, so the service will not prove with it.', `${own} It offers to make a new secret.`);
+  }
+  const proof = status === 200 && answer && typeof answer.proof === 'string' ? answer.proof : '';
+  if (!/^[0-9a-f]{64}$/.test(proof)) throw notProven(address, 'not_service', `it is not a gitmargin comment service (it answered ${status}).`);
+  const expected = createHmac('sha256', secretValue).update(`${PROOF_LABEL}\n${challenge}\n${host}`, 'utf8').digest();
+  if (!timingSafeEqual(expected, Buffer.from(proof, 'hex'))) {
+    forgetAddress(address);
+    // The host it reports is the server's own words: shown only when it looks like a host name.
+    const seen = answer && typeof answer.host === 'string' && /^[a-z0-9.:[\]-]{1,255}$/.test(answer.host) && answer.host !== host;
+    throw notProven(
+      address,
+      'mismatch',
+      'it could not prove it holds your author secret: it is not your service, or its secret is not the one this computer has.',
+      seen ? `The service says it was reached as ${answer.host}; this command dialed ${host}.` : ''
+    );
+  }
+  proven.add(address);
+  rememberAddress(address);
+}
+
+/**
+ * The author secret for a request to `address`: found (or refused) before
+ * anything is sent, only over https or to this computer, and handed over only
+ * once the service there has proved it already holds it.
+ */
+async function secretFor(address) {
+  const value = secret();
+  assertSecretMayGo(address);
+  await proveService(address, value);
+  return value;
+}
 
 /**
  * Vercel's Protection Bypass for Automation (issue #19): how the command line
  * reaches a same-project deployment behind Vercel's login. It opens every
- * deployment of that project, so it follows the author secret's rule: only to
- * an address the author typed or named in GITMARGIN_SERVICE, never in the clear
- * except to loopback. It is never written into a page.
+ * deployment of that project, so it goes only to the address the author named
+ * in GITMARGIN_SERVICE, exactly, and never in the clear except to loopback. A
+ * typed address never gets it (issue #33): an agent may be the one typing. It
+ * rides on the proof request too, which has to pass the protection; the author
+ * secret still waits for a proof that matches. It is never written into a page.
  */
 function bypassFor(address) {
   const value = process.env.GITMARGIN_VERCEL_BYPASS;
-  if (!value) return {};
+  if (!value || !process.env.GITMARGIN_SERVICE) return {};
+  let named;
+  try {
+    named = cleanAddress(process.env.GITMARGIN_SERVICE);
+  } catch {
+    return {};
+  }
+  if (address !== named) return {};
   const { protocol, hostname } = new URL(address);
   const loopback = ['localhost', '127.0.0.1', '[::1]'].includes(hostname);
   if (protocol !== 'https:' && !loopback) return {};
-  if (!typedNow.has(address) && !trustedAddresses().includes(address)) return {};
   return { 'x-vercel-protection-bypass': value };
 }
 
 /** What each refusal in API.md means to the person at the terminal. */
 const REFUSALS = {
-  unauthorized: 'The comment service refused the author secret. Check GITMARGIN_SECRET against the deployment.',
+  unauthorized: 'The comment service refused the author secret. Check that GITMARGIN_SECRET, or the secret file, holds the one the deployment has.',
   not_found: 'The comment service does not know that prototype key or comment.',
   full:
     'The comment service is at its limit for this prototype. At 500 comments, remove some (gitmargin remove). ' +
@@ -260,7 +539,7 @@ function walled(address, response, answer, bypass) {
     `${address} is behind Vercel's protection, so the command line cannot reach the comment service there.`,
     EXIT_REFUSED,
     process.env.GITMARGIN_VERCEL_BYPASS
-      ? 'GITMARGIN_VERCEL_BYPASS is set, but it only goes to an address you typed with attach --service, or named in GITMARGIN_SERVICE.\nNothing was written.'
+      ? 'GITMARGIN_VERCEL_BYPASS is set, but it only goes to the address named in GITMARGIN_SERVICE.\nNothing was written.'
       : "Set GITMARGIN_VERCEL_BYPASS to the project's Protection Bypass for Automation (Vercel: the project, Settings, Deployment Protection), and run this again.\nNothing was written."
   );
 }
@@ -360,9 +639,10 @@ export async function attachLive(args) {
   const service = takeOption(args, '--service', { optional: true });
   const keyOption = takeOption(service.rest, '--key');
   // For an address read from a file someone else could have written, such as a
-  // project's .gitmargin.json in a cloned repo (issue #16, plan D10): the
-  // plain `--service <address>` trusts whatever it is given, so a script that
-  // did not hear the author type the address asks for this instead.
+  // project's .gitmargin.json in a cloned repo (issue #16, plan D10): refuse,
+  // before anything is looked up, an address this machine has never seen
+  // prove itself. The secret itself goes only where the proof passes, with or
+  // without this flag (issue #33); it stays for the scripts written against it.
   const requireTrusted = keyOption.rest.includes('--require-trusted');
   const remaining = keyOption.rest.filter((a) => a !== '--require-trusted');
   const files = remaining.filter((a) => !a.startsWith('-'));
@@ -386,8 +666,7 @@ export async function attachLive(args) {
   const address = cleanAddress(given);
   // Before the secret is even looked up, and so before any request or write.
   // Only an address on this command line needs it: a bare --service reads the
-  // previous copy's address, which assertSecretMayGo already holds to the
-  // trusted list.
+  // previous copy's address, which still has to pass the proof of trust.
   if (requireTrusted && service.value && !trustedAddresses().includes(address)) {
     throw new CliError(
       `Refusing to use ${address}: this machine has not used that comment service before.`,
@@ -396,9 +675,7 @@ export async function attachLive(args) {
         `without --require-trusted, which remembers it: gitmargin attach ${source} --service ${address}`
     );
   }
-  const auth = secret();
-  assertSecretMayGo(address, { typed: Boolean(service.value) });
-  if (service.value) typedNow.add(address);
+  const auth = await secretFor(address);
 
   // Which prototype this is. A key given by hand wins; otherwise the previous
   // copy's key, but only when it was for this same service.
@@ -432,8 +709,6 @@ export async function attachLive(args) {
     // another prototype nobody could find again (review R20).
     process.stderr.write(`Prototype key (the page key): ${key}\nKeep it: --key <key> is how another machine, or a retry, finds this prototype again.\n`);
   }
-  // The service took the secret, so this is the author's service: remember it.
-  if (service.value) rememberAddress(address);
 
   // The service owns the round number, so a fresh checkout cannot disagree
   // with it about which version is v3 (API.md, "versions").
@@ -509,22 +784,22 @@ export async function pullLive(args) {
   // Reading needs no secret unless the author limited it to members (strict
   // reading). So ask without one first, and send the secret only when the
   // service says reading needs it, under the same rule as every other command:
-  // never to an address that only the file names.
+  // only to a service that has first proved it holds it (the proof of trust).
   let auth;
   const read = async (query) => {
     try {
       return await call(stamp.service, 'GET', `${route}${query}`, { auth });
     } catch (refusal) {
       if (refusal.refusal !== 'sign_in' || auth) throw refusal;
-      assertSecretMayGo(stamp.service, { typed: false });
-      if (!process.env.GITMARGIN_SECRET) {
+      const found = resolveSecret();
+      if (!found.value && !found.problem) {
         throw new CliError(
           'The comments on this prototype are for members only, so reading them here needs your author secret.',
           EXIT_USAGE,
-          'Set GITMARGIN_SECRET to the value you gave the service when you deployed it, and run this again.'
+          `Set GITMARGIN_SECRET, or keep the secret in ${secretFile()}, and run this again.`
         );
       }
-      auth = secret();
+      auth = await secretFor(stamp.service);
       return call(stamp.service, 'GET', `${route}${query}`, { auth });
     }
   };
@@ -570,8 +845,7 @@ export async function setStatus(args) {
   if (!STATUSES.includes(rest[0])) {
     throw new CliError(`Not a status: ${rest[0] ?? '(nothing)'}`, EXIT_USAGE, `One of: ${STATUSES.join(', ')}`);
   }
-  const auth = secret();
-  assertSecretMayGo(stamp.service, { typed: false });
+  const auth = await secretFor(stamp.service);
   await call(stamp.service, 'PATCH', `/api/prototypes/${stamp.key}/comments/${id}/status`, {
     auth,
     body: { status: rest[0] },
@@ -582,8 +856,7 @@ export async function setStatus(args) {
 
 export async function removeComment(args) {
   const { stamp, id } = commentArgs(args, 'remove needs the attached copy and a comment id.');
-  const auth = secret();
-  assertSecretMayGo(stamp.service, { typed: false });
+  const auth = await secretFor(stamp.service);
   await call(stamp.service, 'DELETE', `/api/prototypes/${stamp.key}/comments/${id}`, { auth });
   process.stderr.write(`${id} is removed for everyone.\n`);
   return EXIT_OK;
@@ -622,8 +895,7 @@ export async function setIdentityMode(args) {
   }
 
   const stamp = sharedStamp(file);
-  const auth = secret();
-  assertSecretMayGo(stamp.service, { typed: false });
+  const auth = await secretFor(stamp.service);
   let set;
   try {
     set = await call(stamp.service, 'PATCH', `/api/prototypes/${stamp.key}`, {

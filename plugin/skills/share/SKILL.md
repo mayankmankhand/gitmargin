@@ -3,7 +3,7 @@ name: share
 description: Share an HTML prototype for review with gitmargin comments. Wraps the page with the comment overlay, checks it will survive the host, publishes it (a file, the author's comment-service link, GitHub Pages, or GitLab Pages) and hands back the link. Run only when the author types /gitmargin:share.
 argument-hint: "[prototype.html] [where, for example: on GitHub Pages]"
 disable-model-invocation: true
-allowed-tools: Bash(gitmargin *) Bash(gitmargin-publish *) Bash(git remote get-url *) Bash(git rev-parse *) Bash(vercel --version) Bash(vercel whoami) Read(/${CLAUDE_SKILL_DIR}/**) Edit(/${CLAUDE_PROJECT_DIR}/.gitmargin.json) Edit(/${CLAUDE_PROJECT_DIR}/.gitignore)
+allowed-tools: Bash(gitmargin *) Bash(gitmargin-publish *) Bash(git remote get-url *) Bash(git rev-parse *) Read(/${CLAUDE_SKILL_DIR}/**) Edit(/${CLAUDE_PROJECT_DIR}/.gitmargin.json) Edit(/${CLAUDE_PROJECT_DIR}/.gitignore)
 ---
 
 # Share a prototype for review
@@ -47,7 +47,7 @@ Read `.gitmargin.json` at the project root with the Read tool (it may not exist)
 
 **If it does not exist, detect and propose one host:**
 
-1. `gitmargin services --json`: the comment services this machine trusts (`trusted`), whether the author secret is set (`secretSet`, never its value), and gitmargin's settings folder (`configDir`).
+1. `gitmargin services --json`: the comment services this machine trusts (`trusted`), whether the author secret is set (`secretSet`, never its value), gitmargin's settings folder (`configDir`), and the line that sets up or updates a comment service (`setupCommand`).
 2. `git remote get-url origin` (no remote, or not a git repo, is fine).
 3. A `github.com` remote: run `gitmargin-publish --status --folder <name> --json` (`<name>` is the prototype's file name without `.html`). Its `publish` field is `ready`, `needs-enable` or `refused`, with a `reason`.
    - `ready` or `needs-enable` (a public repo whose Pages is off or already serves `gitmargin-pages`): propose **GitHub Pages**. Read [hosts/github-pages.md](hosts/github-pages.md) for what to say.
@@ -76,7 +76,7 @@ Then write `.gitmargin.json` with the Write tool, and add these lines to the pro
 **Ask when (and only when):**
 
 - there is no `.gitmargin.json` yet (the first share in this project on this machine);
-- the `service` it names is not trusted on this machine (step 3 refuses it): show the address and ask whether it is theirs;
+- `gitmargin attach` refuses the `service` it names because that service cannot prove it holds this computer's secret (step 3): say so, and offer to set up a comment service here or share a file;
 - the saved host has stopped working (a command fails in a way the host file says means that);
 - this share would let more people open the page than before, for example moving from the service link to GitHub Pages;
 - a step would create a repository or change a repository's settings (turning GitHub Pages on, or setting GitLab Pages to "Only project members").
@@ -89,11 +89,11 @@ Shared comments need the author's own comment service: a small Vercel project wi
 
 - On every share that uses the service, run `gitmargin services --json` once (the first share already did, in step 2). If its `serviceCopy` is `differs`, a plugin update brought a newer service than the one deployed: follow "After a plugin update" in [setup-service.md](setup-service.md) before publishing, so the author deploys it again. `none`, `same` and `unknown` need nothing.
 
-- The address from `.gitmargin.json` goes to the command with `--require-trusted`. That flag refuses an address this machine has never used, so a settings file copied from someone else's project can never receive the author's secret. If it refuses, show the address and ask whether it is theirs; if yes, run once more without `--require-trusted`.
-- An address the author typed or confirmed in this conversation goes without the flag, and the command remembers it.
-- A review link the author pasted from another computer (`<address>/p/<key>/latest`): when the same message says it is theirs (for example "I already shared this from my other computer"), that is the confirmation: attach straight away with `--service <address> --key <key>`, which keeps the prototype's comments. Ask whether the address is theirs only when the link came without saying so. Do not test the address first with `curl` or any other command: `gitmargin attach` says plainly when it cannot reach a service.
-- No service yet: follow [setup-service.md](setup-service.md). It has four moments that only the author can do; hand each over exactly as written there. It calls this plugin's own folder `<plugin>`: on this machine that is `${CLAUDE_PLUGIN_ROOT}` (write it out in full; the shell has no variable for it).
-- If the command says `GITMARGIN_SECRET` is not set, or `gitmargin services` says `secretSet` is false: the author has not finished setup, or set the secret after this Claude Code session started. Say so, and point them to step 7 of [setup-service.md](setup-service.md).
+- Attach with the service's address: the one in `.gitmargin.json`, one the author gave in this conversation, or the address in a review link the author pasted from another computer (`<address>/p/<key>/latest`, attached with `--service <address> --key <key>`, which keeps the prototype's comments). Check nothing first and ask nothing about whose it is: before it sends the author's secret, `gitmargin attach` asks the service to prove it already holds that secret, and refuses, sending nothing, when it cannot. So an address from a copied settings file, a reviewer's comment or a pasted link can never receive the secret, and one that proves itself is the author's. Do not test an address with `curl` or any other command either: `gitmargin attach` says plainly when it cannot reach a service.
+- When `attach` refuses a service that "could not prove it holds your author secret": it is not this author's service, or this computer's secret is not the one it has. Say so in one sentence, and offer the setup line ([setup-service.md](setup-service.md)): it sets up a service, or offers to fix the secret of the author's own.
+- When `attach` refuses a service "from before the proof of trust": it is the author's older service. Hand over the setup line, which deploys the newer one ("After a plugin update" in [setup-service.md](setup-service.md)).
+- No service yet: follow [setup-service.md](setup-service.md). The author runs one line in their own terminal; you run nothing for it.
+- If the command says there is no author secret, or `gitmargin services` says `secretSet` is false: the author has not run the setup line yet, or ran it in another kind of terminal. See step 2 of [setup-service.md](setup-service.md).
 
 ## Step 4: Wrap and publish
 

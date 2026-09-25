@@ -9,7 +9,8 @@ Two things open it, and a third when the author switches sign-in on for a protot
 - **The page key** (`gm_...`), baked into an attached page. Whoever can open the page has it, so whoever can open the
   page can read and write comments and open stored copies of the page. If the page is public, the key is public.
 - **The author secret** (`GITMARGIN_SECRET`, set on the deployment). It never appears in a page. It is sent as
-  `Authorization: Bearer <secret>`. A deployment with no secret set refuses every author call.
+  `Authorization: Bearer <secret>`, and only to a service that has first proved it holds the same secret ("The proof of
+  trust" below). A deployment with no secret set refuses every author call.
 
 Every answer is JSON with `cache-control: no-store`, and every answer allows any origin: a page opened from disk has
 the origin `null` and a stored page is sandboxed, so there is no origin to allow-list. `OPTIONS` on any path answers
@@ -46,10 +47,37 @@ count toward a limit, so one that kept its text would be free storage for anyone
 `400 invalid` (shape), `400 too_long`, `400 unknown_version`, `401 unauthorized` (author secret missing or wrong;
 answered before the key is looked up, so it says nothing about which prototypes exist), `403 not_yours` (edit token
 does not match), `404 not_found` (unknown path, key, comment or reply: all the same answer), `409 id_taken` (that id
-exists with a different edit token), `409 full`, `429 slow_down`, `503 service_unavailable` (any database failure;
-the detail is never sent).
+exists with a different edit token), `409 full`, `409 no_secret` and `409 weak_secret` (the proof of trust only: the
+deployment's secret is missing, or shorter than 32 characters), `429 slow_down`, `503 service_unavailable` (any
+database failure; the detail is never sent).
 
-Every refusal body is `{ "error": "<code>" }`.
+Every refusal body is `{ "error": "<code>" }`, except the proof's two `409`s, which also carry `host` (see below).
+
+## The proof of trust
+
+### `POST /api/prove` (no secret, no key)
+Body `{ "challenge": "<64 lowercase hex characters>" }`. Answers `200 { "proof": "<64 hex>", "host": "<host>" }`.
+
+- `proof` is the hex HMAC-SHA256, keyed with the deployment's `GITMARGIN_SECRET` (its exact characters), over the UTF-8
+  text `gitmargin-prove-v1\n<challenge>\n<host>`.
+- `host` is the `Host` header this request arrived with, lowercased, with a default port (`:443`, `:80`) dropped. Never
+  `X-Forwarded-Host`: a client can set that one, so a relay could name itself.
+- A challenge of any other shape is `400 invalid`. A deployment with no secret answers `409 no_secret`, and one whose
+  secret is under 32 characters answers `409 weak_secret`: anyone may ask for a proof, so a short secret could be
+  guessed offline from one. Both `409`s carry `host` as well, for the same diagnosis.
+- It reads no database, so it answers while the database is down.
+
+**Client rule.** Before any request that carries the author secret, a client sends a fresh random challenge (32 bytes,
+never reused) and computes the same HMAC over the host of the address it dialed (`new URL(address).host`, lowercased,
+default port dropped). It sends the secret only when the two match, compared in constant time, and only to that same
+address. Redirects are not followed (a redirect changes the host), and every other answer is a refusal with nothing
+sent: a mismatch, a `404` from a deployment older than this route, a `409`, anything that is not this JSON, no answer
+in 10 seconds, or more than 4 KB. The `host` in the answer is for messages only ("the service saw X"); a client never
+computes with it.
+
+**Why it holds.** A service that does not hold the author's secret cannot produce the proof. A hostile address that
+forwards the challenge to the author's real service must send the real host with it (Vercel routes by `Host`), so the
+proof it gets back is over the real host and does not match the one the client dialed.
 
 ## Author routes (secret required)
 
@@ -381,9 +409,10 @@ address, so the calls must go where the page is. A sandboxed stored copy's docum
 
 ### Clients outside a browser: Vercel's bypass
 The command line reaches a protected deployment with Vercel's **Protection Bypass for Automation**: the secret from
-`GITMARGIN_VERCEL_BYPASS`, sent as the header `x-vercel-protection-bypass`, and only to an address the author typed on
-the command line or named in `GITMARGIN_SERVICE`, under the rule the author secret follows, because it opens every
-deployment of that project. It is never written into a page. A redirect to Vercel's login, or a `401` or `403` that is
+`GITMARGIN_VERCEL_BYPASS`, sent as the header `x-vercel-protection-bypass`, and only to the address named in
+`GITMARGIN_SERVICE`, exactly, because it opens every deployment of that project. It goes with the proof request too,
+which has to pass the protection; the author secret still waits for a proof that matches. A typed address never gets
+it: the command line is often run by an agent, so typing proves nothing. It is never written into a page. A redirect to Vercel's login, or a `401` or `403` that is
 not this service's JSON, is reported as the protection by name, never followed.
 
 ### Sign-in on a same-project deployment

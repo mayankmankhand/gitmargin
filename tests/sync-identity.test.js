@@ -18,7 +18,7 @@ import { startFakeGitlab } from './helpers/fake-gitlab.js';
 globalThis.location = { pathname: '/proto.gitmargin.html' };
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
-const SECRET = 'sync-identity-test-value-0123';
+const SECRET = 'sync-identity-test-value-0123-abcdefghij';
 const SERVICE = 'https://comments.example';
 let instance = 0;
 

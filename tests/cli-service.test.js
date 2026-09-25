@@ -131,9 +131,10 @@ test('attach --service writes nothing when the service is unreachable, the secre
   assert.match(noSecret.err, /GITMARGIN_SECRET/);
   assert.ok(!existsSync(s.copy));
 
-  const wrong = await run(['attach', s.source, '--service', s.service.url], { GITMARGIN_SECRET: 'not-the-secret' });
+  // A wrong secret is never sent: the service cannot prove it holds it (issue #33).
+  const wrong = await run(['attach', s.source, '--service', s.service.url], { GITMARGIN_SECRET: 'not-the-secret-but-long-enough-to-send' });
   assert.equal(wrong.code, 2);
-  assert.match(wrong.err, /refused the author secret/);
+  assert.match(wrong.err, /could not prove it holds your author secret/);
   assert.ok(!existsSync(s.copy));
 
   const notUrl = await run(['attach', s.source, '--service', 'ftp://nope'], s.env);
@@ -230,7 +231,7 @@ test('status and remove: the author\'s, refused without the secret, and clear ab
   assert.equal((await run(['status', s.copy, 'c_00000e', 'finished'], s.env)).code, 1);
   assert.equal((await run(['status', s.copy, 'nonsense', 'applied'], s.env)).code, 1);
   assert.equal((await run(['status', s.source, 'c_00000e', 'applied'], s.env)).code, 1, 'the original is not a shared copy');
-  assert.equal((await run(['remove', s.copy, 'c_00000e'], { GITMARGIN_SECRET: 'wrong' })).code, 2);
+  assert.equal((await run(['remove', s.copy, 'c_00000e'], { GITMARGIN_SECRET: 'wrong-secret-but-long-enough-to-send' })).code, 2);
 
   const removed = await run(['remove', s.copy, 'c_00000e'], s.env);
   assert.equal(removed.code, 0, removed.err);
@@ -280,18 +281,24 @@ test('the author secret never follows an address that only a file names (review 
   const returned = path.join(s.dir, 'proto.reviewed.html');
   writeFileSync(returned, readFileSync(s.copy, 'utf8').replace(s.service.url, there));
 
+  // The address is asked for a proof of trust, which carries no secret, and
+  // cannot give one (issue #33).
   for (const args of [['status', returned, 'c_0000f1', 'applied'], ['remove', returned, 'c_0000f1']]) {
     const r = await run(args, s.env);
     assert.equal(r.code, 2, r.err);
     assert.match(r.err, /Refusing to send your author secret/);
-    assert.match(r.err, /came from the file/);
+    assert.match(r.err, /is not a gitmargin comment service/);
   }
-  assert.deepEqual(seen, [], 'nothing reached the other address, with or without the secret');
+  assert.ok(seen.length > 0, 'the proof was asked for, so this proves something');
+  assert.ok(seen.every((a) => a === '(no authorization header)'), `the secret reached the other address: ${seen.join(', ')}`);
 
-  // The author's own copy still works, and so does naming the address on purpose.
+  // The author's own copy still works. Naming the address in GITMARGIN_SERVICE
+  // no longer lets the secret through without a proof (issue #33, owner's
+  // decision): an agent can set that variable as easily as type an address.
   assert.equal((await run(['status', s.copy, 'c_0000f1', 'applied'], s.env)).code, 0);
   const named = await run(['status', returned, 'c_0000f1', 'applied'], { ...s.env, GITMARGIN_SERVICE: there });
-  assert.equal(named.code, 0, 'GITMARGIN_SERVICE is the author choosing it');
+  assert.equal(named.code, 2, 'GITMARGIN_SERVICE does not skip the proof');
+  assert.ok(seen.every((a) => a === '(no authorization header)'), 'the secret followed GITMARGIN_SERVICE');
 
   // And never in the clear to anywhere but this machine.
   const clear = await run(['attach', s.source, '--service', 'http://comments.example'], s.env);
@@ -301,7 +308,8 @@ test('the author secret never follows an address that only a file names (review 
 
 test('the key is printed the moment it exists, so a failure after that does not lose it (review R20)', async (t) => {
   let requests = 0;
-  const service = await startService({ down: () => (requests += 1) > 1 });
+  // Down from the third request: the proof of trust and the new prototype get through, the version does not.
+  const service = await startService({ down: () => (requests += 1) > 2 });
   const dir = mkdtempSync(path.join(tmpdir(), 'gitmargin-live-'));
   t.after(async () => {
     await service.close();
