@@ -10,7 +10,7 @@
 
 **Status:** early stage. Comments on a single file are built and tested; shared live comments and sign-in with GitLab or GitHub are built and tested with real accounts; the rest is parked until it can be tested. The full list, with dates, is [ROADMAP.md](ROADMAP.md).
 
-![The Next Best Pokémon demo with the overlay on it: a reviewer's comment pinned to the "Match confidence: 112%" line on Jeff's pick, its thread open beside it, the how-to panel on the left, and the floating pill with five comments at the top right](docs/images/demo.png)
+![On the Next Best Pokémon demo, a reviewer presses Comment, clicks the "Match confidence: 112%" line, types what they expected, saves, and a pin with their initials appears on the line while the count badge at the top right goes to 1](docs/images/demo.gif)
 
 **Contents:** [The problem](#the-problem) · [How it works](#how-it-works) · [What the agent gets](#what-the-agent-gets) · [Three ways to run it](#three-ways-to-run-it) · [Running it today](#running-it-today) · [Design principles](#design-principles) · [What exists today](#what-exists-today-and-where-the-gap-is) · [Roadmap](#roadmap) · [Prior art](#prior-art-and-credit-where-its-due) · [License](#license)
 
