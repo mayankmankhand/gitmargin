@@ -156,3 +156,7 @@ This project stands on ideas from people who solved neighbouring problems:
 ## License
 
 [MIT](LICENSE).
+
+---
+
+Built by [Mayank Mankhand](https://www.linkedin.com/in/mayankmankhand/), AI product manager. More at [github.com/mayankmankhand](https://github.com/mayankmankhand).
