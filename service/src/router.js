@@ -452,9 +452,10 @@ async function registerVersion(deps, key, body) {
   const round = (newest ? newest.round : 0) + 1;
   const versionId = `v${round}-${body.hash}`;
   // The cap is a condition of the insert, as for comments and replies (API.md,
-  // "Limits"): two attaches racing at the edge cannot both read 49 and both
-  // pass (security audit of #30, R5). Only the secret holder can race it, but
-  // the contract promises every limit is enforced this way.
+  // "Limits"; security audit of #30, R5). Under read committed it narrows the
+  // window rather than closing it: a racer whose count ran before this row
+  // landed can still pass, and closing that would take a row lock on the
+  // prototype. Only the secret holder can race it.
   const inserted = await query(
     `insert into versions (prototype_key, version_id, round, hash, file, html, created)
      select $1::text, $2::text, $3::integer, $4::text, $5::text, $6::text, $7::timestamptz
