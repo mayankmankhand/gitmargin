@@ -202,7 +202,7 @@ export function mountUi(deps) {
   }, [icon(BUBBLE), el('span', { class: 'label', text: 'Comment' })]);
   const badgeCount = el('span', { class: 'count', text: '0' });
   const badgeDot = el('span', { class: 'dot', hidden: 'hidden' });
-  const badgeBtn = el('button', { class: 'gm-badge', type: 'button', 'aria-expanded': 'false', title: 'All comments', 'data-focus': 'badge' }, [
+  const badgeBtn = el('button', { class: 'gm-badge', type: 'button', 'aria-expanded': 'false', title: 'All comments. Opens the comments list; Escape closes it.', 'data-focus': 'badge' }, [
     icon(BUBBLE), badgeCount, badgeDot,
   ]);
   const idAvatar = el('span', { class: 'gm-avatar', 'aria-hidden': 'true' });
@@ -1930,7 +1930,12 @@ export function mountUi(deps) {
     badgeCount.textContent = String(count);
     listCount.textContent = String(count);
     const unread = resolved.filter((entry) => isUnread(entry.comment)).length;
-    badgeBtn.title = `${count === 1 ? '1 comment' : `${count} comments`}${unread ? `, ${unread} unread` : ''}`;
+    // The tooltip says what the badge does, not only the number already drawn
+    // on it, and follows the sheet's state because a click toggles it (issue
+    // #30, F2). The accessible name stays the count; aria-expanded says the rest.
+    badgeBtn.title =
+      `${count === 1 ? '1 comment' : `${count} comments`}${unread ? `, ${unread} unread` : ''}. ` +
+      (sheetOpen ? 'Closes the comments list.' : 'Opens the comments list; Escape closes it.');
     badgeDot.hidden = !unread;
     // The line under the pill: trouble first, then a newer version, then the
     // way to Send until the reviewer has found the sheet; nothing while the

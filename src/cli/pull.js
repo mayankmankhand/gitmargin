@@ -48,7 +48,7 @@ const isoSeconds = (d = new Date()) => d.toISOString().replace(/\.\d{3}Z$/, 'Z')
  * instructions (review R7). Folding the newlines away keeps the promise the
  * format already made, and keeps every word the reviewer wrote.
  */
-const oneLine = (text) => String(text ?? '').replace(/\r?\n/g, ' ').trim();
+const oneLine = (text) => String(text ?? '').replace(/\r\n|[\r\n\u2028\u2029]/g, ' ').trim();
 
 /** Six hex, derived from the content so the same input always yields the same id. */
 const syntheticId = (...parts) => `c_${createHash('sha256').update(parts.join('|')).digest('hex').slice(0, 6)}`;
@@ -421,24 +421,28 @@ export function nounFor(selectorOrTag) {
 export function toMarkdown(batch) {
   const preamble = ['Rules for applying this batch:', ...AGENT_RULES.map((r) => `- ${r}`)].join('\n');
 
-  const reviewers = batch.sources.map((s) => s.reviewer).filter(Boolean);
+  // Every field below can come from another person: a reviewer's file, or the
+  // service, where anyone holding the page key writes. Each one goes through
+  // `oneLine`, not only the comment text, so no field can open a line of its
+  // own and forge a second rules block (security audit of #30, R1).
+  const reviewers = batch.sources.map((s) => oneLine(s.reviewer)).filter(Boolean);
   const header = [
-    `gitmargin batch v${batch.gitmargin} | ${batch.file || 'unknown file'} | ${batch.version_id || 'no version id'}`,
+    `gitmargin batch v${batch.gitmargin} | ${oneLine(batch.file) || 'unknown file'} | ${oneLine(batch.version_id) || 'no version id'}`,
     `${batch.sources.length} source${batch.sources.length === 1 ? '' : 's'}` +
       `${reviewers.length ? ` (${reviewers.join(', ')})` : ''}. ` +
       `${batch.comments.length} comment${batch.comments.length === 1 ? '' : 's'}. Pulled ${batch.generated_at}.`,
   ].join('\n');
 
   const lines = batch.comments.map((c, i) => {
-    const tag = c.intent.tag ? `[${c.intent.tag}] ` : '';
-    const screen = c.state && c.state.screen && c.state.screen.name;
-    const bits = [screen ? `On "${screen}"${c.state.hash ? ` (${c.state.hash})` : ''}` : 'On this page'];
+    const tag = c.intent.tag ? `[${oneLine(c.intent.tag)}] ` : '';
+    const screen = c.state && c.state.screen && oneLine(c.state.screen.name);
+    const bits = [screen ? `On "${screen}"${c.state.hash ? ` (${oneLine(c.state.hash)})` : ''}` : 'On this page'];
 
-    const trail = ((c.state && c.state.trail) || []).map((t) => t.text).filter(Boolean);
+    const trail = ((c.state && c.state.trail) || []).map((t) => oneLine(t.text)).filter(Boolean);
     if (trail.length) bits.push(`after clicking ${trail.join(', ')}`);
 
-    const quote = c.anchor && c.anchor.quote && c.anchor.quote.exact;
-    const selector = c.anchor && c.anchor.selector ? ` (${c.anchor.selector})` : '';
+    const quote = c.anchor && c.anchor.quote && oneLine(c.anchor.quote.exact);
+    const selector = c.anchor && c.anchor.selector ? ` (${oneLine(c.anchor.selector)})` : '';
     const noun = nounFor((c.anchor && (c.anchor.tag || c.anchor.selector)) || '');
     const target = quote ? `the "${quote}" ${noun}` : `the ${noun}`;
     const resolution = c.anchor && c.anchor.resolution;
@@ -464,7 +468,7 @@ export function toMarkdown(batch) {
 
   const notes = batch.sources
     .filter((s) => s.overall_note)
-    .map((s) => `Overall${s.reviewer ? ` (${s.reviewer})` : ''}: ${oneLine(s.overall_note)}`);
+    .map((s) => `Overall${s.reviewer ? ` (${oneLine(s.reviewer)})` : ''}: ${oneLine(s.overall_note)}`);
 
   return [preamble, header, lines.join('\n\n'), notes.join('\n')].filter(Boolean).join('\n\n');
 }

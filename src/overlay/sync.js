@@ -141,6 +141,21 @@ export function serviceAddress(stamp, where) {
  * @param {object} deps.store  src/overlay/store.js
  * @returns {null | object} null when the page is not shared.
  */
+/**
+ * Hosts where every site of one owner can share one origin, so browser storage
+ * is shared with pages other people publish there: `owner.github.io/<repo>`,
+ * and GitLab Pages, `group.gitlab.io/<project>`. A GitLab project with a unique
+ * domain (`<name>-<six hex>.gitlab.io`) has an origin of its own, but a group
+ * named like `release-202409` wears the same shape, so the shape cannot tell
+ * them apart and every gitlab.io host counts as shared (fail closed; security
+ * audit of #30, R3, and the review's R21). A pass stored on a shared origin
+ * could be read by any of those pages.
+ */
+export function sharedOriginHost(hostname) {
+  const host = String(hostname || '').toLowerCase();
+  return host.endsWith('.github.io') || host.endsWith('.gitlab.io');
+}
+
 export function startSync({
   stamp,
   store,
@@ -161,8 +176,11 @@ export function startSync({
   // in Chromium, so a pass written there could be read by any HTML file opened
   // later. The pass then lives in memory for this tab only, as the design says
   // (review of the #18 cycle, R7). The edit token was always shared this way;
-  // it opens only what this browser wrote, a pass opens a person's name.
-  sharedStorage = () => typeof location !== 'undefined' && location.protocol === 'file:',
+  // it opens only what this browser wrote, a pass opens a person's name. A page
+  // on a host where one owner's sites share an origin is shared the same way
+  // (sharedOriginHost, security audit of #30, R3).
+  sharedStorage = () =>
+    typeof location !== 'undefined' && (location.protocol === 'file:' || sharedOriginHost(location.hostname)),
   // The page's own address, for the same-project rule above, with the
   // document's origin rather than the address's (see serviceAddress). A
   // function, read after the is-this-page-shared check, like everything that

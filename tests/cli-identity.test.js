@@ -84,14 +84,35 @@ test('identity gitlab --members switches sign-in on and says in plain words who 
   assert.match(r.err, /Who can read the comments: anyone who can open the page/);
   assert.match(r.err, /rename or delete/);
   assert.match(r.err, /Passes ended: 0/);
+  // A copy with the sign-in overlay picks the mode up on its next check-in, so
+  // nothing tells the author to attach it again (issue #30, F1).
+  assert.ok(!/attached before sign-in|can still read/.test(r.err), 'a current copy was told to attach again');
   assert.equal((await post(s, 'c_aaaaaa', 'no pass')).status, 401, 'the service did not start asking for a pass');
 
   const strict = await run(['identity', s.copy, 'gitlab', '--members', 'gitmargin-test', '--read', 'members'], s.env);
   assert.match(strict.err, /signed-in members only/);
+  assert.ok(!/attached before sign-in|can still read/.test(strict.err), 'strict reading printed the old-copy warning for a current copy');
 
   const off = await run(['identity', s.copy, 'none'], s.env);
   assert.match(off.err, /Sign-in is OFF/);
   assert.equal((await post(s, 'c_aaaaaa', 'typed again')).status, 201);
+});
+
+test('identity warns about re-attaching only for a copy whose overlay predates sign-in, in words that match the reading rule (issue #30, F1)', async (t) => {
+  const s = await setup(t);
+  // The #15 overlay never sent the pass header; a copy without it was attached
+  // before sign-in existed. The stamp stays, so the service still knows the copy.
+  const old = path.join(s.dir, 'old.gitmargin.html');
+  writeFileSync(old, readFileSync(s.copy, 'utf8').replaceAll('x-gitmargin-pass', 'x-gitmargin-nothing'));
+  const open = await run(['identity', old, 'gitlab', '--members', 'gitmargin-test'], s.env);
+  assert.equal(open.code, 0, open.err);
+  assert.match(open.err, /old\.gitmargin\.html was attached before sign-in existed/);
+  assert.match(open.err, /still shows comments, but its new ones are refused/);
+  assert.match(open.err, /from the same folder \(or with --key\)/);
+  const strict = await run(['identity', old, 'gitlab', '--members', 'gitmargin-test', '--read', 'members'], s.env);
+  assert.equal(strict.code, 0, strict.err);
+  assert.match(strict.err, /shows no shared comments and its new ones are refused/);
+  assert.ok(!/can still read/.test(strict.err), 'strict reading still claimed the old copy can read');
 });
 
 test('identity refuses: a bad mode, options that mean nothing, no secret, and an address it was never given', async (t) => {

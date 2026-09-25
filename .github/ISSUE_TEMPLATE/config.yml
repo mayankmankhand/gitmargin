@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Running it today
+    url: https://github.com/mayankmankhand/gitmargin#running-it-today
+    about: How to run gitmargin now, from the Claude Code plugin or from a clone. Read this before filing a setup question.

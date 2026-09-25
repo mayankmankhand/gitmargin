@@ -449,14 +449,21 @@ async function registerVersion(deps, key, body) {
       ...(deps.sameProject ? { same_project: true } : {}),
     });
   }
-  if (versions.length >= LIMITS.versions) return refuse(409, 'full');
-
   const round = (newest ? newest.round : 0) + 1;
   const versionId = `v${round}-${body.hash}`;
-  await query(
-    'insert into versions (prototype_key, version_id, round, hash, file, html, created) values ($1, $2, $3, $4, $5, $6, $7)',
-    [key, versionId, round, body.hash, cleanName(body.file) || null, html, now().toISOString()],
+  // The cap is a condition of the insert, as for comments and replies (API.md,
+  // "Limits"; security audit of #30, R5). Under read committed it narrows the
+  // window rather than closing it: a racer whose count ran before this row
+  // landed can still pass, and closing that would take a row lock on the
+  // prototype. Only the secret holder can race it.
+  const inserted = await query(
+    `insert into versions (prototype_key, version_id, round, hash, file, html, created)
+     select $1::text, $2::text, $3::integer, $4::text, $5::text, $6::text, $7::timestamptz
+      where (select count(*) from versions where prototype_key = $1) < $8
+     returning version_id`,
+    [key, versionId, round, body.hash, cleanName(body.file) || null, html, now().toISOString(), LIMITS.versions],
   );
+  if (!inserted[0]) return refuse(409, 'full');
   // Pages are the bulk of the storage, and Neon's free tier is about half a
   // gigabyte. Older versions keep every comment and lose only the page.
   await query('update versions set html = null where prototype_key = $1 and html is not null and round <= $2', [

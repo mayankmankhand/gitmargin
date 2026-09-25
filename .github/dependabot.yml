@@ -1,0 +1,16 @@
+# The service's manifests (service/package.json and its lockfile) are not
+# watched here on purpose: scripts/sync-plugin.js copies them into the plugin
+# byte for byte and CI fails when the copy drifts, so a bot's bump to the
+# originals alone would fail every time. The service's one dependency is
+# updated by hand: `npm update` in service/, then `npm run build:plugin` and a
+# plugin version bump, which is what ships it (review of #30, R11).
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"

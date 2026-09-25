@@ -248,10 +248,10 @@ test('running it again touches no secret, keeps the project and the database, an
 });
 
 test('an existing project is reused only on a yes; otherwise the next free name is taken', async (t) => {
-  const listed = [{ name: 'gitmargin-comments', latestProductionUrl: 'https://gitmargin-comments.vercel.app' }, { name: 'gitmargin-comments-2' }];
+  const listed = [{ name: 'gitmargin-comments', latestProductionUrl: 'https://gitmargin-comments-example.vercel.app' }, { name: 'gitmargin-comments-2' }];
   const no = await world(t, { state: { projects: listed }, answers: [true, false] });
   assert.equal(await runSetup(no.io), 0);
-  assert.match(no.asked[1], /already have a Vercel project named gitmargin-comments \(https:\/\/gitmargin-comments\.vercel\.app\)/);
+  assert.match(no.asked[1], /already have a Vercel project named gitmargin-comments \(https:\/\/gitmargin-comments-example\.vercel\.app\)/);
   assert.deepEqual(no.vercelState().calls.find((c) => c.args[0] === 'link').args.slice(-1), ['gitmargin-comments-3']);
 
   const yes = await world(t, { state: { projects: listed, env: { 'gitmargin-comments': {} } }, answers: [true, true] });

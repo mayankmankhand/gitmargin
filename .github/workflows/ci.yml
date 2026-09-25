@@ -1,0 +1,86 @@
+# CI for gitmargin: what `npm test` runs, on every push to main and every
+# pull request, plus one guard `npm test` leaves to the developer.
+#
+# The order follows package.json's "test" script:
+#   npm run build                 bundles src/overlay/ into dist/gitmargin.js
+#   sync-plugin --check           plugin/ must match a build of this tree
+#                                 (the last test in tests/plugin.test.js says
+#                                 the same; this names the file sooner)
+#   node --test                   the CLI and the service; the service tests
+#                                 use an in-process Postgres, so no Neon and
+#                                 no network
+#   playwright test               the overlay, on Chromium only. Firefox and
+#                                 WebKit are optional on a developer machine
+#                                 (playwright.config.js) and are not installed
+#                                 here, so GM_BROWSERS says so instead of
+#                                 leaving the config to probe for them.
+#
+# fetch-depth 0: tests/plugin.test.js compares plugin/ with origin/main to
+# insist on a version bump whenever plugin/ changes, and skips that check when
+# origin/main is absent. A shallow checkout would skip it silently.
+#
+# npm ci at the root only: service/tests import the router and the PGlite
+# helper through the root's dev dependencies, never the Neon driver, so
+# service/package.json is not installed.
+#
+# CI=1 makes playwright.config.js refuse a stray test.only and use the plain
+# list reporter, so no HTML report is written; a failed run keeps its traces
+# under test-results/ (trace: retain-on-failure), which the last step uploads.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      CI: 1
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Build the overlay
+        run: npm run build
+
+      - name: Check plugin/ against its sources
+        run: node scripts/sync-plugin.js --check
+
+      - name: CLI and service tests
+        run: node --test tests/*.test.js service/tests/*.test.js
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Overlay tests
+        env:
+          GM_BROWSERS: chromium
+        run: npx playwright test
+
+      - name: Keep what a failed overlay run left behind
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore
+          retention-days: 7

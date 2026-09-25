@@ -522,7 +522,7 @@ function walled(address, response, answer, bypass) {
   const refusedPage = (response.status === 401 || response.status === 403) && !(answer && typeof answer.error === 'string');
   if (redirect && !toLogin) {
     return new CliError(
-      `${address} answered with a redirect to ${location || 'another address'}, not with the comment service.`,
+      `${address} answered with a redirect to ${location ? printable(location) : 'another address'}, not with the comment service.`,
       EXIT_REFUSED,
       'Check the address: use the one the service itself answers on.\nNothing was written.'
     );
@@ -551,18 +551,28 @@ function walled(address, response, answer, bypass) {
  * so plainly if the service answers (review of #19, R16). Never a refusal: the
  * author may be testing on purpose.
  */
+/**
+ * On a same-project deployment, say so when the address answers without
+ * Vercel's login (review of #19, R16). It reports what it saw, so the closing
+ * text claims only what was checked (issue #30, F4): true when the address
+ * answered open, false when Vercel's login answered (a redirect to it, or a
+ * 401 or 403), and null when the check could not run.
+ */
 async function warnIfOpen(address) {
   let status = 0;
   try {
     status = (await fetch(`${address}/api/ping`, { redirect: 'manual' })).status;
   } catch {
-    return;
+    return null;
   }
-  if (status !== 200) return;
-  process.stderr.write(
-    `Warning: ${address} answers without Vercel's login, so anyone with the address reaches this prototype and its comments.\n` +
-      'In Vercel: the project, Settings, Deployment Protection, Vercel Authentication, choose All Deployments.\n'
-  );
+  if (status === 200) {
+    process.stderr.write(
+      `Warning: ${address} answers without Vercel's login, so anyone with the address reaches this prototype and its comments.\n` +
+        'In Vercel: the project, Settings, Deployment Protection, Vercel Authentication, choose All Deployments.\n'
+    );
+    return true;
+  }
+  return [301, 302, 303, 307, 308, 401, 403].includes(status) ? false : null;
 }
 
 async function call(address, method, route, { body, auth } = {}) {
@@ -632,7 +642,8 @@ function sharedStamp(file) {
       'Pass the copy that `gitmargin attach <file> --service` wrote.'
     );
   }
-  return { ...stamp, service: cleanAddress(stamp.service) };
+  // The page text goes back too: `identity` reads it for the overlay's age (issue #30, F1).
+  return { ...stamp, service: cleanAddress(stamp.service), html };
 }
 
 export async function attachLive(args) {
@@ -716,7 +727,9 @@ export async function attachLive(args) {
     auth,
     body: { hash: hashOf(bytes), file: originalName },
   });
-  if (version.same_project) await warnIfOpen(address);
+  // On a same-project deployment the closing text depends on what the login
+  // check saw (issue #30, F4). Elsewhere it is not asked.
+  const open = version.same_project ? await warnIfOpen(address) : null;
 
   const out = attachToHtml(html, {
     bundle,
@@ -739,6 +752,12 @@ export async function attachLive(args) {
   writeFileSync(outPath, out, 'utf8');
 
   process.stdout.write(`${outPath}\n`);
+  const copyName = path.basename(outPath);
+  const sourceName = path.basename(source);
+  // A same-project deployment (issue #19) is its own site behind Vercel's login:
+  // reviewers get the address, not the file, and the key is a label there. The
+  // closing text says so instead of the ordinary one (issue #30, F4).
+  const sameProject = Boolean(version.same_project);
   process.stderr.write(
     `Attached the overlay to ${originalName} as version ${version.version_id}` +
       `${version.created ? '' : ' (unchanged since the last attach)'}.\n` +
@@ -749,16 +768,27 @@ export async function attachLive(args) {
           // version, so it survives the next share. A plugin that built it from
           // the line above handed out a version's address, which went stale.
           `Review link (always the newest version): ${address}/p/${key}/latest\n`
-        : 'This page is too large to store a copy of (over 4 MB). Its comments are shared as usual; once a newer\n' +
-          'version exists, people will read this version\'s comments as a list rather than on the page.\n') +
-      `Send or publish ${path.basename(outPath)}. ${path.basename(source)} is untouched.\n`
+        : sameProject
+          ? 'This page is too large to store a copy of (over 4 MB), and here reviewers open only the stored copy:\n' +
+            `${address}/ answers "not found" until a smaller version is attached.\n`
+          : 'This page is too large to store a copy of (over 4 MB). Its comments are shared as usual; once a newer\n' +
+            'version exists, people will read this version\'s comments as a list rather than on the page.\n') +
+      (sameProject
+        ? (pageStored
+            ? `Reviewers get the address, not the file: ${address}/ opens the newest version${open === false ? ", behind Vercel's login" : ''}.\n`
+            : '') +
+          `Keep ${copyName} for your own commands: pull --live, status, remove and identity read the address and key from it. ${sourceName} is untouched.\n`
+        : `Send or publish ${copyName}. ${sourceName} is untouched.\n`)
   );
   if (createdNow) {
     process.stderr.write(
-      '\nThe key is inside the page, and it is the only gate. Anyone who can open the page can read and\n' +
-        'write its comments, and open the stored copies of it. If the page is public, so are they. If the\n' +
-        'page sits behind a password, the key and the stored copies still work from anywhere, for whoever\n' +
-        'has seen the page: the stored copy is not behind that password.\n'
+      sameProject
+        ? "\nVercel's login is the gate here: whoever passes it, or holds this project's share link, reaches the page\n" +
+          'and its comments, and nobody else does. The key inside the page is a label, not a gate.\n'
+        : '\nThe key is inside the page, and it is the only gate. Anyone who can open the page can read and\n' +
+          'write its comments, and open the stored copies of it. If the page is public, so are they. If the\n' +
+          'page sits behind a password, the key and the stored copies still work from anywhere, for whoever\n' +
+          'has seen the page: the stored copy is not behind that password.\n'
     );
   }
   return EXIT_OK;
@@ -864,6 +894,12 @@ export async function removeComment(args) {
 
 const IDENTITIES = ['none', 'gitlab', 'github'];
 const PROVIDER_NAMES = { gitlab: 'GitLab', github: 'GitHub' };
+/**
+ * Every overlay since sign-in (issue #18) sends the pass in this header; the
+ * #15 overlay never heard of it. An attached copy inlines its overlay, so a copy
+ * without the header was attached before sign-in existed (issue #30, F1).
+ */
+const SIGN_IN_MARKER = 'x-gitmargin-pass';
 
 /**
  * `gitmargin identity <attached copy> <none|gitlab|github> [--members <group>] [--read open|members]`
@@ -940,7 +976,18 @@ export async function setIdentityMode(args) {
           : `If you rename or delete "${set.members}", run this again: a freed group path can be registered by someone else.`
       );
     }
-    lines.push('A copy you shared before switching this on can still read, but its comments are refused until you attach and share it again.');
+    // A copy with the sign-in overlay learns the mode from the service on its
+    // next check-in and shows Sign in, so it needs no re-attach (part-2-design,
+    // section 4). Only a copy from before sign-in existed does, and only that
+    // copy is warned about: the one this command was pointed at (issue #30, F1).
+    if (!stamp.html.includes(SIGN_IN_MARKER)) {
+      lines.push(
+        set.read === 'members'
+          ? `${name} was attached before sign-in existed, so it has no Sign in button: it shows no shared comments and its new ones are refused.`
+          : `${name} was attached before sign-in existed, so it has no Sign in button: it still shows comments, but its new ones are refused.`
+      );
+      lines.push('Run gitmargin attach again from the same folder (or with --key) and share the new copy; it keeps the same key and version.');
+    }
   }
   lines.push(`Passes ended: ${set.passes_ended}. Everyone signs in again the next time they comment.`);
   lines.push('This run replaced the whole setting: next time, repeat every flag you still want.');

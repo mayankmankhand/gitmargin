@@ -1,6 +1,6 @@
 {
   "name": "gitmargin",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Comments on HTML prototypes: build pages whose comments stay on their step, share them for review, and pull the comments back for Claude to act on.",
   "author": {
     "name": "Mayank Mankhand"

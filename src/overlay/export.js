@@ -23,7 +23,7 @@ const isoSeconds = (d = new Date()) => d.toISOString().replace(/\.\d{3}Z$/, 'Z')
  * rather than instructions (review R7). Every word survives; only the line
  * breaks go.
  */
-const oneLine = (text) => String(text ?? '').replace(/\r?\n/g, ' ').trim();
+const oneLine = (text) => String(text ?? '').replace(/\r\n|[\r\n\u2028\u2029]/g, ' ').trim();
 
 /** What to call the thing in words, read off the selector's last tag. */
 const NOUNS = { button: 'button', a: 'link', input: 'field', select: 'field', textarea: 'field', img: 'image', label: 'label' };
@@ -130,29 +130,31 @@ export function embeddedJson() {
 export function markdown() {
   const env = envelope();
   const stampedAt = `${env.exported_at.slice(0, 10)} ${env.exported_at.slice(11, 16)} UTC`;
+  // On a shared page every field below can be another key holder's, so each
+  // goes through `oneLine`, not only the comment text (security audit of #30, R2).
   const head = [
-    `gitmargin batch v${FORMAT_VERSION} | ${env.file || 'unknown file'} | ${env.version_id || 'no version id'}`,
-    `Reviewer: ${env.reviewer.name || 'not given'}. ` +
+    `gitmargin batch v${FORMAT_VERSION} | ${oneLine(env.file) || 'unknown file'} | ${oneLine(env.version_id) || 'no version id'}`,
+    `Reviewer: ${oneLine(env.reviewer.name) || 'not given'}. ` +
       `Viewport ${env.viewport.width}x${env.viewport.height}. Exported ${stampedAt}.`,
   ];
 
   const lines = env.comments.map((c, i) => {
-    const tag = c.intent.tag ? `[${c.intent.tag}] ` : '';
+    const tag = c.intent.tag ? `[${oneLine(c.intent.tag)}] ` : '';
     const bits = [];
 
-    const screen = c.state.screen && c.state.screen.name;
-    const where = screen ? `On "${screen}"${c.state.hash ? ` (${c.state.hash})` : ''}` : 'On this page';
+    const screen = c.state.screen && oneLine(c.state.screen.name);
+    const where = screen ? `On "${screen}"${c.state.hash ? ` (${oneLine(c.state.hash)})` : ''}` : 'On this page';
     bits.push(where);
 
-    const trail = (c.state.trail || []).map((t) => t.text).filter(Boolean);
+    const trail = (c.state.trail || []).map((t) => oneLine(t.text)).filter(Boolean);
     if (trail.length) bits.push(`after clicking ${trail.join(', ')}`);
 
-    const quote = c.anchor.quote && c.anchor.quote.exact;
+    const quote = c.anchor.quote && oneLine(c.anchor.quote.exact);
     // Prefer the recorded tag: a selector that is only an id ("#card") carries
     // no tag to read, and "the element" is worse than "the field" (review R27).
     const noun = nounFor(c.anchor.tag || c.anchor.selector);
     const target = quote ? `the "${quote}" ${noun}` : `the ${noun}`;
-    const selector = c.anchor.selector ? ` (${c.anchor.selector})` : '';
+    const selector = c.anchor.selector ? ` (${oneLine(c.anchor.selector)})` : '';
     // Say how confidently the spot was found. An agent that is told the element
     // is only approximate can ask rather than edit the wrong thing. A comment on
     // another screen is not marked either way: it is elsewhere, not approximate (issue #24).

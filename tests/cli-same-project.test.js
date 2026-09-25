@@ -57,6 +57,13 @@ test('attach reaches a protected deployment with the bypass, on every call it ma
   const r = await s.cli(['attach', s.source, '--service', s.wall.url], { GITMARGIN_VERCEL_BYPASS: s.wall.bypass, GITMARGIN_SERVICE: s.wall.url });
   assert.equal(r.code, 0, r.err);
   assert.ok(existsSync(s.copy));
+  // The closing text is written for this mode (issue #30, F4): the address is
+  // what reviewers get, Vercel's login is the gate, and the file is the author's.
+  assert.match(r.err, /Reviewers get the address, not the file/);
+  assert.ok(r.err.includes(`${s.wall.url}/ opens the newest version, behind Vercel's login`), r.err);
+  assert.match(r.err, /Keep proto\.gitmargin\.html for your own commands/);
+  assert.match(r.err, /Vercel's login is the gate/);
+  assert.ok(!/only gate|Send or publish/.test(r.err), 'the ordinary closing text was printed for a same-project deployment');
   const calls = s.wall.seen.filter((c) => c.path.startsWith('/api/prototypes'));
   assert.ok(calls.length >= 3, 'register, version, page');
   assert.ok(calls.every((c) => c.bypassed), 'a call went without the bypass');
@@ -169,11 +176,61 @@ test('publishing to a same-project address that answers without Vercel\'s login 
   assert.equal(open.code, 0, open.err);
   assert.match(open.err, /answers without Vercel's login/);
   assert.match(open.err, /choose All Deployments/);
+  // An open address is not called walled (issue #30, F4).
+  assert.ok(open.err.includes(`${s.service.url}/ opens the newest version`), open.err);
+  assert.ok(!/behind Vercel's login/.test(open.err), 'an open address was called walled');
 
   // Behind the wall, the same publish says nothing about it.
   const walled = await s.cli(['attach', s.source, '--service', s.wall.url, '--key', /<meta name="gitmargin-key" content="([^"]+)"/.exec(readFileSync(s.copy, 'utf8'))[1]], { GITMARGIN_VERCEL_BYPASS: s.wall.bypass, GITMARGIN_SERVICE: s.wall.url });
   assert.equal(walled.code, 0, walled.err);
   assert.ok(!/answers without Vercel's login/.test(walled.err), walled.err);
+});
+
+test('when the login check cannot run, the closing text claims nothing about the login (issue #30, F4)', async (t) => {
+  const s = await setup(t);
+  // A stand-in in front of the wall that breaks only the ping. Every other
+  // request goes through with its headers, Host included, so the proof of
+  // trust still passes and the attach itself succeeds.
+  const broken = http.createServer(async (req, res) => {
+    if (req.url.startsWith('/api/ping')) return res.writeHead(500, { 'content-type': 'text/plain' }).end('boom');
+    const chunks = [];
+    for await (const chunk of req) chunks.push(chunk);
+    const headers = { ...req.headers };
+    delete headers.connection;
+    const to = new URL(s.wall.url);
+    const upstream = await new Promise((resolve, reject) => {
+      const forward = http.request({ hostname: to.hostname, port: to.port, path: req.url, method: req.method, headers }, resolve);
+      forward.on('error', reject);
+      forward.end(Buffer.concat(chunks));
+    });
+    const out = [];
+    for await (const chunk of upstream) out.push(chunk);
+    const passed = { ...upstream.headers };
+    for (const name of ['content-length', 'transfer-encoding', 'connection', 'content-encoding']) delete passed[name];
+    res.writeHead(upstream.statusCode, passed);
+    return res.end(Buffer.concat(out));
+  });
+  await new Promise((done) => broken.listen(0, '127.0.0.1', done));
+  t.after(() => {
+    broken.closeAllConnections?.();
+    broken.close();
+  });
+  const address = `http://127.0.0.1:${broken.address().port}`;
+  const r = await s.cli(['attach', s.source, '--service', address], { GITMARGIN_VERCEL_BYPASS: s.wall.bypass, GITMARGIN_SERVICE: address });
+  assert.equal(r.code, 0, r.err);
+  assert.ok(r.err.includes(`${address}/ opens the newest version`), r.err);
+  assert.ok(!/behind Vercel's login|answers without Vercel's login/.test(r.err), 'the closing text claimed a login check it never ran');
+});
+
+test('a page too large to store on a same-project deployment is told the address answers not found, not that it opens (issue #30, F4)', async (t) => {
+  const s = await setup(t);
+  const big = path.join(s.dir, 'big.html');
+  writeFileSync(big, PAGE.replace('<p>hi</p>', `<p>${'x'.repeat(4_500_000)}</p>`));
+  const r = await s.cli(['attach', big, '--service', s.wall.url], { GITMARGIN_VERCEL_BYPASS: s.wall.bypass, GITMARGIN_SERVICE: s.wall.url });
+  assert.equal(r.code, 0, r.err);
+  assert.match(r.err, /too large to store a copy of/);
+  assert.match(r.err, /answers "not found" until a smaller version is attached/);
+  assert.ok(!/opens the newest version|comments are shared as usual/.test(r.err), r.err);
 });
 
 test('a redirect that is not Vercel\'s login is named with where it points, not blamed on the bypass (review of #19, R18)', async (t) => {

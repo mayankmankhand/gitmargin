@@ -1,10 +1,19 @@
 # ---------------------------------------------------------------
-# PRIVATE — never publish. Personal notes, strategy, drafts.
+# Owner's local notes and AI-workflow files, never committed.
+# They live on the owner's machine only: the decision log, the
+# Claude Code project instructions, the lessons files, the design
+# profile, and the LLM Peer Review toolkit's state under .claude/.
 # ---------------------------------------------------------------
 PRIVATE-NOTES.md
 _private/
 notes/private/
 *.private.md
+CLAUDE.md
+LESSONS.md
+LESSONS-detail.md
+DESIGN-PROFILE.md
+.claude/
+artifacts/
 
 # ---------------------------------------------------------------
 # Secrets & environment
