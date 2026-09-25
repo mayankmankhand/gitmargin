@@ -22,7 +22,7 @@ flowchart LR
   end
   subgraph next ["Next"]
     direction TB
-    n6["Dogfood round with two reviewers (#6)"]
+    n6["First real review round, two reviewers (#6)"]
     nv["The plain Vercel channel in the plugin"]
     nn["Publish to npm"]
     n6 --> nv --> nn
@@ -40,7 +40,7 @@ flowchart LR
 ## The list
 
 - [x] **v0 part 1: the file.** The overlay (anchors, pins, comments, state capture, send back), `gitmargin attach` and `pull`, built and tested end to end.
-- [ ] **The part-1 dogfood round** ([#6](https://github.com/mayankmankhand/gitmargin/issues/6)): a generated prototype sent as a file to two reviewers, comments back, Claude Code applies them without the author explaining where anything was.
+- [ ] **The part-1 review round, the first with real reviewers** ([#6](https://github.com/mayankmankhand/gitmargin/issues/6)): a generated prototype sent as a file to two reviewers, comments back, Claude Code applies them without the author explaining where anything was.
 - [x] **Shared live comments** ([#15](https://github.com/mayankmankhand/gitmargin/issues/15)). Built, tested against a local copy of the service, and checked on a real Vercel plus Neon deployment in Chrome and Firefox. The Deploy button follows Vercel's reference and has not been walked end to end. A comment service on Vercel plus Neon that each author deploys, comments by version with a stored copy of each version, replies, statuses, `pull --live`. No sign-in by default: a key in the page is the gate.
 - [x] **Sign in with GitLab** ([#18](https://github.com/mayankmankhand/gitmargin/issues/18), cycle 1 of part 2). Built and walked live on gitlab.com: optional per prototype, verified names on comments, a members rule on one GitLab group, and strict reading. Chrome end to end; Firefox by the automated suite, and by hand as far as GitLab's login. The company single sign-on pass-through is untested.
 - [x] **Sign in with GitHub** ([#17](https://github.com/mayankmankhand/gitmargin/issues/17), cycle 2 of part 2). Optional per prototype, through a GitHub App that asks for no permissions, with verified names on comments, an optional rule limiting commenting to one repository (the App then needs one read-only permission), and strict reading; tested against a stand-in GitHub in Chromium and Firefox, and walked on the real github.com on 2026-09-23.
