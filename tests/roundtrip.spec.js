@@ -154,6 +154,11 @@ test('Copy for author puts the markdown batch on the clipboard', async ({ page }
   await page.click('.gm-badge'); // Copy lives in the sheet (issue #21)
 
   await page.click('.gm-send .gm-btn.ghost');
+  // The click returns as soon as the event is dispatched, but the overlay sets
+  // the hook only after the clipboard write's promise resolves, so wait for it
+  // rather than reading at once: on GitHub's runner the immediate read found
+  // null in three runs out of five while the sheet already said Copied.
+  await expect.poll(() => page.evaluate(() => window.__gitmargin.lastCopy)).not.toBeNull();
   const { text, ok } = await page.evaluate(() => ({
     text: window.__gitmargin.lastCopy,
     ok: window.__gitmargin.lastCopyOk,
