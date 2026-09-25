@@ -1,0 +1,444 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Next Best Pokémon · a gitmargin demo</title>
+<meta name="description" content="Jeff, an AI, picks your first Pokémon. His prototype has 5 bugs. Catch them with Google-Docs-style comments.">
+<meta property="og:title" content="Next Best Pokémon · a gitmargin demo">
+<meta property="og:description" content="Jeff, an AI, picks your first Pokémon. His prototype has 5 bugs. Catch them with comments.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&family=Press+Start+2P&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --cream: #FFF6E5; --paper: #FFFDF7; --ink: #1D1B22; --muted: #5F5B6B;
+    --red: #D7263D; --red-deep: #A61B2E; --bezel: #3A3A46;
+    --screen: #EEF6E4; --screen-ink: #23301C; --gold: #F7C948;
+    --fire: #EE8130; --water: #6390F0; --grass: #7AC74C;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; color: var(--ink);
+    background: var(--cream) radial-gradient(rgba(29, 27, 34, .08) 1px, transparent 1px) 0 0 / 18px 18px;
+    font: 16px/1.55 "DM Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  .pixel { font-family: "Press Start 2P", ui-monospace, monospace; letter-spacing: .02em; }
+  a { color: var(--red-deep); }
+  button { font: inherit; cursor: pointer; }
+  :focus-visible { outline: 3px solid var(--water); outline-offset: 2px; }
+
+  .wrap {
+    max-width: 1120px; margin: 0 auto; padding: 76px 16px 32px;
+    display: grid; grid-template-columns: minmax(0, 340px) minmax(0, 1fr); gap: 32px; align-items: start;
+  }
+  @media (max-width: 860px) { .wrap { grid-template-columns: minmax(0, 1fr); padding-top: 68px; gap: 24px; } }
+
+  /* ---- the how-to panel, for someone who just landed here ---- */
+  .howto {
+    background: var(--paper); border: 3px solid var(--ink); border-radius: 14px;
+    box-shadow: 6px 6px 0 var(--ink); padding: 22px 22px 18px; position: sticky; top: 76px;
+  }
+  @media (max-width: 860px) { .howto { position: static; } }
+  .eyebrow { font-size: 10px; color: var(--red); margin: 0 0 14px; }
+  .howto h1 { font-size: 17px; line-height: 1.55; margin: 0 0 12px; }
+  .howto p { margin: 0 0 10px; }
+  .howto ol { padding-left: 22px; margin: 12px 0; }
+  .howto li { margin: 7px 0; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 4px; background: #fff; border: 2px solid var(--ink);
+    border-radius: 999px; padding: 0 9px; font-weight: 700; font-size: 14px; white-space: nowrap;
+  }
+  .note { font-size: 14px; color: var(--muted); }
+  details { border-top: 2px dashed rgba(29, 27, 34, .25); margin-top: 14px; padding-top: 12px; }
+  summary { cursor: pointer; font-weight: 700; }
+  details ol { font-size: 15px; }
+  .made { font-size: 14px; margin: 18px 0 0; }
+  @media (max-width: 480px) { .howto { padding: 18px 16px 14px; } }
+
+  /* ---- the handheld ---- */
+  .device {
+    background: var(--red); border: 3px solid var(--ink); border-radius: 18px 18px 18px 56px;
+    box-shadow: 8px 8px 0 var(--ink); padding: 16px 18px 20px;
+  }
+  .device-head { display: flex; align-items: center; gap: 12px; margin: 0 4px 14px; }
+  .lens {
+    width: 36px; height: 36px; flex: none; border-radius: 50%; border: 3px solid #fff; box-shadow: 0 0 0 3px var(--ink);
+    background: radial-gradient(circle at 35% 35%, #CDEBFF 0 18%, #3B8FD9 19% 62%, #1F5FA3 63%);
+  }
+  .leds { display: flex; gap: 5px; }
+  .leds i { width: 11px; height: 11px; border-radius: 50%; border: 2px solid var(--ink); }
+  .brand { margin-left: auto; text-align: right; color: #fff; }
+  .brand .name { font-size: 11px; line-height: 1.6; }
+  .version {
+    display: inline-block; margin-top: 6px; background: #fff; color: var(--red-deep); border: 2px solid var(--ink);
+    border-radius: 999px; padding: 4px 8px 3px; font-size: 8px;
+  }
+  .bezel { background: var(--bezel); border: 3px solid var(--ink); border-radius: 12px 12px 12px 40px; padding: 14px 14px 10px; }
+  .screen {
+    background: var(--screen); color: var(--screen-ink); border-radius: 6px; padding: 16px;
+    min-height: 470px; display: flex; flex-direction: column;
+  }
+  .bezel-label { color: #C9C9D6; font-size: 8px; text-align: center; margin: 10px 0 2px; letter-spacing: .06em; }
+  .power { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #FF4D4D; box-shadow: 0 0 8px #FF4D4D; margin-right: 8px; vertical-align: -1px; }
+
+  .stepper { display: flex; gap: 6px; flex-wrap: wrap; margin: 0 0 16px; }
+  .stepper a {
+    display: grid; place-items: center; width: 30px; height: 30px; border: 2px solid var(--screen-ink); border-radius: 6px;
+    color: var(--screen-ink); text-decoration: none; font-size: 9px; background: #fff;
+  }
+  .stepper a[aria-current] { background: var(--screen-ink); color: #fff; }
+
+  .step { display: flex; flex-direction: column; flex: 1; }
+  .step[hidden] { display: none; }
+  .step h2 { font-size: 14px; line-height: 1.7; margin: 4px 0 10px; }
+  .step p { margin: 0 0 10px; }
+  .kicker { font-size: 9px; color: var(--muted); margin: 0 0 8px; }
+  .fine { font-size: 13px; color: var(--muted); }
+
+  .hello-scene { display: flex; align-items: center; gap: 16px; margin: 4px 0 14px; }
+  .jeff { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .jeff .face {
+    width: 76px; height: 76px; border-radius: 16px; background: #fff; border: 3px solid var(--screen-ink);
+    display: grid; place-items: center; font-size: 42px; box-shadow: 3px 3px 0 var(--screen-ink);
+  }
+  .jeff .tag { font-size: 8px; background: var(--screen-ink); color: #fff; padding: 4px 6px 3px; border-radius: 4px; }
+
+  .actions { display: flex; gap: 12px; flex-wrap: wrap; margin: 6px 0 14px; }
+  .next, .ghost {
+    border: 3px solid var(--ink); border-radius: 10px; padding: 9px 16px; font-weight: 700;
+    box-shadow: 3px 3px 0 var(--ink);
+  }
+  .next { background: var(--red); color: #fff; }
+  .ghost { background: #fff; color: var(--ink); }
+  .next:active, .ghost:active, .choice:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--ink); }
+
+  .choices { display: grid; gap: 10px; margin: 6px 0 14px; }
+  .choice {
+    display: flex; gap: 12px; align-items: center; text-align: left; background: #fff; color: var(--ink);
+    border: 3px solid var(--ink); border-radius: 12px; padding: 11px 14px; box-shadow: 3px 3px 0 var(--ink);
+  }
+  .choice .em { font-size: 22px; line-height: 1; }
+  .choice[aria-pressed="true"] { background: #FFF3C4; outline: 3px solid var(--gold); outline-offset: 2px; }
+
+  .card { display: flex; gap: 16px; align-items: center; background: #fff; border: 3px solid var(--ink); border-radius: 14px; padding: 14px; box-shadow: 4px 4px 0 var(--ink); }
+  .orb { width: 78px; height: 78px; flex: none; border-radius: 50%; border: 3px solid var(--ink); display: grid; place-items: center; font-size: 38px; }
+  .card h2 { margin: 0 0 6px; }
+  .card p { margin: 8px 0 0; }
+  .type { display: inline-block; color: #fff; border: 2px solid var(--ink); border-radius: 999px; padding: 1px 10px; font-size: 13px; font-weight: 700; }
+  .confidence { margin: 20px 0 8px; }
+  .confidence .pixel { font-size: 12px; }
+  .stats { display: grid; gap: 6px; margin: 0 0 10px; font-size: 14px; }
+  .stat { display: grid; grid-template-columns: minmax(0, 190px) minmax(0, 1fr); gap: 10px; align-items: center; }
+  .stat .bar { height: 12px; border: 2px solid var(--ink); border-radius: 999px; background: #fff; overflow: hidden; }
+  .stat .bar b { display: block; height: 100%; width: var(--v, 50%); background: var(--grass); }
+  @media (max-width: 480px) { .stat { grid-template-columns: minmax(0, 1fr); gap: 2px; } }
+
+  .summary { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 16px; background: #fff; border: 3px solid var(--ink); border-radius: 12px; padding: 12px 16px; margin: 4px 0 14px; }
+  .summary dt { font-weight: 700; }
+  .summary dd { margin: 0; }
+  .field { display: grid; gap: 4px; margin: 0 0 10px; font-weight: 700; }
+  .field input { font: inherit; font-weight: 400; border: 3px solid var(--ink); border-radius: 10px; padding: 8px 12px; background: #fff; max-width: 320px; width: 100%; }
+  .check { display: flex; gap: 8px; align-items: center; margin: 0 0 6px; }
+  .check input { width: 18px; height: 18px; accent-color: var(--red); }
+  .party { font-size: 44px; margin: 4px 0 6px; }
+
+  .dialog {
+    margin-top: auto; background: #fff; border: 4px double var(--ink); border-radius: 10px;
+    padding: 12px 30px 14px 14px; font-size: 10px; line-height: 2; position: relative;
+  }
+  .dialog::after { content: "\25BC"; position: absolute; right: 12px; bottom: 8px; font-size: 9px; animation: blink 1s steps(2) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) { .dialog::after { animation: none; } }
+
+  .controls { display: flex; justify-content: flex-end; align-items: center; gap: 14px; margin: 16px 8px 0; }
+  .controls .hint { color: #fff; font-size: 8px; margin-right: auto; opacity: .9; }
+  .ab {
+    width: 48px; height: 48px; border-radius: 50%; border: 3px solid var(--ink); background: #7A1726; color: #fff;
+    font-family: "Press Start 2P", ui-monospace, monospace; font-size: 12px; box-shadow: 3px 3px 0 var(--ink);
+  }
+  .ab:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--ink); }
+
+  .foot { max-width: 1120px; margin: 0 auto; padding: 0 16px 40px; font-size: 13px; color: var(--muted); }
+  .foot p { margin: 4px 0; }
+
+  @media (max-width: 480px) {
+    .device { padding: 12px 10px 16px; border-radius: 16px 16px 16px 36px; }
+    .bezel { padding: 10px 8px 8px; border-radius: 10px 10px 10px 26px; }
+    .screen { padding: 12px; }
+    .brand .name { font-size: 9px; }
+    .dialog { font-size: 9px; }
+  }
+</style>
+</head>
+<body>
+<!--
+  Hi, you opened the source. Respect.
+  Jeff is not a real AI. He is about 80 lines of JavaScript with strong opinions.
+  The comment bar at the top right is gitmargin: https://github.com/mayankmankhand/gitmargin
+-->
+<div class="wrap">
+
+  <aside class="howto" aria-labelledby="howto-title">
+    <p class="eyebrow pixel">A GITMARGIN DEMO</p>
+    <h1 id="howto-title" class="pixel">Jeff has bugs. Catch them.</h1>
+    <p>Jeff is an AI that picks your first Pokémon. His prototype has <b>5 wild bugs</b>. Comment on each one, the way you would in a Google Doc.</p>
+    <ol>
+      <li>Press <span class="pill">Comment</span> in the bar at the top right.</li>
+      <li>Click anything that looks off and say what you expected.</li>
+      <li>Press the count badge to see your comments, grouped by screen. <b>Copy for author</b> shows what a coding agent would get.</li>
+    </ol>
+    <p class="note">Your comments stay in this browser. Nothing is uploaded. Easiest on a laptop.</p>
+    <details>
+      <summary>Stuck? Show the 5 bugs</summary>
+      <ol>
+        <li><b>Hello there:</b> "Trust my instinct" ignores your instinct.</li>
+        <li><b>Question 2:</b> it says "2 of 3". There is no question 3.</li>
+        <li><b>Jeff's pick:</b> a match confidence of 112%.</li>
+        <li><b>Confirm:</b> the type is wrong.</li>
+        <li><b>Done:</b> "Congradulations".</li>
+      </ol>
+    </details>
+    <p class="made">gitmargin is free and open source: <a href="https://github.com/mayankmankhand/gitmargin">github.com/mayankmankhand/gitmargin</a></p>
+  </aside>
+
+  <main class="device" aria-label="Next Best Pokémon prototype">
+    <div class="device-head">
+      <span class="lens" aria-hidden="true"></span>
+      <span class="leds" aria-hidden="true"><i style="background:#FF5A5A"></i><i style="background:#FFD84A"></i><i style="background:#5BD66B"></i></span>
+      <div class="brand">
+        <div class="name pixel">NEXT BEST POKéMON</div>
+        <span class="version pixel">v1 · RED VERSION</span>
+      </div>
+    </div>
+
+    <div class="bezel">
+      <div class="screen">
+        <nav class="stepper pixel" aria-label="Screens">
+          <a href="#hello" data-step="hello" title="Hello there">1</a>
+          <a href="#standup" data-step="standup" title="Question 1">2</a>
+          <a href="#deadline" data-step="deadline" title="Question 2">3</a>
+          <a href="#match" data-step="match" title="Jeff's pick">4</a>
+          <a href="#confirm" data-step="confirm" title="Confirm">5</a>
+          <a href="#done" data-step="done" title="Done">6</a>
+        </nav>
+
+        <section class="step" id="step-hello" data-gm-screen="Hello there">
+          <div class="hello-scene">
+            <div class="jeff" aria-hidden="true"><div class="face">🤖</div><span class="tag pixel">JEFF · AI</span></div>
+            <svg viewBox="0 0 100 100" width="64" height="64" aria-hidden="true">
+              <circle cx="50" cy="50" r="45" fill="#fff" stroke="#1D1B22" stroke-width="6"/>
+              <path d="M5 50a45 45 0 0 1 90 0z" fill="#D7263D" stroke="#1D1B22" stroke-width="6"/>
+              <circle cx="50" cy="50" r="14" fill="#fff" stroke="#1D1B22" stroke-width="6"/>
+              <circle cx="50" cy="50" r="5" fill="#fff" stroke="#1D1B22" stroke-width="3"/>
+            </svg>
+          </div>
+          <h2 class="pixel">Welcome to Next Best Pokémon</h2>
+          <p>Meet Jeff. Jeff is an AI. He will pick your first partner Pokémon from three questions and a great deal of confidence.</p>
+          <div class="actions">
+            <button class="next" type="button" data-go="standup">Ask Jeff</button>
+            <button class="ghost instinct" type="button">Trust my instinct</button>
+          </div>
+          <p class="fine">Jeff's training data ends in 1998. He knows the original 151 and nothing since.</p>
+          <div class="dialog pixel"><b>JEFF:</b> Hello there! I am 97% sure I know which Pokémon you need. I have not asked you anything yet.</div>
+        </section>
+
+        <section class="step" id="step-standup" data-gm-screen="Question 1" hidden>
+          <p class="kicker pixel">QUESTION 1 OF 3</p>
+          <h2 class="pixel">It's 9:00 AM standup. Your move?</h2>
+          <div class="choices">
+            <button class="choice" type="button" data-q="standup" data-type="fire" aria-pressed="false"><span class="em" aria-hidden="true">🔥</span><span>Give my update in ten seconds flat.</span></button>
+            <button class="choice" type="button" data-q="standup" data-type="water" aria-pressed="false"><span class="em" aria-hidden="true">💧</span><span>Go with the flow. Whatever the team needs.</span></button>
+            <button class="choice" type="button" data-q="standup" data-type="grass" aria-pressed="false"><span class="em" aria-hidden="true">🌿</span><span>Bring snacks. Grow the team.</span></button>
+          </div>
+          <div class="actions">
+            <button class="back ghost" type="button" data-go="hello">Back</button>
+            <button class="next" type="button" data-go="deadline">Next</button>
+          </div>
+          <div class="dialog pixel"><b>JEFF:</b> Answer honestly. I am taking notes. Well, I am a JavaScript file. But still.</div>
+        </section>
+
+        <section class="step" id="step-deadline" data-gm-screen="Question 2" hidden>
+          <p class="kicker pixel">QUESTION 2 OF 3</p>
+          <h2 class="pixel">The launch slips a week. You...</h2>
+          <div class="choices">
+            <button class="choice" type="button" data-q="deadline" data-type="fire" aria-pressed="false"><span class="em" aria-hidden="true">🔥</span><span>Set the roadmap on fire.</span></button>
+            <button class="choice" type="button" data-q="deadline" data-type="water" aria-pressed="false"><span class="em" aria-hidden="true">💧</span><span>Stay calm and refactor.</span></button>
+            <button class="choice" type="button" data-q="deadline" data-type="grass" aria-pressed="false"><span class="em" aria-hidden="true">🌿</span><span>Plant a new plan. Water it daily.</span></button>
+          </div>
+          <div class="actions">
+            <button class="back ghost" type="button" data-go="standup">Back</button>
+            <button class="next" type="button" data-go="match">Next</button>
+          </div>
+          <div class="dialog pixel"><b>JEFF:</b> Last question. Probably.</div>
+        </section>
+
+        <section class="step" id="step-match" data-gm-screen="Jeff's pick" hidden>
+          <p class="kicker pixel">JEFF'S PICK</p>
+          <div class="card">
+            <div class="orb" id="mon-orb" aria-hidden="true"></div>
+            <div>
+              <h2 class="pixel" id="mon-name"></h2>
+              <span class="type" id="mon-type"></span>
+              <p id="mon-blurb"></p>
+            </div>
+          </div>
+          <p class="confidence"><b>Match confidence:</b> <span class="pixel">112%</span></p>
+          <div class="stats">
+            <div class="stat"><span>Standup speed</span><span class="bar"><b></b></span></div>
+            <div class="stat"><span>Scope-creep resistance</span><span class="bar"><b></b></span></div>
+            <div class="stat"><span>Friday deploys survived</span><span class="bar"><b></b></span></div>
+          </div>
+          <p class="fine" id="mon-why"></p>
+          <div class="actions">
+            <button class="ghost reroll" type="button">Ask Jeff again</button>
+            <button class="next" type="button" data-go="confirm">Choose <span id="mon-choose"></span></button>
+          </div>
+          <div class="dialog pixel"><b>JEFF:</b> I have made my decision. I will not be taking questions.</div>
+        </section>
+
+        <section class="step" id="step-confirm" data-gm-screen="Confirm" hidden>
+          <h2 class="pixel">Confirm your partner</h2>
+          <dl class="summary">
+            <dt>Partner</dt><dd id="sum-name"></dd>
+            <dt>Type</dt><dd id="sum-type"></dd>
+            <dt>Chosen by</dt><dd>Jeff (AI), with your input (optional)</dd>
+          </dl>
+          <label class="field">Nickname <input id="nick" type="text" maxlength="20" placeholder="e.g. Sparky" autocomplete="off"></label>
+          <label class="check"><input type="checkbox"> I agree to a weekly 1:1 with my Pokémon.</label>
+          <div class="actions">
+            <button class="back ghost" type="button" data-go="match">Back</button>
+            <button class="next" type="button" data-go="done">Confirm</button>
+          </div>
+          <div class="dialog pixel"><b>JEFF:</b> Sign here. And here. And one more here.</div>
+        </section>
+
+        <section class="step" id="step-done" data-gm-screen="Done" hidden>
+          <div class="party" aria-hidden="true">🎉</div>
+          <h2 class="pixel">Congradulations!</h2>
+          <p>You and <b id="done-name"></b> are now a team. Jeff added your partnership to the backlog. You are number 4,812.</p>
+          <p class="fine">Coming in v2 · Blue Version: Jeff finds out what year it is.</p>
+          <div class="actions">
+            <button class="ghost again" type="button">Start over</button>
+          </div>
+          <div class="dialog pixel"><b>JEFF:</b> My work here is done. Please rate me five stars.</div>
+        </section>
+      </div>
+      <p class="bezel-label pixel"><span class="power" aria-hidden="true"></span>DOT MATRIX WITH STRONG OPINIONS</p>
+    </div>
+
+    <div class="controls">
+      <span class="hint pixel">A = NEXT · B = BACK</span>
+      <button class="ab btn-b" type="button" aria-label="B: back">B</button>
+      <button class="ab btn-a" type="button" aria-label="A: next">A</button>
+    </div>
+  </main>
+</div>
+
+<footer class="foot">
+  <p>A fan-made parody, built to demo <a href="https://github.com/mayankmankhand/gitmargin">gitmargin</a>: Google-Docs-style comments on HTML prototypes, in a form a coding agent can act on.</p>
+  <p>Pokémon and its names are trademarks of Nintendo, Game Freak and The Pokémon Company. This page is not affiliated with or endorsed by them.</p>
+</footer>
+
+<script>
+(() => {
+  const STEPS = ['hello', 'standup', 'deadline', 'match', 'confirm', 'done'];
+  const MONS = {
+    fire:  { name: 'Charmander', type: 'Fire',  emoji: '🔥', color: 'var(--fire)',  stats: [92, 35, 70], blurb: 'Ships fast. Sometimes sets the roadmap on fire.', why: 'You picked fire twice. Also, Jeff likes orange.' },
+    water: { name: 'Squirtle',   type: 'Water', emoji: '💧', color: 'var(--water)', stats: [60, 88, 64], blurb: 'Calm under pressure. Refactors for fun.', why: 'You picked water twice. Jeff respects hydration.' },
+    grass: { name: 'Bulbasaur',  type: 'Grass', emoji: '🌿', color: 'var(--grass)', stats: [48, 72, 90], blurb: 'Grows teams. Brings snacks. Photosynthesizes during standup.', why: 'You picked grass twice. Jeff finds this wholesome.' },
+    mixed: { name: 'Psyduck',    type: 'Water', emoji: '🦆', color: 'var(--gold)',  stats: [30, 20, 99], blurb: 'Permanent headache. Deeply relatable.', why: 'Your answers disagreed with each other. So did Jeff.' },
+    karp:  { name: 'Magikarp',   type: 'Water', emoji: '🐟', color: 'var(--water)', stats: [5, 5, 100], blurb: 'Low impact today. Enormous potential. Very Series A.', why: 'Jeff reconsidered. Jeff always reconsiders to Magikarp.' },
+  };
+  // Wild bug #4 lives here: the Confirm screen reads the wrong column.
+  const WRONG_TYPE = { Fire: 'Water', Water: 'Fire', Grass: 'Fire' };
+  const state = { standup: null, deadline: null, instinct: false, reroll: false, nick: '' };
+  const $ = (sel) => document.querySelector(sel);
+  const $$ = (sel) => [...document.querySelectorAll(sel)];
+
+  function pick() {
+    if (state.reroll) return MONS.karp;
+    const { standup: a, deadline: b } = state;
+    if (a && b) return a === b ? MONS[a] : MONS.mixed;
+    return MONS[a || b] || MONS.mixed;
+  }
+
+  function render() {
+    const m = pick();
+    const orb = $('#mon-orb');
+    orb.textContent = m.emoji;
+    orb.style.background = m.color;
+    $('#mon-name').textContent = m.name.toUpperCase();
+    $('#mon-type').textContent = m.type;
+    $('#mon-type').style.background = m.color;
+    $('#mon-blurb').textContent = m.blurb;
+    // Wild bug #1: trusting your instinct gets you Jeff's pick anyway.
+    $('#mon-why').textContent = state.instinct ? 'You asked to trust your instinct. Jeff overruled it.' : m.why;
+    $('#mon-choose').textContent = m.name;
+    $$('.stat .bar b').forEach((bar, i) => bar.style.setProperty('--v', m.stats[i] + '%'));
+    $('#sum-name').textContent = m.name;
+    $('#sum-type').textContent = WRONG_TYPE[m.type];
+    $('#done-name').textContent = state.nick ? `${state.nick} the ${m.name}` : m.name;
+  }
+
+  const current = () => {
+    const id = decodeURIComponent(location.hash.slice(1));
+    return STEPS.includes(id) ? id : 'hello';
+  };
+
+  function show(id) {
+    render();
+    for (const s of STEPS) $('#step-' + s).hidden = s !== id;
+    $$('.stepper a').forEach((a) => {
+      if (a.dataset.step === id) a.setAttribute('aria-current', 'step');
+      else a.removeAttribute('aria-current');
+    });
+  }
+
+  function go(id) {
+    if (current() === id && location.hash) show(id);
+    else location.hash = id;
+  }
+
+  function reset() {
+    Object.assign(state, { standup: null, deadline: null, instinct: false, reroll: false, nick: '' });
+    $$('.choice').forEach((c) => c.setAttribute('aria-pressed', 'false'));
+    $('#nick').value = '';
+    $$('#step-confirm input[type=checkbox]').forEach((c) => { c.checked = false; });
+  }
+
+  document.addEventListener('click', (e) => {
+    const t = e.target;
+    const choice = t.closest('.choice');
+    if (choice) {
+      state[choice.dataset.q] = choice.dataset.type;
+      state.instinct = false;
+      state.reroll = false;
+      $$(`.choice[data-q="${choice.dataset.q}"]`).forEach((c) => c.setAttribute('aria-pressed', String(c === choice)));
+      return;
+    }
+    const to = t.closest('[data-go]');
+    if (to) { go(to.dataset.go); return; }
+    if (t.closest('.instinct')) { state.instinct = true; state.reroll = false; go('match'); return; }
+    if (t.closest('.reroll')) { state.reroll = true; state.instinct = false; render(); return; }
+    if (t.closest('.again')) { reset(); go('hello'); return; }
+    if (t.closest('.btn-a')) {
+      const step = $('#step-' + current());
+      const primary = step.querySelector('.next') || step.querySelector('.again');
+      if (primary) primary.click();
+      return;
+    }
+    if (t.closest('.btn-b')) {
+      const back = $('#step-' + current()).querySelector('.back');
+      if (back) back.click();
+    }
+  });
+
+  $('#nick').addEventListener('input', (e) => { state.nick = e.target.value.trim(); render(); });
+  window.addEventListener('hashchange', () => show(current()));
+  show(current());
+})();
+</script>
+</body>
+</html>
