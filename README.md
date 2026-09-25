@@ -150,7 +150,7 @@ This project stands on ideas from people who solved neighbouring problems:
 - **[Annotate.js](https://github.com/reviewjs/annotate)** showed the single-file shape: one script tag, no server, comments downloaded and imported as JSON.
 - **GitLab Visual Reviews** (GitLab 12.0 to 17.0) was almost exactly the sign-in idea: one script tag posting comments into the merge request. It was removed for low usage, most likely because reviewers had to paste an API token to use it. Validation and warning in one.
 - **Vercel Preview Comments** and **Netlify Drawer** proved that identity-aware, on-page comments work when tied to the deploy platform, and Vercel now exports comments as JSON for agents. gitmargin tries to make that idea portable.
-- **Coinbase's content platform** ([Scaling Content at Coinbase](https://medium.com/the-coinbase-blog)) proved that taking non-engineers out of the code-review loop collapses cycle time from weeks to hours.
+- **Coinbase's content platform** ([Scaling Content at Coinbase](https://www.coinbase.com/blog/scaling-content-at-coinbase)) proved that taking non-engineers out of the code-review loop collapses cycle time from weeks to hours.
 - **Hypothesis, BugHerd, Markup.io** and the W3C Web Annotation model: a decade of prior art on anchoring comments to a page.
 
 ## License
