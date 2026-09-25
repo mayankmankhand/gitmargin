@@ -208,6 +208,8 @@ test('a first-time author: login, one yes, and the service is set up, deployed a
   // Proven and remembered, and nothing of gitmargin's reached Vercel's tool.
   assert.deepEqual(w.trusted(), [w.service.url]);
   for (const call of state.calls) assert.deepEqual(call.seen, [], `${call.args.join(' ')} saw ${call.seen.join(', ')}`);
+  // Vercel's own "upgrade now?" question never interrupts the setup (it appeared in the #36 walk, answered yes by Enter).
+  for (const call of state.calls) assert.equal(call.quiet, true, `${call.args.join(' ')} could ask to upgrade Vercel's tool`);
   assert.match(w.said.at(-1), /Done\. Your comment service is at http:\/\/127\.0\.0\.1:\d+/);
   assert.match(w.said.at(-1), /type \/gitmargin:share/);
 });

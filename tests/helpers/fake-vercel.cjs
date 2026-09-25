@@ -27,7 +27,14 @@ const file = process.env.FAKE_VERCEL_STATE;
 const state = JSON.parse(fs.readFileSync(file, 'utf8'));
 const args = process.argv.slice(2);
 const WATCH = ['CLAUDECODE', 'CLAUDE_CODE', 'AI_AGENT', 'GITMARGIN_SECRET', 'GITMARGIN_CONFIG_DIR', 'GITMARGIN_SERVICE', 'GITMARGIN_VERCEL_BYPASS'];
-state.calls.push({ args, cwd: process.cwd(), seen: WATCH.filter((name) => name in process.env), via: process.env.FAKE_VERCEL_VIA || 'vercel' });
+// `quiet`: the real tool asks "Would you like to upgrade now?" (default yes) unless NO_UPDATE_NOTIFIER is set.
+state.calls.push({
+  args,
+  cwd: process.cwd(),
+  seen: WATCH.filter((name) => name in process.env),
+  quiet: Boolean(process.env.NO_UPDATE_NOTIFIER),
+  via: process.env.FAKE_VERCEL_VIA || 'vercel',
+});
 
 const done = (code) => {
   fs.writeFileSync(file, JSON.stringify(state, null, 2));

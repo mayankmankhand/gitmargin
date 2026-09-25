@@ -85,13 +85,19 @@ export async function askInTerminal(question) {
   }
 }
 
-/** The environment Vercel's tool runs in: without agent markers, and without gitmargin's own secrets. */
+/**
+ * The environment Vercel's tool runs in: without agent markers, and without
+ * gitmargin's own secrets. NO_UPDATE_NOTIFIER stops it asking "Would you like
+ * to upgrade now?" (default yes) in the middle of the setup, as it did in the
+ * #36 walk when a newer release was out.
+ */
 function childEnv(env) {
   const clean = {};
   for (const [name, value] of Object.entries(env)) {
     if (AGENT_VARS.includes(name) || name.startsWith('GITMARGIN_')) continue;
     clean[name] = value;
   }
+  clean.NO_UPDATE_NOTIFIER = '1';
   return clean;
 }
 
