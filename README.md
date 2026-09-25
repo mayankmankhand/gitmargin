@@ -2,60 +2,85 @@
 
 [![CI](https://github.com/mayankmankhand/gitmargin/actions/workflows/ci.yml/badge.svg)](https://github.com/mayankmankhand/gitmargin/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE) [![Plugin version](https://img.shields.io/badge/dynamic/json?label=plugin&query=%24.version&url=https%3A%2F%2Fraw.githubusercontent.com%2Fmayankmankhand%2Fgitmargin%2Fmain%2Fplugin%2F.claude-plugin%2Fplugin.json)](CHANGELOG.md)
 
-**Google-Docs-style comments for private HTML prototypes, using the access control your team already has.**
+**Google-Docs-style comments on HTML prototypes, in a form a coding agent can act on.**
 
-> Early stage. v0 is built in two parts, with one optional layer on top of the first. **Part 1 is built:** comments on a single HTML file, with no server, that tell a coding agent where the reviewer was and what they expected. The overlay, `gitmargin attach` and `gitmargin pull` are built and tested; a first real review round, two reviewers on a real prototype ([#6](https://github.com/mayankmankhand/gitmargin/issues/6)), is what remains. **Shared comments, an optional layer on part 1, are built:** a small service you deploy to your own account makes the comments live, so everyone who opens the page sees the same ones and can reply. **Part 2 is in progress:** signing reviewers in with the login your company already has. Built so far: optional sign-in with GitLab or GitHub on a shared prototype and Vercel same-project mode, both tested live with real accounts, and a [Claude Code plugin](docs/claude-code.md) that shares a prototype and reads the comments back, tried by hand end to end by a second author on a fresh computer on 2026-09-23 and cut to one login and one command on 2026-09-24; the rest is parked until it can be tested. The split and the reasons are in [docs/v0-split.md](docs/v0-split.md); the original decision, with the alternatives, is in [docs/v0-decision.md](docs/v0-decision.md).
+**For** anyone who builds HTML prototypes with an AI coding agent and needs a team's comments on them, and for the agent that applies those comments.
 
-## The problem
+**Try it:** the [live demo](https://mayankmankhand.github.io/gitmargin/), a Pokémon prototype with five planted bugs, needs no install and no sign-up. To use it on your own prototypes, install the [Claude Code plugin](docs/claude-code.md) or [clone the repo](#running-it-today).
 
-AI tools now produce working HTML prototypes in minutes. A PM can go from idea to clickable page before lunch. But the feedback loop hasn't caught up:
-
-- You share the prototype with your team, usually by dropping the `.html` file into Slack.
-- Someone wants to say *"this button label is wrong"*, and their options are a screenshot in Slack, a bullet list in an email, or "let's hop on a call."
-- The feedback lives somewhere other than the thing it's about, and half of it gets lost.
-
-Tools exist for parts of this (see [Prior art](#prior-art-and-credit-where-its-due) below). But almost all of them assume the page is **public**, or that everyone signs up for **yet another account**, or that the whole team lives on one hosting vendor.
-
-Real prototypes usually aren't public:
-
-- Hosted on **GitLab Pages**, visible only to project members
-- Deployed on **Vercel/Netlify** behind password protection or SSO
-- Sitting on an internal server behind a VPN
-
-The moment your prototype is private, the commenting tools either can't reach it, or they bolt on their own separate login: a second identity system your reviewers have to join before they can say "make the header bigger."
-
-And there is a second problem hiding inside the first. Even when a comment does reach the author, it rarely says enough for a coding agent to act on it: *which* of the four screens is "this" on, and what did the reviewer expect to happen?
-
-## The idea
+**Status:** early stage. Comments on a single file are built and tested; shared live comments and sign-in with GitLab or GitHub are built and tested with real accounts; the rest is parked until it can be tested. The full list, with dates, is [ROADMAP.md](ROADMAP.md).
 
 ![The overlay on a mock headphone-setup prototype: two of a reviewer's comments pinned to step 1, one on the Next button and one on a run of words, with that comment's thread open beside it and the floating pill at the top right](docs/images/overlay.png)
 
-**Part 1: the file is the whole product.**
+**Contents:** [The problem](#the-problem) · [How it works](#how-it-works) · [What the agent gets](#what-the-agent-gets) · [Three ways to run it](#three-ways-to-run-it) · [Running it today](#running-it-today) · [Design principles](#design-principles) · [What exists today](#what-exists-today-and-where-the-gap-is) · [Roadmap](#roadmap) · [Prior art](#prior-art-and-credit-where-its-due) · [License](#license)
 
-1. **Adds an overlay.** One script inside your HTML file. A reviewer opens the file anywhere, from disk included, clicks an element or highlights text, and leaves a comment anchored to that spot, like a Google Doc. In comment mode a one-pixel frame follows the pointer and shows the element a click will attach to, snapped to the nearest control or named block: a click on the word inside a button means the button. Each comment leaves a pin carrying the writer's initials at the spot, and clicking it opens that comment's thread right there. On a prototype with several steps the pin shows only on the step it was made on, even when every step repeats the same Next button, and even when the prototype draws every step into the same area, as React does; the few page shapes that can still fool it are listed in [docs/batch-format.md](docs/batch-format.md) section 3. A small floating toolbar at the top right holds comment mode, a count badge and who you are; the badge opens the comments sheet, which lists every comment, grouped by screen.
-2. **Records where they were and what they expected.** Every comment carries the step, tab, or dialog that was open, the clicks that led there ("Next, Next, Continue"), and one question answered in the reviewer's own words: *what did you expect here?* Those are the two things a coding agent needs and a human forgets to say.
-3. **Comes back as a file or a text block.** "Send to author" downloads the same HTML with the comments inside; "Copy for author" puts a readable block on the clipboard. No server, no account, no upload.
-4. **Speaks AI.** `gitmargin pull` turns the returned file into a batch a coding agent can apply in one pass, as JSON with the rules for applying it carried inside. Two reviewers' files merge into one batch. The format is specified in [docs/batch-format.md](docs/batch-format.md).
+## The problem
 
-**Shared comments, optional: one conversation, wherever the page lives.** Attach with `--service` and the page talks to a small comment service that you deploy to your own Vercel account, with its own Neon database. gitmargin runs nothing and holds nothing.
+AI tools now produce working HTML prototypes in minutes; a PM can go from idea to clickable page before lunch. The feedback loop has not caught up. The prototype reaches the team as an `.html` file dropped into Slack, and what comes back is "make this bigger": a screenshot, a bullet list, or "let's hop on a call". Bigger what? On which of the four screens? A coding agent cannot act on that, and three days later neither can you. The two things a reviewer forgets to say, where they were and what they expected, are exactly what an agent needs.
 
-1. **Live.** Everyone who opens the page, from a file on disk or from any host, sees the same comments within a few seconds, with who wrote each one, and can reply.
-2. **Local first.** A comment is saved in the browser the way it always was, then sent. If the service is down the comments sheet says so, nothing is lost, and the file and clipboard routes still work.
-3. **By version.** Attaching a changed prototype makes a new version, which opens with no comments. The Version line in the comments sheet opens the older versions, each with its own comments in place, from a copy the service keeps.
-4. **Closes the loop.** `gitmargin pull --live` reads the comments from the service, and `gitmargin status` marks one applied, so the reviewer sees what became of it.
+A second problem sits behind the first. Most prototypes are private: GitLab Pages for project members only, Vercel or Netlify behind a password or single sign-on, an internal server behind a VPN. Commenting tools either cannot reach them or bolt on a second login that reviewers have to join before they can say "make the header bigger". gitmargin's second part is for that, and it reuses the login your host already has; see [Three ways to run it](#three-ways-to-run-it).
 
-By default there is no sign-in: a key written into the page is the only gate, and whoever can open the page can read and write its comments. Sign-in with GitLab or GitHub is a choice you make per prototype (`gitmargin identity`, below in part 2): reviewers then comment under their real GitLab or GitHub name, and you can limit commenting, and reading, to one GitLab group or, with GitHub, to the people who can open one repository. **Attaching with `--service` also uploads a copy of the page to your service**, which is how older versions stay openable, and that copy is not behind whatever password protects the page on your host: anyone holding its link can open it. If the prototype must stay behind your host's login, use part 1 without `--service`, or, on Vercel, [same-project mode](service/README.md#same-project-mode-on-vercel-the-page-and-its-comments-behind-one-login), which puts the page and its comments behind that one login. [service/README.md](service/README.md) has the deploy steps and says plainly what that means.
+## How it works
 
-**Part 2, the destination, in progress: most of its pieces are built, the rest waits until it can be tested.** Your host already knows who's allowed to see the page; part 2 reuses that for comments. Reviewers sign in through the provider your company already uses: GitHub, or GitLab through the company login, then Okta, Entra, or Google by way of OpenID Connect. Sign-in is a choice made per prototype, on top of the same comment service. A publishing command replaces the drag-into-Slack habit: it puts the overlay in, publishes to the host your company already sanctions, and hands back the link. Terms of art in this section, such as OpenID Connect, are explained in the research report's [glossary](research/prior-art-landscape.md#8-glossary). Since 2026-09-19 part 2 has one design, [docs/part-2-design.md](docs/part-2-design.md), and is being built in four cycles that each end in a live test. **Cycle 1, sign-in with GitLab ([#18](https://github.com/mayankmankhand/gitmargin/issues/18)), is built**: a reviewer presses Sign in under the identity chip in the overlay's toolbar, from a file on disk, the service link or GitLab Pages alike, and it was walked (this project's word for a trial by hand, end to end, with real accounts) on two computers with two gitlab.com accounts, one of them only a Guest of a private group. **Cycle 2, sign-in with GitHub ([#17](https://github.com/mayankmankhand/gitmargin/issues/17)), is built** on the same machinery, through a GitHub App that asks reviewers for nothing beyond who they are (limiting commenting to one repository needs one read permission, and GitHub's screen then asks for more), and it was walked on the real github.com from a file on disk, the service link and a GitHub Pages page, with the repository rule both ways. **Vercel same-project mode ([#19](https://github.com/mayankmankhand/gitmargin/issues/19)) is built too:** a second deployment of your comment service serves one prototype and its comments behind Vercel's own login, so nobody who has not passed it reaches either. Setup and the plain-English warnings are in [service/README.md](service/README.md#sign-in-with-gitlab-optional-per-prototype) and [its GitHub section](service/README.md#sign-in-with-github-optional-per-prototype); same-project mode is set up in [its own section](service/README.md#same-project-mode-on-vercel-the-page-and-its-comments-behind-one-login).
+```mermaid
+flowchart LR
+  A["Build a prototype<br/>with any AI tool"] --> B["gitmargin attach<br/>one script inside the file"]
+  B --> C{"Share it"}
+  C --> D["A file"]
+  C --> E["Your comment service link,<br/>GitHub Pages or GitLab Pages"]
+  D --> F["Reviewer clicks a spot<br/>and says what they expected"]
+  E --> F
+  F --> G["Comments come back:<br/>the file, the clipboard, or live"]
+  G --> H["gitmargin pull<br/>one batch"]
+  H --> I["Coding agent applies it<br/>in one pass"]
+  I --> J["gitmargin status<br/>reviewers see what happened"]
+```
+
+- **One script inside your HTML file.** `gitmargin attach` writes a copy of the prototype with the overlay in it. A reviewer opens that copy anywhere, from disk included, presses **Comment**, clicks an element or highlights text, and says what they expected. Each comment leaves a pin with the writer's initials, shown only on the step it was made on, even when every step repeats the same Next button; a count badge opens the list of comments, grouped by screen.
+- **Every comment carries where and why.** The step, tab or dialog that was open, the clicks that led there ("Next, Next, Continue"), the element or the words clicked, and one question answered in the reviewer's own words: *what did you expect here?*
+- **Comments come back as a file, a text block, or live.** "Send to author" downloads the same HTML with the comments inside; "Copy for author" puts a readable block on the clipboard. Neither needs a server or an account. With the optional comment service, everyone who opens the page sees the same comments within seconds and can reply.
+- **`gitmargin pull` makes one batch.** JSON with the rules for applying it carried inside, so a coding agent applies it in one pass; two reviewers' files merge into one batch. `gitmargin status` marks a comment applied or rejected, so the reviewer sees what became of it.
+
+## What the agent gets
+
+One line per comment: the tag, the screen, the clicks that got there, the element, then the reviewer's words verbatim. This is what "Copy for author" puts on the clipboard, and what `pull` prints alongside the JSON:
+
+```text
+1. [bug] On "Shipping address" (#step-3), after clicking Next, Next: the "Continue" button (#step-3 > div.actions > button.continue).
+   "I expected this to stay disabled until the address is valid."
+```
+
+The JSON behind it, how "where" is captured, and the rules the agent follows are specified in [docs/batch-format.md](docs/batch-format.md). The few page shapes that can still put a pin on the wrong step are listed there too, in section 3.
+
+## Three ways to run it
+
+| | Just a file | Shared live comments | Sign-in |
+|---|---|---|---|
+| What you need | nothing beyond `gitmargin attach` | a comment service in your own Vercel account, set up with one command | the same service, plus a GitLab application or a GitHub App |
+| Who can comment | whoever you send the file to | whoever can open the page: a key written into the page is the only gate | reviewers signed in with GitLab or GitHub, under their real names; optionally only one GitLab group, or only the people who can open one GitHub repository |
+| Where the comments live | in the reviewer's browser until they send the file back | in your service's database, by version, with replies | the same |
+| Where the page can live | anywhere, disk included | a file, the service's own link, GitHub Pages, GitLab Pages, Vercel, anywhere else | the same; on Vercel, [same-project mode](service/README.md#same-project-mode-on-vercel-the-page-and-its-comments-behind-one-login) puts the page and its comments behind Vercel's own login |
+| Status | built and tested | built, and tested on a real Vercel plus Neon deployment | GitLab and GitHub built and tested with real accounts; Okta, Entra, Google and Slack parked |
+
+gitmargin runs nothing and holds nothing: the service is yours, in your own account. One thing to know first: **attaching with `--service` uploads a copy of the page to your service**, and that copy is not behind whatever password protects the page on your host. If the prototype must stay behind your host's login, use the file route, or same-project mode on Vercel. The deploy steps and the [GitLab](service/README.md#sign-in-with-gitlab-optional-per-prototype) and [GitHub](service/README.md#sign-in-with-github-optional-per-prototype) sign-in setup are in [service/README.md](service/README.md), each with what it means in plain English; the design behind sign-in is [docs/part-2-design.md](docs/part-2-design.md).
 
 ## Running it today
 
-**If you build prototypes with Claude Code**, install the plugin and let Claude do the rest: it builds the prototype so comments land well, shares it (a file, your comment service's link, GitHub Pages or GitLab Pages) with `/gitmargin:share`, and reads the comments back when you ask what reviewers said. The whole story, including the one-time setup, is in [docs/claude-code.md](docs/claude-code.md).
+**With Claude Code**, install the plugin and let Claude do the rest: it builds the prototype so comments land well, shares it with `/gitmargin:share`, and reads the comments back when you ask what reviewers said. Setup and the whole flow are in [docs/claude-code.md](docs/claude-code.md).
 
 ```text
 /plugin marketplace add https://github.com/mayankmankhand/gitmargin.git
 /plugin install gitmargin@gitmargin
 ```
+
+The first time in a project, `/gitmargin:share` proposes one place to publish and asks once:
+
+| Where the page lives | Who can open it | Good for |
+|---|---|---|
+| **A file you send** | whoever you send it to | a quick review; no account needed |
+| **The service link** | anyone who has the link | most reviews; no host needed, the link never changes |
+| **GitHub Pages** (public repositories only) | anyone on the internet | a public project that already lives on GitHub |
+| **GitLab Pages** (private projects on gitlab.com) | the project's members, after GitLab's login | a private project on GitLab: the page itself stays private |
 
 **By hand**, gitmargin is not on npm yet, so it runs from a clone of this repo:
 
@@ -76,7 +101,7 @@ node bin/gitmargin.js attach prototype.html --service https://your-service.verce
 node bin/gitmargin.js pull prototype.gitmargin.html --live
 ```
 
-`npm run attach -- prototype.html` and `npm run pull -- reviewed.html` do the same thing. Only the author runs these; a reviewer only ever opens an HTML file, with nothing installed.
+Only the author runs these; a reviewer only ever opens an HTML file, with nothing installed.
 
 **Try it in two minutes.** The repository carries a mock prototype, a seven-step headphone setup, so you need nothing of your own:
 
@@ -84,20 +109,17 @@ node bin/gitmargin.js pull prototype.gitmargin.html --live
 node bin/gitmargin.js attach fixtures/onboarding.html   # writes fixtures/onboarding.gitmargin.html
 ```
 
-Open that file in your browser, press **Comment**, click anything on the page, and say what you expected. **Send to author** downloads the page with your comments inside, and `node bin/gitmargin.js pull` on that download prints them as the batch.
+Open that file in your browser, press **Comment**, click anything on the page, and say what you expected. **Send to author** downloads the page with your comments inside, and `node bin/gitmargin.js pull` on that download prints them as the batch. Or skip the clone: the [live demo](https://mayankmankhand.github.io/gitmargin/) is the same overlay on a Pokémon prototype.
 
-`npm test` runs the whole suite; [tests/README.md](tests/README.md) says what each file covers. To change something, start with [CONTRIBUTING.md](CONTRIBUTING.md).
-
-Your reviewer needs a current Chrome, Edge, Firefox or Safari; the measured floor is Chrome and Edge 88, Firefox 85, Safari 15.4, and the [split doc](docs/v0-split.md#what-a-reviewers-browser-has-to-be) says what each row means. Anything older says so on the page rather than quietly showing a prototype with no commenting on it. Internet Explorer is not supported and cannot be.
+Your reviewer needs a current Chrome, Edge, Firefox or Safari; the measured floor is Chrome and Edge 88, Firefox 85, Safari 15.4, and [the split doc](docs/v0-split.md#what-a-reviewers-browser-has-to-be) says what each row means. Anything older says so on the page rather than quietly showing a prototype with no commenting on it. `npm test` runs the whole suite, [tests/README.md](tests/README.md) says what each file covers, and [CONTRIBUTING.md](CONTRIBUTING.md) is where to start on a change.
 
 ## Design principles
 
-- **Feedback for an AI needs where and why, not just what.** "Make this bigger" is useless to an agent that cannot tell which of four screens "this" is on. Part 1 exists for this principle.
-- **Comments are data, not screenshots.** Every comment is anchored to an element and stored as machine-readable data, so both humans and AI agents can act on it.
-- **Works where you already deploy.** GitLab Pages, GitHub Pages, Vercel, a bucket, a folder on a server, or a file sent by hand. gitmargin never hosts your prototype or your comments. A plain file talks to nothing at all; a shared one talks only to the service you deployed.
-- **The author owns the record.** Shared comments live in a database in the author's own account, not in one gitmargin runs. A company should not have to send its feedback to somebody else's server to get a comment thread.
-- **No account beyond the one your host already requires** (part 2). gitmargin never adds a sign-up. It can't remove the seat a host like GitLab Pages demands, and it says so.
-- **Security is inherited, not added** (part 2). The prototype's existing access control is the comment system's access control. On a host with no gate of its own, gitmargin gates the comments and the mirror, not the page bytes.
+- **Feedback for an AI needs where and why, not just what.** "Make this bigger" is useless to an agent that cannot tell which of four screens "this" is on.
+- **Comments are data, not screenshots.** Every comment is anchored to an element and stored as machine-readable data, so humans and agents can both act on it.
+- **Works where you already deploy.** GitLab Pages, GitHub Pages, Vercel, a bucket, a folder on a server, or a file sent by hand. gitmargin never hosts your prototype or your comments.
+- **The author owns the record.** Shared comments live in a database in the author's own account, not in one gitmargin runs.
+- **No account beyond the one your host already requires.** gitmargin never adds a sign-up, and security is inherited rather than added: the prototype's existing access control becomes the comment system's access control.
 
 ## What exists today (and where the gap is)
 
@@ -108,32 +130,28 @@ Your reviewer needs a current Chrome, Edge, Firefox or Safari; the measured floo
 | Platform-native comments | Vercel Preview Comments, Netlify Drawer | Genuinely solve this, *if* your whole team lives on that vendor. Locked to one platform |
 | No-code CMS | Builder.io, Webstudio, Storyblok (and Coinbase's internal system) | Solve *editing* for marketers, not *reviewing* for teams |
 
-A closer read on 2026-09-02 of the four tools nearest to part 1 (human-review, Agentation, Plannotator, Annotate.js) found that none records which step or screen the reviewer was on, none keeps an interaction trail, and none asks what the reviewer expected: [research/agent-feedback-formats.md](research/agent-feedback-formats.md).
-
-The unclaimed square is still **platform-agnostic, identity-aware commenting on private prototypes, with no account beyond the one your host already requires, and the record under your own control.** That is part 2. Part 1 takes the piece of it that needs no infrastructure: comments on a plain file that an agent can act on because they say where and why. The [research report](research/prior-art-landscape.md) has the full landscape, 166 sources.
+A closer read of the four tools nearest to gitmargin's file route found that none records which step the reviewer was on, keeps a click trail, or asks what the reviewer expected: [research/agent-feedback-formats.md](research/agent-feedback-formats.md). The unclaimed square is platform-agnostic, identity-aware commenting on private prototypes, with no account beyond the one your host already requires and the record under your own control. The [research report](research/prior-art-landscape.md) has the full landscape, 166 sources, and a [glossary](research/prior-art-landscape.md#8-glossary) for terms such as OpenID Connect.
 
 ## Roadmap
 
-- **Built:** part 1 (the overlay, `attach` and `pull`); shared live comments; sign in with GitLab and GitHub; Vercel same-project mode; the Claude Code plugin with the file, service-link, GitHub Pages and GitLab Pages channels, a one-line setup and trust by proof.
-- **Next:** the first real review round, then the plain Vercel channel in the plugin, then publishing to npm.
-- **That review round** ([#6](https://github.com/mayankmankhand/gitmargin/issues/6)): a generated prototype sent as a file to two reviewers, comments back, and Claude Code applies them without the author explaining where anything was.
-- **Parked until it can be tested:** the Slack mirror, an MCP server, the phone mode and the four one-day sign-in tests, the spikes ([#2](https://github.com/mayankmankhand/gitmargin/issues/2)), Safari ([#7](https://github.com/mayankmankhand/gitmargin/issues/7)), overlay polish ([#8](https://github.com/mayankmankhand/gitmargin/issues/8)).
-- **The diagram and the full list, with dates:** [ROADMAP.md](ROADMAP.md).
+- **Built and tested:** comments on a single file; shared live comments; sign in with GitLab and GitHub; the page and its comments behind Vercel's login; the Claude Code plugin, with a file, the service link, GitHub Pages and GitLab Pages as places to publish, a one-line setup, and a service that proves it holds your secret before the CLI sends it.
+- **Next:** the first real review round, two reviewers on a real prototype ([#6](https://github.com/mayankmankhand/gitmargin/issues/6)); Vercel in the plugin; publishing to npm.
+- **Parked until it can be tested:** the Slack mirror, an MCP server, the phone mode, the four one-day sign-in tests, Safari, overlay polish.
+
+The diagram, the issue links, the dates and the reasons are in [ROADMAP.md](ROADMAP.md). Why v0 was split into a file first and sign-in second is [docs/v0-split.md](docs/v0-split.md); the original decision, with the alternatives, is [docs/v0-decision.md](docs/v0-decision.md).
+
+If you've hit this problem, a prototype and no good way to collect feedback on it, I'd genuinely like to hear how you work around it today. Open an issue.
 
 ## Prior art and credit where it's due
 
 This project stands on ideas from people who solved neighbouring problems:
 
-- **[human-review](https://github.com/petergyang/human-review)** (Peter Yang, MIT) proved that "highlight, comment, agent applies the batch" is the right interaction for reviewing AI-generated HTML. Its JSON batch is the shape part 1's batch borrows.
-- **[Annotate.js](https://github.com/reviewjs/annotate)** showed the single-file shape part 1 borrows: one script tag, no server, comments downloaded and imported as JSON.
-- **GitLab Visual Reviews** (GitLab 12.0 to 17.0) was almost exactly the part 2 idea: one script tag posting comments into the merge request. It was removed for low usage, most likely because reviewers had to paste an API token to use it. Validation and warning in one.
+- **[human-review](https://github.com/petergyang/human-review)** (Peter Yang, MIT) proved that "highlight, comment, agent applies the batch" is the right interaction for reviewing AI-generated HTML. Its JSON batch is the shape gitmargin's batch borrows.
+- **[Annotate.js](https://github.com/reviewjs/annotate)** showed the single-file shape: one script tag, no server, comments downloaded and imported as JSON.
+- **GitLab Visual Reviews** (GitLab 12.0 to 17.0) was almost exactly the sign-in idea: one script tag posting comments into the merge request. It was removed for low usage, most likely because reviewers had to paste an API token to use it. Validation and warning in one.
 - **Vercel Preview Comments** and **Netlify Drawer** proved that identity-aware, on-page comments work when tied to the deploy platform, and Vercel now exports comments as JSON for agents. gitmargin tries to make that idea portable.
 - **Coinbase's content platform** ([Scaling Content at Coinbase](https://medium.com/the-coinbase-blog)) proved that taking non-engineers out of the code-review loop collapses cycle time from weeks to hours.
 - **Hypothesis, BugHerd, Markup.io** and the W3C Web Annotation model: a decade of prior art on anchoring comments to a page.
-
-## Status
-
-Decision made and amended. Part 1 is built and tested end to end: `gitmargin attach` puts the overlay into a copy of a prototype, a reviewer opens it from disk, comments, and sends the comments back as the same file or as a text block, and `gitmargin pull` turns what comes back into a batch for a coding agent. Shared live comments are built on top of that and tested in Chrome and Firefox against a local copy of the comment service: two people on the same page, one from a file and one from a hosted copy, see each other's comments and replies within seconds. The same check passed on a real Vercel plus Neon deployment. Sign-in with GitLab and GitHub and Vercel same-project mode are built and walked, and the Claude Code plugin ([docs/claude-code.md](docs/claude-code.md)) is built and was walked by a second author on a fresh computer on 2026-09-23, then cut to one login and one command on 2026-09-24. A first real review round, two reviewers on a real prototype, comes next. See [docs/v0-split.md](docs/v0-split.md) for what part 1 is and what part 2 parks, [docs/batch-format.md](docs/batch-format.md) for what the agent gets, and [docs/v0-decision.md](docs/v0-decision.md) for the original decision. If you've hit this problem, a private prototype and no good way to collect feedback on it, I'd genuinely like to hear how you work around it today. Open an issue or reach out.
 
 ## License
 
