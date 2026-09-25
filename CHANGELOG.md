@@ -22,6 +22,7 @@ Notable changes to gitmargin are recorded here, in the form of [Keep a Changelog
 ### Changed
 
 - The repository is public: a license, contributing guide, security policy, code of conduct, issue forms, CI, Dependabot, a roadmap and a screenshot; the plugin guide no longer suggests allowing `gitmargin-publish` everywhere.
+- Node.js 20 or newer is required. The manifest, the guides and the setup message said 18 while Playwright and the comment service already needed 20.
 
 ## [0.2.0] - 2026-09-24
 
