@@ -194,6 +194,9 @@
 - **A hang guard sized on a quiet machine flakes on a loaded full-suite run.**
 - **A subagent's scratch script can write into the repository: tell it where temp files go, and check git status after a workflow.**
 - **A saved Vercel login can expire quietly; one read-only `vercel whoami` renews it.**
+- **A stand-in for a vendor CLI cannot show that tool's own prompts: turn off its extra questions and assert the switch.**
+- **A throwaway WSL distro must have systemd off before its first boot, or it can break Windows programs in every distro.**
+- **A walk that counts permission prompts must pin the permission mode: Max plans start in auto mode.**
 
 ## Mistakes to Avoid
 
