@@ -190,6 +190,10 @@ test('the clipboard block pulls back as a lossier batch of the same comments', a
   // page cannot be relied on to read the clipboard back in every engine.
   await page.click('.gm-badge'); // Copy lives in the sheet (issue #21)
   await page.click('.gm-send .gm-btn:not(.primary)');
+  // The overlay sets the hook only after the clipboard write's promise
+  // resolves, and the click returns before that, so wait for it rather than
+  // reading at once (the same race as the Copy test in roundtrip.spec.js).
+  await expect.poll(() => page.evaluate(() => window.__gitmargin.lastCopy)).not.toBeNull();
   const block = await page.evaluate(() => window.__gitmargin.lastCopy);
   expect(block).toContain('gitmargin batch v0.1');
 
