@@ -191,8 +191,9 @@ measured on gitlab.com, on a private group.
 - **The members rule names a group by its full path,** matched whole and in any case, never by prefix. If you rename
   or delete the group, set the rule again: a freed path can be registered by someone else.
 - **A copy you shared before switching sign-in on has no sign-in button,** because its overlay is older, so its new
-  comments are refused until you attach again and share the new copy. Attaching again keeps the same key and version.
-  Until then, with the default reading rule, the old copy still shows comments and says "A comment could not be
+  comments are refused until you attach again and share the new copy. Attaching again from the same folder (or with
+  `--key`) keeps the same key and version, and the `identity` command says so when the copy you point it at is one of
+  these. Until then, with the default reading rule, the old copy still shows comments and says "A comment could not be
   shared. It is saved here." With `--read members` it shows none, and says "The comment service does not know this
   prototype. Comments are saved here only.", which is misleading: the service has the prototype, the old page just
   cannot sign in. Either way the person's own comments stay on their page, not lost.
@@ -398,11 +399,9 @@ export GITMARGIN_VERCEL_BYPASS=...   # this project's bypass for automation
 node bin/gitmargin.js attach prototype.html --service https://<prototype>-review.vercel.app
 ```
 
-A new version is the same `attach` again: no redeploy. Two lines `attach` prints are written for an ordinary service
-and do not hold here: "Send or publish prototype.gitmargin.html" and "The key is inside the page, and it is the only
-gate". Here Vercel's login is the gate, and reviewers get the address below, not the file. Keep the file for
-yourself: `pull --live`, `status`, `remove` and `identity` read the address and key from it. `pull --live`, `status`, `remove` and `identity` work the same
-way with the three values set. The bypass goes only to the address named in `GITMARGIN_SERVICE`, exactly, and never into
+A new version is the same `attach` again: no redeploy. Its closing lines are written for this mode: reviewers get the
+address below, not the file, and Vercel's login is the gate. Keep the file for yourself: `pull --live`, `status`,
+`remove` and `identity` read the address and key from it, and work the same way with the three values set. The bypass goes only to the address named in `GITMARGIN_SERVICE`, exactly, and never into
 the page: an address typed on a command line proves nothing, since an agent may have typed it. It also carries the
 proof of trust past Vercel's login; the author secret still waits for the proof. Without it, the commands stop and say
 the address is behind Vercel's protection.
