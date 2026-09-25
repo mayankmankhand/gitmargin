@@ -8,7 +8,7 @@
 // Usage: npm run serve  ->  prints the URL and stays up until Ctrl-C.
 //
 // It serves two directories and nothing else. An earlier version rooted itself
-// at the repository, which meant a localhost port handed out PRIVATE-NOTES.md,
+// at the repository, which meant a localhost port handed out the owner's private notes,
 // .git/config and .env.local to anything that asked. Containment was never the
 // problem; the root was (review R1).
 import { createServer } from 'node:http';

@@ -25,7 +25,7 @@
 //
 // When a test tells it to fail, it REFUSES. It never delivers first and reports
 // failure afterwards: a fake that refuses after delivering cannot test a
-// refusal (LESSONS, issue #15).
+// refusal (a lesson from issue #15).
 
 import http from 'node:http';
 import { createHash, randomBytes } from 'node:crypto';
