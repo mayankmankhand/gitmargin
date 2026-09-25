@@ -4,6 +4,25 @@ Notable changes to gitmargin are recorded here, in the form of [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-09-25
+
+### Fixed
+
+- `gitmargin identity` warns about attaching a copy again only when that copy's overlay predates sign-in, in words that match the reading rule ([#30](https://github.com/mayankmankhand/gitmargin/issues/30)).
+- `gitmargin attach` on a Vercel same-project deployment names the address reviewers get and Vercel's login as the gate, claims nothing about the login when its check did not run, and keeps the not-found line for a page too large to store ([#30](https://github.com/mayankmankhand/gitmargin/issues/30)).
+- The count badge's tooltip says what it does and follows the comments list's state, so a reviewer who closed the list can see how to reopen it ([#30](https://github.com/mayankmankhand/gitmargin/issues/30)).
+
+### Security
+
+- The markdown that `gitmargin pull` and Copy for author hand a coding agent folds every field of a comment, so no field a key holder controls can open a line of its own.
+- A reviewer's sign-in pass stays in memory on GitHub Pages, and on GitLab Pages without a unique domain, where every site of one owner shares one browser storage.
+- `gitmargin attach` refuses a symbolic link at its output name instead of writing through it.
+- The comment service enforces the version cap inside its insert, as the other caps already were.
+
+### Changed
+
+- The repository is public: a license, contributing guide, security policy, code of conduct, issue forms, CI, Dependabot, a roadmap and a screenshot; the plugin guide no longer suggests allowing `gitmargin-publish` everywhere.
+
 ## [0.2.0] - 2026-09-24
 
 ### Added
