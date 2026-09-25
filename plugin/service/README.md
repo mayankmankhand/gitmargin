@@ -51,8 +51,8 @@ ignored by git and by the deploy, and are safe to delete.
 
 ### Or with the button
 
-> **Not tested end to end yet.** The button needs this repository to be public, and it is not. Its parameters follow
-> Vercel's deploy-button reference. Until then, use the command line above.
+> **Not walked end to end yet.** Its parameters follow Vercel's deploy-button reference. The command line above is
+> the route that has been run for real.
 
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fmayankmankhand%2Fgitmargin%2Ftree%2Fmain%2Fservice&project-name=gitmargin-comments&repository-name=gitmargin-comments&env=GITMARGIN_SECRET&envDescription=A%20long%20random%20string%20only%20you%20know%2C%20at%20least%2032%20characters.%20The%20gitmargin%20commands%20send%20it%20to%20prove%20they%20are%20you.&stores=%5B%7B%22type%22%3A%22integration%22%2C%22integrationSlug%22%3A%22neon%22%2C%22productSlug%22%3A%22neon%22%2C%22protocol%22%3A%22storage%22%7D%5D)
 
@@ -170,8 +170,9 @@ disk, the service link, GitLab Pages, any host. The design and its reasons are i
 Press Sign in. A small window opens on GitLab; the first time, GitLab asks them to approve, and after that it does
 not. The window then shows a page from **your** service naming the prototype and the person, with a short code such
 as `48-21`; they check it matches the code the overlay shows them and press **Continue**. On a page with a web address they
-stay signed in for 7 days in that browser. On a copy stored on the service, and on a file opened from disk, the
-sign-in lasts for that tab only: those pages have no storage of their own that other pages cannot read, so the
+stay signed in for 7 days in that browser. On a copy stored on the service, on a file opened from disk, and on
+GitHub Pages (where every site of one owner shares one browser storage; GitLab Pages too, unless the project has a
+unique domain), the sign-in lasts for that tab only: those pages have no storage of their own that other pages cannot read, so the
 next visit is two presses again (GitLab asks nothing the second time). A Guest of the group is a member: that was
 measured on gitlab.com, on a private group.
 
@@ -191,8 +192,9 @@ measured on gitlab.com, on a private group.
 - **The members rule names a group by its full path,** matched whole and in any case, never by prefix. If you rename
   or delete the group, set the rule again: a freed path can be registered by someone else.
 - **A copy you shared before switching sign-in on has no sign-in button,** because its overlay is older, so its new
-  comments are refused until you attach again and share the new copy. Attaching again keeps the same key and version.
-  Until then, with the default reading rule, the old copy still shows comments and says "A comment could not be
+  comments are refused until you attach again and share the new copy. Attaching again from the same folder (or with
+  `--key`) keeps the same key and version, and the `identity` command says so when the copy you point it at is one of
+  these. Until then, with the default reading rule, the old copy still shows comments and says "A comment could not be
   shared. It is saved here." With `--read members` it shows none, and says "The comment service does not know this
   prototype. Comments are saved here only.", which is misleading: the service has the prototype, the old page just
   cannot sign in. Either way the person's own comments stay on their page, not lost.
@@ -361,14 +363,14 @@ Run this from the folder you cloned gitmargin into. It copies the service into a
 can never be deployed over your main comment service:
 
 ```bash
-cp -r service ~/gitmargin-review-onboarding && cd ~/gitmargin-review-onboarding
+cp -r service ~/gitmargin-review-<prototype> && cd ~/gitmargin-review-<prototype>
 rm -rf .vercel .env.local
-vercel link --yes --project onboarding-review          # a new project, named for the prototype
+vercel link --yes --project <prototype>-review          # a new project, named for the prototype
 vercel integration add neon --plan free_v3 -m region=iad1 -m auth=false   # its own database
 mkdir -p ~/.config/gitmargin
-node -e "process.stdout.write(require('crypto').randomBytes(32).toString('base64url'))" > ~/.config/gitmargin/secret-onboarding
-chmod 600 ~/.config/gitmargin/secret-onboarding                  # a new author secret, never shown
-vercel env add GITMARGIN_SECRET production --sensitive < ~/.config/gitmargin/secret-onboarding
+node -e "process.stdout.write(require('crypto').randomBytes(32).toString('base64url'))" > ~/.config/gitmargin/secret-<prototype>
+chmod 600 ~/.config/gitmargin/secret-<prototype>                  # a new author secret, never shown
+vercel env add GITMARGIN_SECRET production --sensitive < ~/.config/gitmargin/secret-<prototype>
 printf 1 | vercel env add GITMARGIN_SAME_PROJECT production     # exactly 1, no questions asked
 vercel deploy --prod --yes
 ```
@@ -384,7 +386,7 @@ Then, in Vercel: the project, Settings, **Deployment Protection**:
    bypass: the commands will say Vercel's protection refused it. It is how the `gitmargin` commands get through, and
    it opens every deployment of this project, so keep it like the author secret.
 
-Check it: `curl -s -o /dev/null -w '%{http_code} %{redirect_url}\n' https://onboarding-review.vercel.app/api/ping` must
+Check it: `curl -s -o /dev/null -w '%{http_code} %{redirect_url}\n' https://<prototype>-review.vercel.app/api/ping` must
 answer `302` to `https://vercel.com/sso-api...` (or a `401` or `403`: Vercel's login), never `200`.
 
 ### Publish, and every new version
@@ -392,24 +394,22 @@ answer `302` to `https://vercel.com/sso-api...` (or a `401` or `403`: Vercel's l
 Back in the folder you cloned gitmargin into (the setup above left you in the copy):
 
 ```bash
-export GITMARGIN_SECRET="$(cat ~/.config/gitmargin/secret-onboarding)"
-export GITMARGIN_SERVICE=https://onboarding-review.vercel.app
+export GITMARGIN_SECRET="$(cat ~/.config/gitmargin/secret-<prototype>)"
+export GITMARGIN_SERVICE=https://<prototype>-review.vercel.app
 export GITMARGIN_VERCEL_BYPASS=...   # this project's bypass for automation
-node bin/gitmargin.js attach prototype.html --service https://onboarding-review.vercel.app
+node bin/gitmargin.js attach prototype.html --service https://<prototype>-review.vercel.app
 ```
 
-A new version is the same `attach` again: no redeploy. Two lines `attach` prints are written for an ordinary service
-and do not hold here: "Send or publish prototype.gitmargin.html" and "The key is inside the page, and it is the only
-gate". Here Vercel's login is the gate, and reviewers get the address below, not the file. Keep the file for
-yourself: `pull --live`, `status`, `remove` and `identity` read the address and key from it. `pull --live`, `status`, `remove` and `identity` work the same
-way with the three values set. The bypass goes only to the address named in `GITMARGIN_SERVICE`, exactly, and never into
+A new version is the same `attach` again: no redeploy. Its closing lines are written for this mode: reviewers get the
+address below, not the file, and Vercel's login is the gate. Keep the file for yourself: `pull --live`, `status`,
+`remove` and `identity` read the address and key from it, and work the same way with the three values set. The bypass goes only to the address named in `GITMARGIN_SERVICE`, exactly, and never into
 the page: an address typed on a command line proves nothing, since an agent may have typed it. It also carries the
 proof of trust past Vercel's login; the author secret still waits for the proof. Without it, the commands stop and say
 the address is behind Vercel's protection.
 
 ### What reviewers do
 
-Send them `https://onboarding-review.vercel.app/`, or a share link: on the production deployment's page, **Share**,
+Send them `https://<prototype>-review.vercel.app/`, or a share link: on the production deployment's page, **Share**,
 "Anyone with the link". Someone with the share link needs no Vercel account; anyone else passes Vercel's login.
 Either way they land on the prototype and comment as on any shared page. On Hobby you can have one share link at a
 time, across all your projects, so making this one revokes any other (Vercel warns first). Switch it back to "Only
@@ -427,7 +427,7 @@ people with access" when the review is over.
   script inside the prototype could press Continue for a reviewer, as it can already read the pass the overlay holds.
 - **Sign-in, if you switch it on, is set up again here.** This is its own Vercel project, so your main service's
   GitLab or GitHub values do not carry over, and `identity` refuses until they are added: follow "Set it up, once per
-  service" above from this folder, with `https://onboarding-review.vercel.app/auth/callback` as the callback (GitHub
+  service" above from this folder, with `https://<prototype>-review.vercel.app/auth/callback` as the callback (GitHub
   calls that field Redirect URI). It then works from that main address only: the provider sends people back to the
   one callback address you registered.
 - **The page opens from whichever address the reviewer used,** the main address, a deployment address or a share
