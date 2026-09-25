@@ -1,0 +1,53 @@
+name: Bug report
+description: Something did not work the way the docs say it should.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Keep it free of anything secret: no page key (`gm_...`), no author secret, no Vercel bypass, and no attached copy (`*.gitmargin.html`, which carries a key). For a security problem, do not open an issue: read `SECURITY.md` first.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, and what the page or the command did in return. Error text, copied as is, helps more than a description of it.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: dropdown
+    id: channel
+    attributes:
+      label: Channel
+      description: How the prototype reached the reviewer.
+      options:
+        - A file you sent
+        - The service link
+        - GitHub Pages
+        - GitLab Pages
+        - Vercel same-project mode
+        - Not sure
+    validations:
+      required: true
+  - type: input
+    id: browser
+    attributes:
+      label: Browser
+      description: Name and version, for example Chrome 130 or Firefox 133. The floor is Chrome and Edge 88, Firefox 85, Safari 15.4.
+  - type: textarea
+    id: check-output
+    attributes:
+      label: Output of gitmargin check, if any
+      description: Run `gitmargin check <file>` (from a clone, `node bin/gitmargin.js check <file>`) and paste what it printed.
+      render: text
+  - type: checkboxes
+    id: no-secrets
+    attributes:
+      label: Nothing secret in this report
+      options:
+        - label: I have not pasted a page key, an author secret, a Vercel bypass or an attached copy
+          required: true

@@ -1,0 +1,29 @@
+name: Feature request
+description: A problem gitmargin could solve, or an idea for it.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Say what gets in the way before saying how to fix it. `ROADMAP.md` lists what is planned and what is parked; an idea that is already there is still worth a note if you would use it.
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What you were trying to do, and what got in the way.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: The idea
+      description: What you would like gitmargin to do. A rough sketch is fine.
+    validations:
+      required: true
+  - type: textarea
+    id: who
+    attributes:
+      label: Who it helps
+      description: The author, the reviewer, the coding agent, or a team on one host. Say what changes for them.
+    validations:
+      required: true

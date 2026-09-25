@@ -5,6 +5,14 @@
   "type": "module",
   "description": "Comments on a single HTML prototype that tell a coding agent where the reviewer was and what they expected.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mayankmankhand/gitmargin.git"
+  },
+  "bugs": {
+    "url": "https://github.com/mayankmankhand/gitmargin/issues"
+  },
+  "homepage": "https://github.com/mayankmankhand/gitmargin#readme",
   "engines": {
     "node": ">=18"
   },
