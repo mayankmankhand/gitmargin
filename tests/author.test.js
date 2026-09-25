@@ -5,7 +5,7 @@ import { initialsOf, authorHue, HUES, NEUTRAL } from '../src/overlay/author.js';
 
 test('initials are the first letters of the first and last words', () => {
   assert.equal(initialsOf('Priya Shah'), 'PS');
-  assert.equal(initialsOf('Mayank'), 'M');
+  assert.equal(initialsOf('Sam'), 'S');
   assert.equal(initialsOf('  Arjun  K  Rao '), 'AR');
   assert.equal(initialsOf('josé ríos'), 'JR');
 });
@@ -30,11 +30,11 @@ test('the same person gets the same colour, and it is one of the eight', () => {
 });
 
 test('the handle decides when there is one, so two people with one display name differ', () => {
-  const one = authorHue({ name: 'Mayank Mankhand', username: 'mayankmankhand07' });
-  const two = authorHue({ name: 'Mayank Mankhand', username: 'mankhand.mayank' });
+  const one = authorHue({ name: 'Sam Okafor', username: 'sokafor7' });
+  const two = authorHue({ name: 'Sam Okafor', username: 'sam.okafor' });
   assert.notEqual(one, two);
   // And the handle wins over the name: renaming the display name changes nothing.
-  assert.equal(one, authorHue({ name: 'M. Mankhand', username: 'mayankmankhand07' }));
+  assert.equal(one, authorHue({ name: 'S. Okafor', username: 'sokafor7' }));
 });
 
 test('no name and no handle is the neutral grey', () => {

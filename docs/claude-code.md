@@ -14,7 +14,7 @@ Reviewers install nothing. They open a link or a file, click **Comment**, click 
 
 - **Claude Code.**
 - **Node.js 18 or newer** (`node --version`). The plugin's commands run on Node, and so does Vercel's command-line tool.
-- **Git, and access to this repository while it is private.** Claude Code installs the plugin with your own git login for github.com. The simplest way: install GitHub's command-line tool `gh`, then run `gh auth login` and `gh auth setup-git` once.
+- **Git.** Claude Code installs the plugin by cloning this repository over `https`, which needs no login for a public repository. If you install from a private fork instead, give git a login for github.com first: install GitHub's command-line tool `gh`, then run `gh auth login` and `gh auth setup-git` once.
 - **For comments everyone sees live** (the service link, GitHub Pages and GitLab Pages below): a free [Vercel](https://vercel.com) account. You set up your comment service in it with one command, the first time; see [Your comment service](#your-comment-service-once).
 - **For GitHub Pages:** a public GitHub repository, and `gh` logged in.
 - **For GitLab Pages:** a private project on gitlab.com where you are a Maintainer or Owner, and GitLab's command-line tool `glab` ([install it](https://gitlab.com/gitlab-org/cli#installation)) logged in once with `glab auth login --hostname gitlab.com`. Each reviewer needs a gitlab.com account that is a member of the project or its group.

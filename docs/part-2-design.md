@@ -8,14 +8,16 @@ Decided 2026-09-19. It came out of thinking through issues
 four features. It replaces the parked list in section 7 of [the split](v0-split.md) as the description of part 2.
 Technical terms are explained in the research report's [glossary](../research/prior-art-landscape.md#8-glossary).
 
-**Status on 2026-09-24:** cycle 1 (section 7), the sign-in core and the GitLab plug, is built under issue #18 and was
+**Status on 2026-09-25:** cycle 1 (section 7), the sign-in core and the GitLab plug, is built under issue #18 and was
 walked on two computers with two gitlab.com accounts. Cycle 2, the GitHub plug (issue #17), is built and tested against
 a stand-in GitHub in Chromium and Firefox and walked on the real github.com (a file on disk, the service link and a
 GitHub Pages page). Same-project mode, the second half of cycle 4 (issue #19), is built ahead of cycle 3 and tested
 behind a stand-in for Vercel's login wall; it was walked on a real Vercel project, including a reviewer on the share
 link. Cycle 3, the plugin (issue #16), is built with the file, service-link and GitHub Pages channels and was
 walked on a second computer on 2026-09-23 (section 7). The GitLab Pages channel (issue #37) is built, tested against a
-stand-in GitLab, and was walked on gitlab.com on 2026-09-24 (section 7). Everything else here is decided and not yet built, and says so.
+stand-in GitLab, and was walked on gitlab.com on 2026-09-24 (section 7). The one-line service setup (issue #36) and the
+proof of trust every command demands before it sends the author secret (issue #33) are built and were walked on a fresh
+machine on 2026-09-24. Everything else here is decided and not yet built, and says so.
 The contract is `service/API.md`; setup and warnings are in `service/README.md`.
 
 ## 1. Why one design
