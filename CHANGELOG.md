@@ -15,7 +15,7 @@ Notable changes to gitmargin are recorded here, in the form of [Keep a Changelog
 ### Security
 
 - The markdown that `gitmargin pull` and Copy for author hand a coding agent folds every field of a comment, so no field a key holder controls can open a line of its own.
-- A reviewer's sign-in pass stays in memory on GitHub Pages, and on GitLab Pages without a unique domain, where every site of one owner shares one browser storage.
+- A reviewer's sign-in pass stays in memory on GitHub Pages and on GitLab Pages, where every site of one owner can share one browser storage.
 - `gitmargin attach` refuses a symbolic link at its output name instead of writing through it.
 - The comment service enforces the version cap inside its insert, as the other caps already were.
 

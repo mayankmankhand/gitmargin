@@ -142,18 +142,18 @@ export function serviceAddress(stamp, where) {
  * @returns {null | object} null when the page is not shared.
  */
 /**
- * Hosts where every site of one owner shares one origin, so browser storage is
- * shared with pages other people publish there: `owner.github.io/<repo>`, and
- * GitLab Pages without a unique domain, `group.gitlab.io/<project>`. A GitLab
- * project with a unique domain (`<name>-<six hex>.gitlab.io`, the default for
- * new projects) has an origin of its own. A pass stored on a shared origin could
- * be read by any of those pages (security audit of #30, R3).
+ * Hosts where every site of one owner can share one origin, so browser storage
+ * is shared with pages other people publish there: `owner.github.io/<repo>`,
+ * and GitLab Pages, `group.gitlab.io/<project>`. A GitLab project with a unique
+ * domain (`<name>-<six hex>.gitlab.io`) has an origin of its own, but a group
+ * named like `release-202409` wears the same shape, so the shape cannot tell
+ * them apart and every gitlab.io host counts as shared (fail closed; security
+ * audit of #30, R3, and the review's R21). A pass stored on a shared origin
+ * could be read by any of those pages.
  */
 export function sharedOriginHost(hostname) {
   const host = String(hostname || '').toLowerCase();
-  if (host.endsWith('.github.io')) return true;
-  if (host.endsWith('.gitlab.io')) return !/-[0-9a-f]{6}\.gitlab\.io$/.test(host);
-  return false;
+  return host.endsWith('.github.io') || host.endsWith('.gitlab.io');
 }
 
 export function startSync({
