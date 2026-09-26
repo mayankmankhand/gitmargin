@@ -142,8 +142,7 @@ The diagram, the issue links, the dates and the reasons are in [ROADMAP.md](ROAD
 
 If you've hit this problem, a prototype and no good way to collect feedback on it, I'd genuinely like to hear how you work around it today. Open an issue.
 
-## Prior art and credit where it's due
-
+## Reference
 This project stands on ideas from people who solved neighbouring problems:
 
 - **[human-review](https://github.com/petergyang/human-review)** (Peter Yang, MIT) proved that "highlight, comment, agent applies the batch" is the right interaction for reviewing AI-generated HTML. Its JSON batch is the shape gitmargin's batch borrows.
