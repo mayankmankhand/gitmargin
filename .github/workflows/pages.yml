@@ -51,7 +51,7 @@ jobs:
           node bin/gitmargin.js attach demo/next-best-pokemon.html
           mkdir -p _site
           cp demo/next-best-pokemon.gitmargin.html _site/index.html
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: _site
       - id: deployment
